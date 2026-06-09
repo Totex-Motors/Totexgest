@@ -1,4 +1,4 @@
-﻿// Types para o Totex CRM
+﻿// Types para o TotexGest
 
 // =====================================================
 // ENUMS & CONSTANTS

@@ -7,12 +7,12 @@ import { Loader2, ArrowRight, Eye, EyeOff, ShieldCheck, User } from 'lucide-reac
 
 /* ─── Config ────────────────────────────────────────────────── */
 const BRAND = {
-  name: 'Totex CRM',
-  tagline: 'Inteligência que vende por você',
+  name: 'Totex Motors',
+  tagline: 'Cada lead conduzido até a venda',
   features: [
-    { label: 'Pipeline Inteligente', desc: 'IA que prioriza seus melhores leads' },
-    { label: 'Agente Autônomo 24/7', desc: 'Responde e qualifica via WhatsApp' },
-    { label: 'Coach em Tempo Real', desc: 'Sugestões durante suas chamadas' },
+    { label: 'Funil de Vendas', desc: 'Acompanhe cada lead do primeiro contato ao fechamento' },
+    { label: 'Atendimento no WhatsApp', desc: 'Centralize as conversas de toda a equipe' },
+    { label: 'Cockpit do Vendedor', desc: 'Hot leads, tarefas e agenda do dia em tempo real' },
   ],
 };
 
@@ -39,7 +39,7 @@ function FloatingShard({ delay, x, y, size, rotation, opacity }: {
       }}
     >
       <div
-        className="border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.04] to-transparent backdrop-blur-[2px]"
+        className="border border-teal-400/20 bg-gradient-to-br from-teal-400/[0.04] to-transparent backdrop-blur-[2px]"
         style={{
           width: size,
           height: size * 1.4,
@@ -133,17 +133,17 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#0c0c10] via-[#0a0a12] to-[#08080c]" />
 
         {/* Ambient orbs */}
-        <AmbientOrb color="#c8952e" x="20%" y="30%" size={300} delay={0} />
-        <AmbientOrb color="#1a1a3e" x="60%" y="60%" size={400} delay={2} />
-        <AmbientOrb color="#c8952e" x="70%" y="15%" size={200} delay={4} />
+        <AmbientOrb color="#14b8a6" x="20%" y="30%" size={300} delay={0} />
+        <AmbientOrb color="#0f3d3d" x="60%" y="60%" size={400} delay={2} />
+        <AmbientOrb color="#14b8a6" x="70%" y="15%" size={200} delay={4} />
 
         {/* Grid overlay */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: `
-              linear-gradient(rgba(200,149,46,0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(200,149,46,0.3) 1px, transparent 1px)
+              linear-gradient(rgba(20,184,166,0.3) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(20,184,166,0.3) 1px, transparent 1px)
             `,
             backgroundSize: '60px 60px',
           }}
@@ -159,7 +159,7 @@ export default function Login() {
 
         {/* Diagonal accent line */}
         <motion.div
-          className="absolute w-[1px] bg-gradient-to-b from-transparent via-amber-500/30 to-transparent"
+          className="absolute w-[1px] bg-gradient-to-b from-transparent via-teal-400/30 to-transparent"
           style={{ height: '120%', left: '40%', top: '-10%', rotate: '15deg' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -175,12 +175,11 @@ export default function Login() {
             transition={{ delay: 0.3, duration: 0.8 }}
           >
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
-                <span className="text-[#07070a] font-bold text-sm">AI</span>
-              </div>
-              <span className="text-[#f8f6f1]/60 text-sm font-medium tracking-[0.2em] uppercase">
-                {BRAND.name}
-              </span>
+              <img
+                src="/logo_totex.png"
+                alt={BRAND.name}
+                className="h-12 w-auto object-contain drop-shadow-[0_0_25px_rgba(20,184,166,0.25)]"
+              />
             </div>
           </motion.div>
 
@@ -196,7 +195,7 @@ export default function Login() {
               {BRAND.tagline.split(' ').map((word, i) => (
                 <span key={i}>
                   {i === BRAND.tagline.split(' ').length - 1 ? (
-                    <span className="text-amber-400 font-semibold">{word}</span>
+                    <span className="text-teal-300 font-semibold">{word}</span>
                   ) : (
                     word
                   )}{' '}
@@ -205,7 +204,7 @@ export default function Login() {
             </motion.h1>
 
             <motion.div
-              className="w-16 h-[1px] bg-gradient-to-r from-amber-500/60 to-transparent mb-8"
+              className="w-16 h-[1px] bg-gradient-to-r from-teal-400/60 to-transparent mb-8"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
               transition={{ delay: 0.8, duration: 0.6 }}
@@ -222,7 +221,7 @@ export default function Login() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 1 + i * 0.15, duration: 0.5 }}
                 >
-                  <div className="w-1 h-10 rounded-full bg-gradient-to-b from-amber-500/50 to-amber-500/0 mt-0.5 group-hover:from-amber-400/80 transition-colors duration-500" />
+                  <div className="w-1 h-10 rounded-full bg-gradient-to-b from-teal-400/50 to-teal-400/0 mt-0.5 group-hover:from-teal-300/80 transition-colors duration-500" />
                   <div>
                     <p className="text-[#f8f6f1]/90 text-sm font-medium">{feature.label}</p>
                     <p className="text-[#f8f6f1]/40 text-xs mt-0.5">{feature.desc}</p>
@@ -240,12 +239,12 @@ export default function Login() {
             transition={{ delay: 1.6, duration: 0.8 }}
           >
             {[
-              { value: '80+', label: 'Edge Functions' },
-              { value: '12', label: 'Integrações' },
-              { value: '24/7', label: 'Agente IA' },
+              { value: '+Controle', label: 'Gestão simplificada de Leads' },
+              { value: '+Produtividade', label: 'Menos tarefas manuais' },
+              { value: '+Resultados', label: 'Mais negócios fechados' },
             ].map((stat) => (
               <div key={stat.label}>
-                <p className="text-amber-400 text-xl font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                <p className="text-teal-300 text-xl font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                   {stat.value}
                 </p>
                 <p className="text-[#f8f6f1]/30 text-[11px] tracking-wide uppercase">{stat.label}</p>
@@ -265,7 +264,7 @@ export default function Login() {
         <div
           className="absolute inset-0 opacity-[0.015]"
           style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(200,149,46,0.5) 1px, transparent 0)',
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(20,184,166,0.5) 1px, transparent 0)',
             backgroundSize: '32px 32px',
           }}
         />
@@ -278,17 +277,13 @@ export default function Login() {
         >
           {/* Mobile brand (hidden on desktop) */}
           <div className="lg:hidden text-center mb-10">
-            <div className="flex items-center justify-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
-                <span className="text-[#07070a] font-bold text-sm">AI</span>
-              </div>
+            <div className="flex items-center justify-center mb-3">
+              <img
+                src="/logo_totex.png"
+                alt={BRAND.name}
+                className="h-14 w-auto object-contain drop-shadow-[0_0_20px_rgba(20,184,166,0.25)]"
+              />
             </div>
-            <h1
-              className="text-2xl text-[#f8f6f1] font-semibold tracking-tight"
-              style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-            >
-              {BRAND.name}
-            </h1>
             <p className="text-[#f8f6f1]/30 text-xs mt-1 tracking-wider uppercase">{BRAND.tagline}</p>
           </div>
 
@@ -328,7 +323,7 @@ export default function Login() {
                   <div>
                     <label
                       className={`block text-[11px] tracking-[0.15em] uppercase mb-2 transition-colors duration-300 ${
-                        focusedField === 'name' ? 'text-amber-400' : 'text-[#f8f6f1]/30'
+                        focusedField === 'name' ? 'text-teal-300' : 'text-[#f8f6f1]/30'
                       }`}
                     >
                       Nome
@@ -341,9 +336,9 @@ export default function Login() {
                         onFocus={() => setFocusedField('name')}
                         onBlur={() => setFocusedField(null)}
                         placeholder="Seu nome"
-                        className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-amber-500/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(200,149,46,0.06)] hover:border-[#f8f6f1]/[0.12]"
+                        className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-teal-400/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(20,184,166,0.06)] hover:border-[#f8f6f1]/[0.12]"
                       />
-                      <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-amber-500/60 via-amber-400/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'name' ? 'scale-x-100' : 'scale-x-0'}`} />
+                      <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-teal-400/60 via-teal-300/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'name' ? 'scale-x-100' : 'scale-x-0'}`} />
                     </div>
                   </div>
 
@@ -358,7 +353,7 @@ export default function Login() {
                         onClick={() => setIsAdminSignUp(false)}
                         className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium transition-all duration-300 ${
                           !isAdminSignUp
-                            ? 'border-amber-500/50 bg-amber-500/10 text-amber-400'
+                            ? 'border-teal-400/50 bg-teal-400/10 text-teal-300'
                             : 'border-[#f8f6f1]/[0.06] bg-[#f8f6f1]/[0.03] text-[#f8f6f1]/40 hover:border-[#f8f6f1]/[0.12]'
                         }`}
                       >
@@ -370,7 +365,7 @@ export default function Login() {
                         onClick={() => setIsAdminSignUp(true)}
                         className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium transition-all duration-300 ${
                           isAdminSignUp
-                            ? 'border-amber-500/50 bg-amber-500/10 text-amber-400'
+                            ? 'border-teal-400/50 bg-teal-400/10 text-teal-300'
                             : 'border-[#f8f6f1]/[0.06] bg-[#f8f6f1]/[0.03] text-[#f8f6f1]/40 hover:border-[#f8f6f1]/[0.12]'
                         }`}
                       >
@@ -379,7 +374,7 @@ export default function Login() {
                       </button>
                     </div>
                     {isAdminSignUp && (
-                      <p className="mt-2 text-[11px] text-amber-400/60 leading-relaxed">
+                      <p className="mt-2 text-[11px] text-teal-300/60 leading-relaxed">
                         Acesso total ao CRM. Use apenas para o primeiro cadastro da empresa.
                       </p>
                     )}
@@ -396,7 +391,7 @@ export default function Login() {
             >
               <label
                 className={`block text-[11px] tracking-[0.15em] uppercase mb-2 transition-colors duration-300 ${
-                  focusedField === 'email' ? 'text-amber-400' : 'text-[#f8f6f1]/30'
+                  focusedField === 'email' ? 'text-teal-300' : 'text-[#f8f6f1]/30'
                 }`}
               >
                 Email
@@ -410,9 +405,9 @@ export default function Login() {
                   onBlur={() => setFocusedField(null)}
                   placeholder="seu@email.com"
                   required
-                  className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-amber-500/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(200,149,46,0.06)] hover:border-[#f8f6f1]/[0.12]"
+                  className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-teal-400/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(20,184,166,0.06)] hover:border-[#f8f6f1]/[0.12]"
                 />
-                <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-amber-500/60 via-amber-400/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'email' ? 'scale-x-100' : 'scale-x-0'}`} />
+                <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-teal-400/60 via-teal-300/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'email' ? 'scale-x-100' : 'scale-x-0'}`} />
               </div>
             </motion.div>
 
@@ -425,14 +420,14 @@ export default function Login() {
               <div className="flex items-center justify-between mb-2">
                 <label
                   className={`text-[11px] tracking-[0.15em] uppercase transition-colors duration-300 ${
-                    focusedField === 'password' ? 'text-amber-400' : 'text-[#f8f6f1]/30'
+                    focusedField === 'password' ? 'text-teal-300' : 'text-[#f8f6f1]/30'
                   }`}
                 >
                   Senha
                 </label>
                 <Link
                   to="/forgot-password"
-                  className="text-[11px] text-[#f8f6f1]/25 hover:text-amber-400/70 transition-colors duration-300"
+                  className="text-[11px] text-[#f8f6f1]/25 hover:text-teal-300/70 transition-colors duration-300"
                 >
                   Esqueceu?
                 </Link>
@@ -446,7 +441,7 @@ export default function Login() {
                   onBlur={() => setFocusedField(null)}
                   placeholder="••••••••"
                   required
-                  className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 pr-11 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-amber-500/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(200,149,46,0.06)] hover:border-[#f8f6f1]/[0.12]"
+                  className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 pr-11 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-teal-400/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(20,184,166,0.06)] hover:border-[#f8f6f1]/[0.12]"
                 />
                 <button
                   type="button"
@@ -455,7 +450,7 @@ export default function Login() {
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-                <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-amber-500/60 via-amber-400/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'password' ? 'scale-x-100' : 'scale-x-0'}`} />
+                <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-teal-400/60 via-teal-300/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'password' ? 'scale-x-100' : 'scale-x-0'}`} />
               </div>
             </motion.div>
 
@@ -472,7 +467,7 @@ export default function Login() {
                 className="w-full relative group overflow-hidden rounded-xl py-3.5 px-6 text-sm font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {/* Button gradient background */}
-                <div className="absolute inset-0 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 transition-all duration-500 group-hover:from-amber-500 group-hover:via-amber-400 group-hover:to-amber-500" />
+                <div className="absolute inset-0 bg-gradient-to-r from-teal-500 via-teal-400 to-teal-500 transition-all duration-500 group-hover:from-teal-400 group-hover:via-teal-300 group-hover:to-teal-400" />
 
                 {/* Shimmer effect */}
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
@@ -522,7 +517,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => { setIsSignUp(!isSignUp); setIsAdminSignUp(false); }}
-              className="text-amber-400 hover:text-amber-300 transition-colors font-medium"
+              className="text-teal-300 hover:text-teal-200 transition-colors font-medium"
             >
               {isSignUp ? 'Entrar' : 'Criar conta'}
             </button>

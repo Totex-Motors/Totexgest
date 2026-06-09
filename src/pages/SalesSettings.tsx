@@ -85,7 +85,6 @@ import {
   KeyRound,
   UserPlus,
   Mail,
-  Receipt,
   Crown,
   Palette,
   Star,
@@ -206,14 +205,6 @@ export default function SalesSettings() {
               <Phone className="h-4 w-4" />
               WaVoIP
             </TabsTrigger>
-            <TabsTrigger value="instagram" className="flex items-center gap-2">
-              <Instagram className="h-4 w-4" />
-              Instagram
-            </TabsTrigger>
-            <TabsTrigger value="fiscal" className="flex items-center gap-2">
-              <Receipt className="h-4 w-4" />
-              Fiscal
-            </TabsTrigger>
             {isAdmin && (
               <TabsTrigger value="training" className="flex items-center gap-2">
                 <Star className="h-4 w-4" />
@@ -265,11 +256,6 @@ export default function SalesSettings() {
           <TabsContent value="wavoip" className="mt-6">
             <WavoipDeviceConfig />
           </TabsContent>
-
-          <TabsContent value="instagram" className="mt-6">
-            <InstagramTab />
-          </TabsContent>
-
 
           {isAdmin && (
             <TabsContent value="training" className="mt-6">

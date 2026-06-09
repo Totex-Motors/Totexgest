@@ -183,10 +183,7 @@ export function AppSidebar() {
             {!isCollapsed && (
               <div className="flex flex-col min-w-0 leading-tight">
                 <span className="text-[13px] font-semibold tracking-tight text-sidebar-accent-foreground truncate">
-                  Totex CRM
-                </span>
-                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-muted/80">
-                  Control Tower
+                  TotexGest
                 </span>
               </div>
             )}

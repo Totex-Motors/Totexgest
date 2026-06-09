@@ -1,6 +1,6 @@
 {
-  "name": "Totex CRM",
-  "short_name": "Totex CRM",
+  "name": "TotexGest",
+  "short_name": "TotexGest",
   "description": "CRM com Inteligência Artificial",
   "start_url": "/app/",
   "display": "standalone",

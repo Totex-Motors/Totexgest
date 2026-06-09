@@ -34,8 +34,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Totex CRM</h1>
-          <p className="text-slate-400">Control Tower</p>
+          <h1 className="text-3xl font-bold text-white mb-2">TotexGest</h1>
         </div>
 
         <Card className="border-slate-700 bg-slate-800/50 backdrop-blur">
@@ -105,7 +104,7 @@ export default function ForgotPassword() {
         </Card>
 
         <p className="text-center text-slate-500 text-sm mt-6">
-          © 2025 Totex CRM. Todos os direitos reservados.
+          © 2026 TotexGest. Todos os direitos reservados.
         </p>
       </div>
     </div>
