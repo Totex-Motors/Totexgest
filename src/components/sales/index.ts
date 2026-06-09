@@ -1,4 +1,4 @@
-﻿// Sales Components - Totex CRM
+﻿// Sales Components - TotexGest
 
 // Badges
 export { SalesStageBadge, SalesStageSelect } from './SalesStageBadge';

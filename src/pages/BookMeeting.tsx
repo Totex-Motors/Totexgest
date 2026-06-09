@@ -148,7 +148,7 @@ export default function BookMeeting() {
         {/* Logo */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
           <div className="inline-flex items-center gap-2 mb-3">
-            <span className="text-xl font-black text-gray-900 tracking-tight">Totex CRM</span>
+            <span className="text-xl font-black text-gray-900 tracking-tight">TotexGest</span>
           </div>
           {step === "form" && fieldIndex === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
