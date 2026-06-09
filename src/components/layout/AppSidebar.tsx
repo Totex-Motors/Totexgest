@@ -70,8 +70,8 @@ const sections: NavSection[] = [
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Treinamento", url: "/comercial/treinamento", icon: BookOpen },
-      { title: "Credere", url: "/comercial/credere", icon: Car },
-      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag },
+      { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
+      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
     ],
   },
   {
