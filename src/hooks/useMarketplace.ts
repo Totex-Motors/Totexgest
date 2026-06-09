@@ -26,10 +26,13 @@ export interface MarketplaceVehicleMetadata {
   price_formatted?: string;
 }
 
+export type MarketplaceOrigin = "FORM_INTERESSE" | "WHATSAPP_CLICK";
+
 export interface MarketplaceLeadMetadata {
   marketplace_lead_id?: string;
   marketplace_store_id?: string;
   marketplace_store_name?: string;
+  marketplace_origin?: MarketplaceOrigin;
   vehicle?: MarketplaceVehicleMetadata;
   store?: {
     name?: string;
