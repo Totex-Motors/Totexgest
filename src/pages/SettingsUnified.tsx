@@ -27,6 +27,7 @@ import {
   Settings,
   LogOut,
   LayoutGrid,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
+import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { NotificationRulesBuilder } from "@/components/settings/NotificationRulesBuilder";
 import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConfig";
 
@@ -70,6 +72,7 @@ interface NavItem {
   /** Aparece como tooltip/hint na sidebar */
   hint?: string;
   adminOnly?: boolean;
+  superAdminOnly?: boolean;
 }
 
 interface NavSection {
@@ -238,6 +241,20 @@ const navigationSections: NavSection[] = [
       },
     ],
   },
+  {
+    id: "super-admin",
+    label: "Super Admin",
+    items: [
+      {
+        id: "superadmin-lojas",
+        label: "Lojas (Tenants)",
+        icon: Building2,
+        description: "Provisione e gerencie as lojas parceiras (tenants). Cada loja é um ambiente isolado com pipeline e agente próprios. Visível apenas para o tenant super-admin.",
+        hint: "Criar / ativar / desativar lojas",
+        superAdminOnly: true,
+      },
+    ],
+  },
 ];
 
 // =====================================================
@@ -245,7 +262,7 @@ const navigationSections: NavSection[] = [
 // =====================================================
 
 export default function SettingsUnified() {
-  const { teamMember, signOut } = useAuth();
+  const { teamMember, signOut, isSuperAdmin } = useAuth();
   const isAdmin = teamMember?.role === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection = searchParams.get("s") || "modulos";
@@ -254,15 +271,17 @@ export default function SettingsUnified() {
     setSearchParams({ s: sectionId });
   };
 
-  // Filter out admin-only items
+  // Filter out admin-only / super-admin-only items
   const filteredSections = useMemo(() => {
     return navigationSections
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => !item.adminOnly || isAdmin),
+        items: section.items.filter(
+          (item) => (!item.adminOnly || isAdmin) && (!item.superAdminOnly || isSuperAdmin),
+        ),
       }))
       .filter((section) => section.items.length > 0);
-  }, [isAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   // Find active item info
   const activeItem = useMemo(() => {
@@ -422,6 +441,10 @@ function SettingsContent({ section }: { section: string }) {
       return <NotificationRulesBuilder />;
     case "bot-tarefas":
       return <WhatsAppTaskBotConfig />;
+
+    // Super Admin
+    case "superadmin-lojas":
+      return <SuperAdminTenantsSection />;
 
     default:
       return <ModulesSection />;

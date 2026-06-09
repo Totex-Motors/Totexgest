@@ -31,6 +31,7 @@ interface AuthContextType {
   signUpAsAdmin: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isCS: boolean;
   isComercial: boolean;
   canAccessSettings: boolean;
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const sessionRef = useRef<Session | null>(null);
 
   // Busca teamMember via select direto (mais rápido que RPC — sem overhead de function call)
@@ -198,6 +200,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [user]);
 
+  // Super-admin: fonte única de verdade é a função is_superadmin() do banco
+  // (true para qualquer membro de um tenant com is_super_admin = true).
+  useEffect(() => {
+    if (!user) {
+      setIsSuperAdmin(false);
+      return;
+    }
+    let active = true;
+    supabase.rpc("is_superadmin")
+      .then(({ data }) => { if (active) setIsSuperAdmin(data === true); })
+      .catch(() => { if (active) setIsSuperAdmin(false); });
+    return () => { active = false; };
+  }, [user]);
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
@@ -262,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpAsAdmin,
       signOut,
       isAdmin,
+      isSuperAdmin,
       isCS,
       isComercial,
       canAccessSettings,
