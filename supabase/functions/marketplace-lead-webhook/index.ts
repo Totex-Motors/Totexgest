@@ -31,7 +31,7 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { evento, leadId, cliente, veiculo, loja } = body;
+    const { evento, origem, leadId, cliente, veiculo, loja } = body;
 
     if (evento !== "INTERESSE_VEICULO") {
       return json({ ok: true, skipped: `evento_ignorado:${evento}` });
@@ -96,6 +96,7 @@ serve(async (req: Request) => {
           marketplace_lead_id: leadId,
           marketplace_store_id: String(loja.id),
           marketplace_store_name: loja.nome || mapping.store_name,
+          marketplace_origin: origem || "FORM_INTERESSE",
           vehicle: {
             id: veiculo.id || null,
             description: vehicleDesc || null,
