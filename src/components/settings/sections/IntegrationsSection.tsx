@@ -26,7 +26,7 @@ interface IntegrationDef {
   description: string;
   placeholder: string;
   docsUrl?: string;
-  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "other";
+  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "other";
 }
 
 const INTEGRATIONS: IntegrationDef[] = [
@@ -116,6 +116,15 @@ const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://resend.com/api-keys",
     category: "email",
   },
+  // Marketplace
+  {
+    key: "MARKETPLACE_WEBHOOK_SECRET",
+    label: "Marketplace — Webhook Secret",
+    description:
+      "Segredo compartilhado entre o marketplace totexmotors.com e o webhook marketplace-lead-webhook. Use o MESMO valor configurado em TOTEXGEST_WEBHOOK_SECRET no backend do marketplace. Gere um valor aleatório forte.",
+    placeholder: "ex: cc64bf7e...984a5327 (32 bytes hex)",
+    category: "marketplace",
+  },
   // Google
   {
     key: "GOOGLE_CLIENT_ID",
@@ -141,6 +150,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   telephony: "Telefonia",
   payment: "Pagamentos",
   email: "Email",
+  marketplace: "Marketplace",
   other: "Google & Outros",
 };
 
