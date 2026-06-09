@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
     if (action === "list") {
       const { data: tenants, error } = await supabase
         .from("tenants")
-        .select("id, name, slug, is_active, is_super_admin, external_dealership_id, created_at")
+        .select("id, name, slug, is_active, is_super_admin, external_dealership_id, enabled_modules, created_at")
         .order("created_at", { ascending: false });
       if (error) return json({ error: error.message }, 400);
 
@@ -101,9 +101,9 @@ Deno.serve(async (req: Request) => {
 
     // ── PROVISION: cria tenant + admin + pipeline + agente ────────────────────
     if (action === "provision") {
-      const { trade_name, cnpj, whatsapp, legal_name, admin } = data ?? {};
-      if (!trade_name || !admin?.email || !admin?.name) {
-        return json({ error: "Campos obrigatórios: trade_name, admin.name, admin.email" }, 400);
+      const { trade_name, cnpj, whatsapp, legal_name, admin, modules, external_dealership_id } = data ?? {};
+      if (!trade_name) {
+        return json({ error: "Campo obrigatório: trade_name" }, 400);
       }
 
       // slug único
@@ -119,6 +119,8 @@ Deno.serve(async (req: Request) => {
           name: trade_name,
           slug,
           is_active: true,
+          external_dealership_id: external_dealership_id ?? null,
+          enabled_modules: modules && typeof modules === "object" ? modules : {},
           metadata: { legal_name: legal_name ?? null, cnpj: cnpj ?? null, whatsapp: whatsapp ?? null },
         })
         .select("id")
@@ -126,36 +128,39 @@ Deno.serve(async (req: Request) => {
       if (tenantErr) return json({ error: `Falha ao criar tenant: ${tenantErr.message}` }, 400);
       const tenantId = tenant.id;
 
-      // 2. admin user (convite por email; app_metadata amarra o tenant)
+      // 2. admin user — OPCIONAL. Só convida se vier admin com nome+email.
+      // (O CRM ainda não é liberado aos lojistas; tenants podem nascer sem admin.)
       let userId: string | null = null;
       let inviteUrl: string | null = null;
-      const { data: invite, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
-        admin.email,
-        { data: { name: admin.name } },
-      );
+      if (admin?.email && admin?.name) {
+        const { data: invite, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
+          admin.email,
+          { data: { name: admin.name } },
+        );
 
-      if (inviteErr || !invite?.user) {
-        // rollback do tenant para não deixar lixo
-        await supabase.from("tenants").delete().eq("id", tenantId);
-        return json({ error: `Falha ao convidar admin: ${inviteErr?.message ?? "desconhecido"}` }, 400);
+        if (inviteErr || !invite?.user) {
+          // rollback do tenant para não deixar lixo
+          await supabase.from("tenants").delete().eq("id", tenantId);
+          return json({ error: `Falha ao convidar admin: ${inviteErr?.message ?? "desconhecido"}` }, 400);
+        }
+
+        userId = invite.user.id;
+        inviteUrl = (invite as { properties?: { action_link?: string } }).properties?.action_link ?? null;
+
+        await supabase.auth.admin.updateUserById(userId, {
+          app_metadata: { tenant_id: tenantId, role: "admin" },
+        });
+
+        await supabase.from("team_members").insert({
+          tenant_id: tenantId,
+          auth_user_id: userId,
+          name: admin.name,
+          email: admin.email,
+          phone: admin.phone ?? null,
+          role: "admin",
+          is_active: true,
+        });
       }
-
-      userId = invite.user.id;
-      inviteUrl = (invite as { properties?: { action_link?: string } }).properties?.action_link ?? null;
-
-      await supabase.auth.admin.updateUserById(userId, {
-        app_metadata: { tenant_id: tenantId, role: "admin" },
-      });
-
-      await supabase.from("team_members").insert({
-        tenant_id: tenantId,
-        auth_user_id: userId,
-        name: admin.name,
-        email: admin.email,
-        phone: admin.phone ?? null,
-        role: "admin",
-        is_active: true,
-      });
 
       // 3. pipeline padrão + estágios
       const { data: pipeline } = await supabase
@@ -212,7 +217,25 @@ Deno.serve(async (req: Request) => {
       return json({ success: true });
     }
 
-    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status` }, 400);
+    // ── SET_MODULE: liga/desliga um módulo (ex: credere) de um tenant ─────────
+    if (action === "set_module") {
+      const { tenant_id, module, enabled } = data ?? {};
+      if (!tenant_id || !module || typeof enabled !== "boolean") {
+        return json({ error: "Campos obrigatórios: tenant_id, module, enabled (boolean)" }, 400);
+      }
+      const { data: t, error: getErr } = await supabase
+        .from("tenants").select("enabled_modules").eq("id", tenant_id).maybeSingle();
+      if (getErr) return json({ error: getErr.message }, 400);
+      if (!t) return json({ error: "Tenant não encontrado" }, 404);
+
+      const next = { ...((t.enabled_modules as Record<string, boolean>) ?? {}), [module]: enabled };
+      const { error } = await supabase
+        .from("tenants").update({ enabled_modules: next }).eq("id", tenant_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true, enabled_modules: next });
+    }
+
+    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status, set_module` }, 400);
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }

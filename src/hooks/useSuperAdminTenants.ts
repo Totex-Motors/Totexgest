@@ -11,6 +11,7 @@ export interface AdminTenant {
   is_active: boolean;
   is_super_admin: boolean;
   external_dealership_id: string | null;
+  enabled_modules: Record<string, boolean>;
   created_at: string;
   members_total: number;
   members_active: number;
@@ -21,7 +22,10 @@ export interface ProvisionTenantInput {
   cnpj?: string;
   whatsapp?: string;
   legal_name?: string;
-  admin: { name: string; email: string; phone?: string };
+  external_dealership_id?: string;
+  modules?: Record<string, boolean>;
+  /** Opcional — se omitido, o tenant é criado sem admin (convida depois). */
+  admin?: { name: string; email: string; phone?: string };
 }
 
 export interface ProvisionTenantResult {
@@ -82,5 +86,17 @@ export const useSetTenantStatus = () => {
       toast.success(vars.is_active ? "Loja ativada" : "Loja desativada");
     },
     onError: (err: Error) => toast.error(err.message || "Erro ao atualizar status"),
+  });
+};
+
+export const useSetTenantModule = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { tenant_id: string; module: string; enabled: boolean }) =>
+      callAdminTenants<{ success: boolean }>("set_module", vars),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["super-admin-tenants"] });
+    },
+    onError: (err: Error) => toast.error(err.message || "Erro ao atualizar módulo"),
   });
 };

@@ -16,6 +16,7 @@ import {
   useSuperAdminTenants,
   useProvisionTenant,
   useSetTenantStatus,
+  useSetTenantModule,
 } from "@/hooks/useSuperAdminTenants";
 
 function formatDate(iso?: string) {
@@ -33,24 +34,31 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
+  const [credere, setCredere] = useState(false);
+  const [done, setDone] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   function reset() {
     setTradeName(""); setCnpj(""); setWhatsapp("");
     setAdminName(""); setAdminEmail(""); setAdminPhone("");
-    setInviteUrl(null);
+    setCredere(false); setDone(false); setInviteUrl(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!tradeName.trim() || !adminName.trim() || !adminEmail.trim()) return;
+    if (!tradeName.trim()) return;
+    const hasAdmin = !!(adminName.trim() && adminEmail.trim());
     const res = await provision.mutateAsync({
       trade_name: tradeName.trim(),
       cnpj: cnpj.trim() || undefined,
       whatsapp: whatsapp.trim() || undefined,
-      admin: { name: adminName.trim(), email: adminEmail.trim(), phone: adminPhone.trim() || undefined },
+      modules: { comercial: true, gestao: true, marketplace: true, credere },
+      admin: hasAdmin
+        ? { name: adminName.trim(), email: adminEmail.trim(), phone: adminPhone.trim() || undefined }
+        : undefined,
     });
-    setInviteUrl(res.invite_url ?? "");
+    setInviteUrl(res.invite_url ?? null);
+    setDone(true);
   }
 
   function handleClose() {
@@ -68,7 +76,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
           </DialogDescription>
         </DialogHeader>
 
-        {inviteUrl !== null ? (
+        {done ? (
           // Estado de sucesso
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-emerald-600">
@@ -92,8 +100,8 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                O convite foi enviado por email ao administrador. Se o envio de email não estiver
-                configurado, gere um novo convite pelo Supabase Dashboard.
+                Tenant criado sem administrador. Você pode convidar o admin da loja depois,
+                quando o CRM estiver pronto para os lojistas.
               </p>
             )}
             <DialogFooter>
@@ -117,17 +125,28 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
               </div>
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Módulo Credere</p>
+                <p className="text-xs text-muted-foreground">Simulação de financiamento (módulo pago opcional).</p>
+              </div>
+              <Switch checked={credere} onCheckedChange={setCredere} />
+            </div>
+
             <div className="pt-2 border-t border-border/40">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Administrador da loja</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Administrador da loja (opcional)</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Deixe em branco para criar a loja sem admin agora — você convida depois.
+              </p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="adminName">Nome *</Label>
-                  <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nome do responsável" required />
+                  <Label htmlFor="adminName">Nome</Label>
+                  <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nome do responsável" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="adminEmail">Email *</Label>
-                    <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@loja.com.br" required />
+                    <Label htmlFor="adminEmail">Email</Label>
+                    <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@loja.com.br" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="adminPhone">Telefone</Label>
@@ -155,6 +174,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
 export function SuperAdminTenantsSection() {
   const { data: tenants = [], isLoading } = useSuperAdminTenants();
   const setStatus = useSetTenantStatus();
+  const setModule = useSetTenantModule();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
@@ -175,6 +195,7 @@ export function SuperAdminTenantsSection() {
               <TableHead>Loja</TableHead>
               <TableHead>Slug</TableHead>
               <TableHead>Membros</TableHead>
+              <TableHead>Credere</TableHead>
               <TableHead>Criada</TableHead>
               <TableHead>Ativa</TableHead>
             </TableRow>
@@ -182,11 +203,11 @@ export function SuperAdminTenantsSection() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Carregando...</TableCell>
+                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Carregando...</TableCell>
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Nenhuma loja cadastrada.</TableCell>
+                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhuma loja cadastrada.</TableCell>
               </TableRow>
             ) : (
               tenants.map((t) => (
@@ -202,6 +223,13 @@ export function SuperAdminTenantsSection() {
                   </TableCell>
                   <TableCell><code className="text-xs text-muted-foreground">{t.slug}</code></TableCell>
                   <TableCell className="text-sm">{t.members_active}/{t.members_total}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={t.enabled_modules?.credere === true}
+                      disabled={setModule.isPending}
+                      onCheckedChange={(v) => setModule.mutate({ tenant_id: t.id, module: "credere", enabled: v })}
+                    />
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(t.created_at)}</TableCell>
                   <TableCell>
                     <Switch
