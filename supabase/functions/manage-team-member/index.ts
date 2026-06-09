@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
     // Verifica se o caller é admin ATIVO no team_members
     const { data: callerMember, error: callerErr } = await supabase
       .from("team_members")
-      .select("id, role, is_active")
+      .select("id, role, is_active, tenant_id")
       .eq("auth_user_id", callerAuthId)
       .maybeSingle();
 
@@ -71,6 +71,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Forbidden: admin role required" }, 403);
     }
 
+    // Tenant do caller — usado para isolar todas as operações abaixo.
+    // Sob service_role não há JWT, então get_tenant_id() cairia no fallback:
+    // por isso o tenant_id precisa ser propagado explicitamente.
+    const callerTenantId = callerMember.tenant_id as string | null;
+    if (!callerTenantId) {
+      return jsonResponse({ error: "Forbidden: caller has no tenant_id" }, 403);
+    }
+
     // ========================================
     // CALLER VALIDADO COMO ADMIN — PROCESSA AÇÃO
     // ========================================
@@ -83,22 +91,25 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Missing required fields: email, password, name, role" }, 400);
       }
 
-      // 1. Create auth user
+      // 1. Create auth user — app_metadata.tenant_id é o que o JWT carrega e o que
+      // get_tenant_id() (RLS) lê. Sem isso o usuário cairia no tenant fallback.
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: { name },
+        app_metadata: { tenant_id: callerTenantId, role },
       });
 
       if (authError) {
         return jsonResponse({ error: `Auth error: ${authError.message}` }, 400);
       }
 
-      // 2. Insert team_member
+      // 2. Insert team_member — tenant_id explícito (default cairia no fallback sob service_role)
       const { data: teamMember, error: tmError } = await supabase
         .from("team_members")
         .insert({
+          tenant_id: callerTenantId,
           email,
           name,
           role,
@@ -116,6 +127,18 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: `Team member error: ${tmError.message}` }, 400);
       }
 
+      // 3. Corrige o profiles criado pelo trigger handle_new_user:
+      // o trigger já pega o tenant do app_metadata, mas não seta role — garantimos ambos.
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ tenant_id: callerTenantId, role })
+        .eq("id", authData.user.id);
+
+      if (profileErr) {
+        // Não faz rollback (usuário e team_member já válidos), mas reporta para visibilidade.
+        console.error("[manage-team-member] Falha ao ajustar profile:", profileErr.message);
+      }
+
       return jsonResponse({ success: true, team_member: teamMember });
     }
 
@@ -124,6 +147,18 @@ Deno.serve(async (req: Request) => {
 
       if (!auth_user_id || !password) {
         return jsonResponse({ error: "Missing required fields: auth_user_id, password" }, 400);
+      }
+
+      // Garante que o alvo é do mesmo tenant do caller (evita reset cross-tenant)
+      const { data: target } = await supabase
+        .from("team_members")
+        .select("id")
+        .eq("auth_user_id", auth_user_id)
+        .eq("tenant_id", callerTenantId)
+        .maybeSingle();
+
+      if (!target) {
+        return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
       }
 
       const { error } = await supabase.auth.admin.updateUserById(auth_user_id, { password });
@@ -142,13 +177,19 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Missing required field: team_member_id" }, 400);
       }
 
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("team_members")
         .update({ is_active: false })
-        .eq("id", team_member_id);
+        .eq("id", team_member_id)
+        .eq("tenant_id", callerTenantId)
+        .select("id");
 
       if (error) {
         return jsonResponse({ error: `Deactivate error: ${error.message}` }, 400);
+      }
+
+      if (!updated || updated.length === 0) {
+        return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
       }
 
       return jsonResponse({ success: true });
