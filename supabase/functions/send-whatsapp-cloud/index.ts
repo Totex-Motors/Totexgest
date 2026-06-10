@@ -31,10 +31,10 @@ interface CloudApiCfg {
   graphUrl: string;
 }
 
-async function loadCfg(supabase: any): Promise<CloudApiCfg> {
-  const token = await requireIntegrationKey(supabase, "WHATSAPP_CLOUD_TOKEN");
-  const phoneNumberId = await requireIntegrationKey(supabase, "WHATSAPP_PHONE_NUMBER_ID");
-  const geminiKey = await getIntegrationKey(supabase, "GEMINI_API_KEY");
+async function loadCfg(supabase: any, tenantId?: string | null): Promise<CloudApiCfg> {
+  const token = await requireIntegrationKey(supabase, "WHATSAPP_CLOUD_TOKEN", tenantId);
+  const phoneNumberId = await requireIntegrationKey(supabase, "WHATSAPP_PHONE_NUMBER_ID", tenantId);
+  const geminiKey = await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId);
   return {
     token,
     phoneNumberId,
@@ -50,13 +50,25 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const cfg = await loadCfg(supabase);
     const body = await req.json();
-    const { action, phone, lead_id, sent_by, sent_by_name } = body;
+    const { action, phone, lead_id, sent_by, sent_by_name, tenant_id: bodyTenantId } = body;
 
     if (!phone) {
       return jsonRes({ error: "phone required" }, 400);
     }
+
+    // Resolver tenant: tenant_id do body (agente passa) → tenant do lead → global.
+    // As chaves WhatsApp Cloud são DO tenant (cada loja paga as próprias).
+    let tenantId: string | null = bodyTenantId ?? null;
+    if (!tenantId && lead_id) {
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("tenant_id")
+        .eq("id", lead_id)
+        .maybeSingle();
+      tenantId = lead?.tenant_id ?? null;
+    }
+    const cfg = await loadCfg(supabase, tenantId);
 
     // Normalizar telefone
     const cleanPhone = phone.replace(/\D/g, "");

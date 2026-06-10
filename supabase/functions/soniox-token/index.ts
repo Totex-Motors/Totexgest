@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 // IMPORTANTE: esta função deve ser deployada com `--no-verify-jwt` porque
 // é chamada do browser direto. A validação é feita por apikey (anon key),
@@ -34,7 +35,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const apiKey = await getIntegrationKey(supabase, "SONIOX_API_KEY");
+    // Tenant do JWT do usuário (header Authorization) — fallback global.
+    // Cada loja paga a própria transcrição.
+    const tenantId = getTenantIdFromRequest(req);
+    const apiKey = await getIntegrationKey(supabase, "SONIOX_API_KEY", tenantId);
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: "Soniox API key nao configurada. Cadastre em /configuracoes > API Keys." }),

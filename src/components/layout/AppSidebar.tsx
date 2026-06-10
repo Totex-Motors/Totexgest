@@ -12,7 +12,6 @@ import {
   Headphones,
   Kanban,
   LogOut,
-  Sparkles,
   TrendingUp,
   User2,
   Car,
@@ -70,8 +69,8 @@ const sections: NavSection[] = [
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Treinamento", url: "/comercial/treinamento", icon: BookOpen },
-      { title: "Credere", url: "/comercial/credere", icon: Car },
-      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag },
+      { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
+      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
     ],
   },
   {
@@ -167,17 +166,16 @@ export function AppSidebar() {
           >
             <div
               className={cn(
-                "relative shrink-0 w-9 h-9 rounded-xl",
-                "bg-gradient-to-br from-sidebar-primary to-sidebar-primary/70",
+                "relative shrink-0 w-9 h-9 rounded-xl overflow-hidden",
                 "flex items-center justify-center",
-                "shadow-[0_2px_8px_-2px_hsl(var(--sidebar-primary)/0.5)]",
-                "ring-1 ring-sidebar-primary/30",
                 "transition-transform duration-300 group-hover:scale-105"
               )}
             >
-              <Sparkles className="w-4 h-4 text-sidebar-primary-foreground" strokeWidth={2.25} />
-              {/* Glow sutil atrás do logo */}
-              <div className="absolute inset-0 rounded-xl bg-sidebar-primary/20 blur-md -z-10" />
+              <img
+                src="/logo_totex.png"
+                alt="Totex Motors"
+                className="w-full h-full object-contain"
+              />
             </div>
 
             {!isCollapsed && (

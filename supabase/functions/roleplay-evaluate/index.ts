@@ -1,12 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-let GEMINI_API_KEY = "";
 
 const EVALUATION_PROMPT = `Você é um coach de vendas sênior avaliando um roleplay de treinamento.
 
@@ -94,6 +94,13 @@ serve(async (req) => {
   }
 
   try {
+    // Chave DO tenant do usuário (fallback global). Cada loja paga a própria IA.
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const tenantId = getTenantIdFromRequest(req);
+    const GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId)) || "";
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY not configured");
     }

@@ -48,7 +48,6 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const anthropicKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY"));
 
     // 1. Buscar dados do lead
     const { data: lead } = await supabase
@@ -63,6 +62,9 @@ Deno.serve(async (req: Request) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Chave DO tenant do lead (fallback global). O lojista paga a própria IA.
+    const anthropicKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY", lead.tenant_id));
 
     // 2. Buscar mensagens WhatsApp (últimas 50)
     const { data: whatsappMessages } = await supabase

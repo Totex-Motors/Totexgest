@@ -57,6 +57,9 @@ import { DealContactsTab } from "@/components/sales/DealContactsTab";
 import { MergeLeadsModal } from "@/components/sales/MergeLeadsModal";
 import { AIAgentBadge } from "@/components/inbox/AIAgentBadge";
 import { SidebarDeals } from "@/components/sales/SidebarDeals";
+import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard";
+import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
+import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
 import { CancelRefundModal } from "@/components/sales/CancelRefundModal";
 import { ScheduleMessageModal } from "@/components/sales/ScheduleMessageModal";
@@ -1106,6 +1109,32 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                 <p className="text-[10px] text-muted-foreground">No Funil</p>
               </div>
             </div>
+
+            {/* Veículo de interesse (marketplace ou vinculado manualmente) */}
+            {effectiveLead && id && (
+              <VehicleOfInterestCard
+                vehicle={(effectiveLead as any).metadata?.vehicle}
+                storeName={(effectiveLead as any).metadata?.marketplace_store_name}
+                leadId={id}
+              />
+            )}
+
+            {/* Perfil de compra (orçamento, financiamento, troca, pagamento) */}
+            {id && (
+              <BuyerProfileCard
+                leadId={id}
+                profile={(effectiveLead as any)?.metadata}
+              />
+            )}
+
+            {/* Veículo na troca */}
+            {id && (
+              <TradeInVehicleCard
+                leadId={id}
+                dealId={contactDeals?.[0]?.id ?? null}
+                vehiclePrice={(effectiveLead as any)?.metadata?.vehicle?.price ?? null}
+              />
+            )}
 
             {/* Qualification Card (herda dados do lead principal se necessário) */}
             {effectiveLead && (

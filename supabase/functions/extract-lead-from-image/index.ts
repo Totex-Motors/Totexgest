@@ -2,13 +2,12 @@ import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-let GEMINI_API_KEY = "";
 
 const systemPrompt = `Você é um assistente especializado em extrair informações de leads a partir de screenshots de conversas (WhatsApp, Instagram, etc).
 
@@ -49,7 +48,9 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
-    GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY")) || "";
+    // Chave DO tenant (fallback global). Local — sem global compartilhado entre tenants.
+    const tenantId = getTenantIdFromRequest(req);
+    const GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId)) || "";
 
     const body = await req.json();
     const { image_base64 } = body;

@@ -109,12 +109,13 @@ serve(async (req: Request) => {
 
     if (pipeline) {
       await supabase.from("sales_pipeline_stages").insert([
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Novo Lead",          position: 0 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Em Qualificação",    position: 1 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Reunião Agendada",   position: 2 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Proposta Enviada",   position: 3 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Ganho",              position: 4, is_won: true },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Perdido",            position: 5, is_lost: true },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Novo Lead",                 position: 0 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Em Qualificação",           position: 1 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Test Drive",                position: 2 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Avaliação / Proposta",      position: 3 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Financiamento (Credere)",   position: 4 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Ganho",                     position: 5, is_won: true },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Perdido",                   position: 6, is_lost: true },
       ]);
     }
 
@@ -136,20 +137,17 @@ serve(async (req: Request) => {
       },
     });
 
-    // 5. Habilita módulos conforme plano
-    const modules: Record<string, boolean> = {
-      comercial: true,
-      gestao: true,
-      credere: plan.credere === true,
-      marketplace: plan.marketplace === true,
-      telefonia: false,
-      analytics_avancado: false,
-    };
-
-    await supabase.from("config").upsert(
-      { key: "enabled_modules", value: JSON.stringify(modules) },
-      { onConflict: "key" }
-    );
+    // 5. Habilita módulos DO TENANT conforme plano (por-tenant; não toca config global).
+    await supabase.from("tenants").update({
+      enabled_modules: {
+        comercial: true,
+        gestao: true,
+        marketplace: plan.marketplace === true,
+        credere: plan.credere === true,
+        telefonia: false,
+        analytics: false,
+      },
+    }).eq("id", tenantId);
 
     console.log(`[provision-tenant] Tenant criado: ${tenantId} (${trade_name})`);
     return json({ tenant_id: tenantId, user_id: userId, invite_url: inviteUrl });

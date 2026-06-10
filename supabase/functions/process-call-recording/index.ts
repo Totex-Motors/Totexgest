@@ -8,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-let OPENAI_API_KEY = "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -69,7 +68,6 @@ serve(async (req) => {
     console.log(`[ProcessCallRecording] Iniciando processamento para call_id: ${call_id}`);
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-  OPENAI_API_KEY = (await getIntegrationKey(supabase, "OPENAI_API_KEY")) || "";
 
     // Buscar a chamada
     const { data: call, error: callError } = await supabase
@@ -89,6 +87,9 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Chave DO tenant da chamada (fallback global). O lojista paga a própria transcrição.
+    const OPENAI_API_KEY = (await getIntegrationKey(supabase, "OPENAI_API_KEY", call.tenant_id)) || "";
 
     // Determinar URL de gravação (principal ou fallback do WaVoIP metadata)
     let recordUrl = call.record_url || call.metadata?.wavoip_record_url;

@@ -82,9 +82,37 @@ const CATEGORY_LABELS: Record<string, { label: string; description: string }> = 
 };
 
 // =====================================================
-// CONFIG KEY
+// MODULE DEFAULTS (por-tenant) + helpers
 // =====================================================
-const CONFIG_KEY = "enabled_modules";
+// Defaults de TODOS os módulos conhecidos (inclui os pagos credere/marketplace,
+// que não aparecem como toggle self-service mas precisam de default p/ o gating).
+export const MODULE_DEFAULTS: Record<string, boolean> = {
+  comercial: true,
+  gestao: true,
+  telefonia: false,
+  analytics: false,
+  credere: false,
+  marketplace: false,
+};
+
+async function getCurrentTenantId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  const meta = data.session?.user?.app_metadata as { tenant_id?: string } | undefined;
+  return meta?.tenant_id ?? null;
+}
+
+// Lê os módulos do tenant atual, mesclados com os defaults.
+async function fetchTenantModules(): Promise<Record<string, boolean>> {
+  const tid = await getCurrentTenantId();
+  if (!tid) return { ...MODULE_DEFAULTS };
+  const { data } = await supabase
+    .from("tenants")
+    .select("enabled_modules")
+    .eq("id", tid)
+    .maybeSingle();
+  const stored = (data?.enabled_modules ?? {}) as Record<string, boolean>;
+  return { ...MODULE_DEFAULTS, ...stored };
+}
 
 export function ModulesSection() {
   const { toast } = useToast();
@@ -98,34 +126,14 @@ export function ModulesSection() {
 
   const loadModules = async () => {
     try {
-      const { data, error } = await supabase
-        .from("config")
-        .select("value")
-        .eq("key", CONFIG_KEY)
-        .maybeSingle();
-
-      if (data?.value) {
-        try {
-          setEnabledModules(JSON.parse(data.value));
-        } catch {
-          initDefaults();
-        }
-      } else {
-        initDefaults();
-      }
+      // Carrega o conjunto COMPLETO de módulos do tenant (inclui credere/marketplace),
+      // para preservá-los ao gravar — mesmo que só renderizemos os self-service.
+      setEnabledModules(await fetchTenantModules());
     } catch {
-      initDefaults();
+      setEnabledModules({ ...MODULE_DEFAULTS });
     } finally {
       setLoading(false);
     }
-  };
-
-  const initDefaults = () => {
-    const defaults: Record<string, boolean> = {};
-    MODULES.forEach((m) => {
-      defaults[m.id] = m.defaultEnabled;
-    });
-    setEnabledModules(defaults);
   };
 
   const handleToggle = async (moduleId: string, enabled: boolean) => {
@@ -134,14 +142,11 @@ export function ModulesSection() {
     setSaving(true);
 
     try {
-      const { error } = await supabase.from("config").upsert(
-        {
-          key: CONFIG_KEY,
-          value: JSON.stringify(updated),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "key" }
-      );
+      // RPC controlada: só permite os módulos self-service e exige tenant admin.
+      const { error } = await supabase.rpc("set_my_tenant_module", {
+        p_module: moduleId,
+        p_enabled: enabled,
+      });
       if (error) throw error;
 
       const mod = MODULES.find((m) => m.id === moduleId);
@@ -280,39 +285,16 @@ export function useEnabledModules() {
   const [modules, setModules] = useState<Record<string, boolean> | null>(null);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await supabase
-          .from("config")
-          .select("value")
-          .eq("key", CONFIG_KEY)
-          .maybeSingle();
-
-        if (data?.value) {
-          setModules(JSON.parse(data.value));
-        } else {
-          // defaults
-          const defaults: Record<string, boolean> = {};
-          MODULES.forEach((m) => {
-            defaults[m.id] = m.defaultEnabled;
-          });
-          setModules(defaults);
-        }
-      } catch {
-        const defaults: Record<string, boolean> = {};
-        MODULES.forEach((m) => {
-          defaults[m.id] = m.defaultEnabled;
-        });
-        setModules(defaults);
-      }
-    };
-    load();
+    let active = true;
+    fetchTenantModules()
+      .then((m) => { if (active) setModules(m); })
+      .catch(() => { if (active) setModules({ ...MODULE_DEFAULTS }); });
+    return () => { active = false; };
   }, []);
 
   const isModuleEnabled = (moduleId: string) => {
-    if (!modules) return true; // while loading, show everything
-    if (modules[moduleId] !== undefined) return modules[moduleId];
-    return MODULES.find((m) => m.id === moduleId)?.defaultEnabled ?? true;
+    if (!modules) return true; // enquanto carrega, mostra tudo
+    return modules[moduleId] ?? MODULE_DEFAULTS[moduleId] ?? true;
   };
 
   return { modules, isModuleEnabled, loading: modules === null };

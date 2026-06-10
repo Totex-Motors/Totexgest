@@ -11,10 +11,31 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-// API keys de LLM sao carregadas da tabela `config` (admin preenche em
-// /configuracoes > API Keys) via getIntegrationKey(). Hidratadas no handler.
+// API keys de LLM GLOBAIS (fallback central da Totex). Hidratadas UMA vez no
+// handler com os valores globais (sem tenant) — sempre iguais entre requests,
+// então não há corrida. As chaves usadas de fato nas chamadas de LLM são
+// resolvidas POR-LEAD (chave do tenant) via resolveLLMKeys() e passadas
+// explicitamente (`keys`) pras funções de LLM — nada de global mutável por
+// tenant, eliminando vazamento entre requests concorrentes no mesmo isolate.
 let OPENAI_API_KEY = "";
 let ANTHROPIC_API_KEY = "";
+
+// Par de chaves LLM passado explicitamente pras funções que chamam a API.
+interface LLMKeys {
+  openai: string;
+  anthropic: string;
+}
+
+// Resolve as chaves DO tenant (fallback: globais hidratadas no handler).
+async function resolveLLMKeys(
+  supabase: any,
+  tenantId?: string | null
+): Promise<LLMKeys> {
+  return {
+    openai: (await getIntegrationKey(supabase, "OPENAI_API_KEY", tenantId)) || OPENAI_API_KEY,
+    anthropic: (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY", tenantId)) || ANTHROPIC_API_KEY,
+  };
+}
 
 // ==================== HELPERS ====================
 
@@ -111,6 +132,7 @@ function isAnthropicModel(model: string): boolean {
  * Helper para chamadas simples (sem tools) - suporta OpenAI e Anthropic
  */
 async function callLLMSimple(
+  keys: LLMKeys,
   model: string,
   systemPrompt: string,
   userMessages: { role: string; content: string }[],
@@ -144,7 +166,7 @@ async function callLLMSimple(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": keys.anthropic,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(sanitizeForJSON({
@@ -175,7 +197,7 @@ async function callLLMSimple(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${keys.openai}`,
     },
     body: JSON.stringify({
       model,
@@ -327,6 +349,7 @@ interface ConversationState {
 
 interface Lead {
   id: string;
+  tenant_id?: string;
   name: string;
   phone: string;
   email?: string;
@@ -828,17 +851,18 @@ async function sendWhatsAppImage(
   instance: WhatsAppInstance,
   phone: string,
   imageUrl: string,
-  caption?: string
+  caption?: string,
+  tenantId?: string | null
 ): Promise<boolean> {
   try {
     const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/[^0-9]/g, '');
 
-    // Cloud API: rotear via edge function
+    // Cloud API: rotear via edge function (passa tenant_id p/ usar o token WhatsApp da loja)
     if (instance.metadata?.type === 'cloud_api') {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_image", phone: cleanPhone, media_url: imageUrl, caption }),
+        body: JSON.stringify({ action: "send_image", phone: cleanPhone, media_url: imageUrl, caption, tenant_id: tenantId ?? null }),
       });
       const data = await res.json();
       console.log("📤 Imagem enviada (Cloud API):", JSON.stringify(data));
@@ -875,17 +899,18 @@ async function sendWhatsAppVideo(
   instance: WhatsAppInstance,
   phone: string,
   videoUrl: string,
-  caption?: string
+  caption?: string,
+  tenantId?: string | null
 ): Promise<boolean> {
   try {
     const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/[^0-9]/g, '');
 
-    // Cloud API: enviar como video nativo
+    // Cloud API: enviar como video nativo (passa tenant_id p/ usar o token WhatsApp da loja)
     if (instance.metadata?.type === 'cloud_api') {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_video", phone: cleanPhone, media_url: videoUrl, caption }),
+        body: JSON.stringify({ action: "send_video", phone: cleanPhone, media_url: videoUrl, caption, tenant_id: tenantId ?? null }),
       });
       const data = await res.json();
       console.log("📤 Vídeo enviado (Cloud API):", JSON.stringify(data));
@@ -921,17 +946,18 @@ async function sendWhatsAppVideo(
 async function sendWhatsAppAudio(
   instance: WhatsAppInstance,
   phone: string,
-  audioUrl: string
+  audioUrl: string,
+  tenantId?: string | null
 ): Promise<boolean> {
   try {
     const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/[^0-9]/g, '');
 
-    // Cloud API: enviar via edge function
+    // Cloud API: enviar via edge function (passa tenant_id p/ usar o token WhatsApp da loja)
     if (instance.metadata?.type === 'cloud_api') {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_audio", phone: cleanPhone, media_url: audioUrl }),
+        body: JSON.stringify({ action: "send_audio", phone: cleanPhone, media_url: audioUrl, tenant_id: tenantId ?? null }),
       });
       const data = await res.json();
       console.log("📤 Áudio enviado (Cloud API):", JSON.stringify(data));
@@ -1393,6 +1419,9 @@ async function callOpenAIWithTools(
   newMessage: string,
   materials?: any[]
 ): Promise<{ message: string; toolCalls: any[] }> {
+  // Chaves DO tenant do lead (fallback global) — resolvidas localmente, sem
+  // global mutável compartilhado entre requests.
+  const keys = await resolveLLMKeys(supabase, lead.tenant_id);
   // Fallback se model vier vazio
   if (!agent.model) {
     console.warn('⚠️ Model vazio no agent, usando fallback claude-sonnet-4-6');
@@ -1457,7 +1486,7 @@ async function callOpenAIWithTools(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": keys.anthropic,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(sanitizeForJSON({
@@ -1514,7 +1543,7 @@ async function callOpenAIWithTools(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${keys.openai}`,
     },
     body: JSON.stringify({
       model: agent.model,
@@ -1555,6 +1584,8 @@ async function callOpenAIFollowUp(
   toolResults: any[],
   materials?: any[]
 ): Promise<{ message: string; toolCalls: any[] }> {
+  // Chaves DO tenant do lead (fallback global) — resolvidas localmente.
+  const keys = await resolveLLMKeys(supabase, lead.tenant_id);
   const settings = mergeSettings(agent.settings);
   const systemPrompt = await buildAgentSystemPrompt(supabase, agent, lead, settings, materials);
 
@@ -1621,7 +1652,7 @@ async function callOpenAIFollowUp(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": keys.anthropic,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(sanitizeForJSON({
@@ -1689,7 +1720,7 @@ async function callOpenAIFollowUp(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${keys.openai}`,
     },
     body: JSON.stringify({
       model: agent.model,
@@ -3632,6 +3663,11 @@ async function processLeadMessage(
     return { success: false, error: 'Lead não encontrado' };
   }
 
+  // 1.1 Chaves DO tenant do lead (fallback global), passadas explicitamente pras
+  // chamadas de callLLMSimple — sem global mutável compartilhado entre tenants.
+  // (callOpenAIWithTools/callOpenAIFollowUp resolvem as próprias internamente.)
+  const llmKeys = await resolveLLMKeys(supabase, lead.tenant_id);
+
   // 1.5 Resolver telefone real do WhatsApp (corrige 9º dígito e divergências)
   lead.phone = await resolveLeadPhone(supabase, lead.id, lead.phone);
 
@@ -4274,6 +4310,7 @@ async function processLeadMessage(
     console.warn(`⚠️ IA retornou resposta vazia para ${lead.name}, re-gerando com nudge...`);
     try {
       const nudgeResponse = await callLLMSimple(
+        llmKeys,
         agent.model,
         'Você é um vendedor conversando com um lead via WhatsApp. Responda de forma natural e breve.',
         [{ role: 'user', content: `O lead disse: "${message_content}"\n\nResponda de forma natural, continuando a conversa. Não fique em silêncio.` }],
@@ -4314,10 +4351,10 @@ async function processLeadMessage(
 
       switch (chosenMaterial.type) {
         case 'image':
-          mediaSent = await sendWhatsAppImage(instance, lead.phone, chosenMaterial.file_url, captionForMedia);
+          mediaSent = await sendWhatsAppImage(instance, lead.phone, chosenMaterial.file_url, captionForMedia, lead.tenant_id);
           break;
         case 'video':
-          mediaSent = await sendWhatsAppVideo(instance, lead.phone, chosenMaterial.file_url, captionForMedia);
+          mediaSent = await sendWhatsAppVideo(instance, lead.phone, chosenMaterial.file_url, captionForMedia, lead.tenant_id);
           break;
         case 'audio':
           mediaSent = await sendWhatsAppAudio(instance, lead.phone, chosenMaterial.file_url);
@@ -4373,6 +4410,7 @@ async function processLeadMessage(
 - Responda APENAS com a mensagem final, sem formatação extra`;
 
         const updatedResponse = await callLLMSimple(
+          llmKeys,
           agent.model,
           regenSystemPrompt,
           [
@@ -4412,6 +4450,7 @@ async function processLeadMessage(
       console.warn(`⚠️ stripInternalThinking zerou a mensagem, re-gerando com nudge limpo...`);
       try {
         const cleanRetry = await callLLMSimple(
+          llmKeys,
           agent.model,
           'Você é um vendedor conversando com um lead via WhatsApp. Responda de forma natural e breve. NÃO inclua raciocínio interno.',
           [{ role: 'user', content: `O lead disse: "${message_content}"\n\nResponda de forma natural, breve e direta. Apenas a mensagem pro lead.` }],
@@ -4904,6 +4943,11 @@ async function executeCadenceStep(
   instance: WhatsAppInstance
 ): Promise<{ success: boolean; error?: string; sentMessage?: string }> {
   const settings = mergeSettings(agent.settings);
+
+  // Chaves DO tenant do lead (fallback global), passadas explicitamente pras
+  // chamadas de callLLMSimple — sem global mutável entre tenants.
+  const llmKeys = await resolveLLMKeys(supabase, lead.tenant_id);
+
   const closerName = await getCloserName(supabase, lead.id);
   const replaceExtras = { closer: closerName };
 
@@ -4948,6 +4992,7 @@ async function executeCadenceStep(
         body: JSON.stringify({
           action: "send_template",
           phone: lead.phone,
+          tenant_id: lead.tenant_id,
           template_name: templateName,
           template_params: [firstName],
           lead_id: lead.id,
@@ -5246,6 +5291,7 @@ ${agent.personality_traits.join(', ')}
 10. Responda APENAS com a mensagem, sem formatacao extra`;
 
         const aiMsg = await callLLMSimple(
+          llmKeys,
           agent.model,
           systemPrompt,
           [], // Sem mensagens user - tudo está no system prompt para cadence
@@ -5326,6 +5372,7 @@ Responda APENAS com JSON valido neste formato:
 {"index": NUMERO_DO_MATERIAL, "caption": "legenda personalizada aqui"}`;
 
         const aiChoice = await callLLMSimple(
+          llmKeys,
           agent.model,
           mediaPrompt,
           [], // Tudo no system prompt
@@ -5364,13 +5411,13 @@ Responda APENAS com JSON valido neste formato:
 
         switch (chosenMaterial.type) {
           case 'image':
-            mediaSent = await sendWhatsAppImage(instance, lead.phone, chosenMaterial.file_url, captionText);
+            mediaSent = await sendWhatsAppImage(instance, lead.phone, chosenMaterial.file_url, captionText, lead.tenant_id);
             break;
           case 'video':
-            mediaSent = await sendWhatsAppVideo(instance, lead.phone, chosenMaterial.file_url, captionText);
+            mediaSent = await sendWhatsAppVideo(instance, lead.phone, chosenMaterial.file_url, captionText, lead.tenant_id);
             break;
           case 'audio':
-            mediaSent = await sendWhatsAppAudio(instance, lead.phone, chosenMaterial.file_url);
+            mediaSent = await sendWhatsAppAudio(instance, lead.phone, chosenMaterial.file_url, lead.tenant_id);
             break;
           case 'document':
           default: {
@@ -5393,18 +5440,18 @@ Responda APENAS com JSON valido neste formato:
 
       case 'image': {
         const caption = step.caption ? replaceVariables(step.caption, lead, replaceExtras) : undefined;
-        const sent = await sendWhatsAppImage(instance, lead.phone, step.content, caption);
+        const sent = await sendWhatsAppImage(instance, lead.phone, step.content, caption, lead.tenant_id);
         return { success: sent };
       }
 
       case 'video': {
         const caption = step.caption ? replaceVariables(step.caption, lead, replaceExtras) : undefined;
-        const sent = await sendWhatsAppVideo(instance, lead.phone, step.content, caption);
+        const sent = await sendWhatsAppVideo(instance, lead.phone, step.content, caption, lead.tenant_id);
         return { success: sent };
       }
 
       case 'audio': {
-        const sent = await sendWhatsAppAudio(instance, lead.phone, step.content);
+        const sent = await sendWhatsAppAudio(instance, lead.phone, step.content, lead.tenant_id);
         return { success: sent };
       }
 
@@ -5699,7 +5746,8 @@ async function executeScheduledFollowup(supabase: any, followup: any, globalAgen
       .eq('id', followup.id);
     return false;
   }
-  // Resolver telefone real do WhatsApp (corrige 9º dígito e divergências)
+  // callOpenAIWithTools resolve a chave DO tenant do lead internamente — sem
+  // global mutável aqui. Resolver telefone real do WhatsApp (corrige 9º dígito).
   lead.phone = await resolveLeadPhone(supabase, lead.id, lead.phone);
   await enrichLeadWithStageName(supabase, lead);
 
@@ -6600,8 +6648,9 @@ CERTO (faça assim):
 responda APENAS com a mensagem, sem explicações.`;
 
   try {
-    // Le das vars globais hidratadas no handler (_shared/config.ts).
-    const apiKey = agent.model?.startsWith('gpt') ? OPENAI_API_KEY : ANTHROPIC_API_KEY;
+    // Chaves DO tenant do agente (fallback global) — resolvidas localmente.
+    const keys = await resolveLLMKeys(supabase, agent.tenant_id);
+    const apiKey = agent.model?.startsWith('gpt') ? keys.openai : keys.anthropic;
 
     if (agent.model?.startsWith('gpt')) {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {

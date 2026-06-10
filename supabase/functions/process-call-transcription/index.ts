@@ -8,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-let OPENAI_API_KEY = "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -61,7 +60,6 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-  OPENAI_API_KEY = (await getIntegrationKey(supabase, "OPENAI_API_KEY")) || "";
 
     // Buscar dados do lead para contexto
     const { data: lead, error: leadError } = await supabase
@@ -76,6 +74,9 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Chave DO tenant do lead (fallback global). O lojista paga a própria IA.
+    const OPENAI_API_KEY = (await getIntegrationKey(supabase, "OPENAI_API_KEY", lead.tenant_id)) || "";
 
     // Buscar produtos para contexto
     const { data: products } = await supabase

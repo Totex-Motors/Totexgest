@@ -103,12 +103,19 @@ export function WhatsAppInstancesSection() {
 
   const loadUazapiConfig = async () => {
     try {
-      const { data } = await supabase
-        .from("config")
-        .select("key, value")
-        .in("key", ["UAZAPI_ADMIN_URL", "UAZAPI_ADMIN_TOKEN"]);
       const map: Record<string, string> = {};
-      (data || []).forEach((r: any) => { map[r.key] = r.value; });
+
+      // 1. Chaves UAZAPI DO tenant (lojista paga a própria) — via RPC tenant-scoped.
+      const { data: tenantData } = await supabase.rpc("get_my_tenant_integration_keys");
+      (tenantData || []).forEach((r: any) => { if (r?.key) map[r.key] = r.value; });
+
+      // 2. Fallback p/ a config global (central da Totex) no que o tenant não definiu.
+      const missing = ["UAZAPI_ADMIN_URL", "UAZAPI_ADMIN_TOKEN"].filter((k) => !map[k]);
+      if (missing.length > 0) {
+        const { data } = await supabase.from("config").select("key, value").in("key", missing);
+        (data || []).forEach((r: any) => { if (!map[r.key]) map[r.key] = r.value; });
+      }
+
       if (map.UAZAPI_ADMIN_URL && map.UAZAPI_ADMIN_TOKEN) {
         setUazapi({ url: map.UAZAPI_ADMIN_URL.replace(/\/$/, ""), token: map.UAZAPI_ADMIN_TOKEN });
       }

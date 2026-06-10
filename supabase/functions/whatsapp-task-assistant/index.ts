@@ -262,7 +262,8 @@ async function callClaude(
   systemPrompt: string,
   contextMessages: any[],
   triggerMessage: string,
-  senderName: string
+  senderName: string,
+  tenantId?: string | null
 ): Promise<any> {
   const contextText = contextMessages
     .map((m) => `[${m.sender_name}]: ${m.content}`)
@@ -285,7 +286,8 @@ MENSAGEM QUE MENCIONOU O BOT:
 Analise o contexto e a solicitação. Retorne APENAS um JSON válido com a ação a ser tomada.
 IMPORTANTE: Use a data de hoje (${dateStr}) como referência para "hoje", "amanhã", "segunda", etc.`;
 
-  const ANTHROPIC_API_KEY = await requireIntegrationKey(supabase, "ANTHROPIC_API_KEY");
+  // Chave DO tenant do bot (fallback global). Cada loja paga a própria IA.
+  const ANTHROPIC_API_KEY = await requireIntegrationKey(supabase, "ANTHROPIC_API_KEY", tenantId);
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -1091,7 +1093,8 @@ Deno.serve(async (req: Request) => {
         buildSystemPrompt(config.ai_prompt),
         contextMessages,
         message,
-        "Teste Manual"
+        "Teste Manual",
+        config.tenant_id
       );
 
       return new Response(
@@ -1202,7 +1205,8 @@ Deno.serve(async (req: Request) => {
         buildSystemPrompt(config.ai_prompt),
         contextMessages,
         triggerContent,
-        senderName
+        senderName,
+        config.tenant_id
       );
 
       console.log("🤖 Resposta da IA:", JSON.stringify(aiResponse, null, 2));

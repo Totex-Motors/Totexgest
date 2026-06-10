@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +21,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const GEMINI_API_KEY = await getIntegrationKey(supabase, "GEMINI_API_KEY");
+    const tenantId = getTenantIdFromRequest(req);
+    const GEMINI_API_KEY = await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId);
     if (!GEMINI_API_KEY) {
       console.warn("[extract-meeting-datetime] GEMINI_API_KEY nao configurada em /configuracoes > Integrações");
       return new Response(

@@ -519,3 +519,31 @@ export const useLeadsCountByStage = () => {
     },
   });
 };
+
+// Merge patch into leads.metadata (JSONB) — reads current value then writes merged result
+export const useUpdateLeadMetadata = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ leadId, patch }: { leadId: string; patch: Record<string, unknown> }) => {
+      const { data: current, error: readErr } = await supabase
+        .from('leads')
+        .select('metadata')
+        .eq('id', leadId)
+        .single();
+      if (readErr) throw readErr;
+      const merged = { ...(current?.metadata ?? {}), ...patch };
+      const { data: result, error } = await (supabase as any)
+        .from('leads')
+        .update({ metadata: merged, updated_at: new Date().toISOString() })
+        .eq('id', leadId)
+        .select()
+        .single();
+      if (error) throw error;
+      return result as SalesLead;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sales-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-lead', data.id] });
+    },
+  });
+};
