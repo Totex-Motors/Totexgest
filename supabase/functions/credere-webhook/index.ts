@@ -126,7 +126,8 @@ serve(async (req: Request) => {
           credere_store_name: store.name || mapping.store_name,
           vehicle: {
             description: vehicleDesc || null,
-            assets_value: simulation.assets_value ?? null,
+            // Credere envia valores monetários em centavos — converter para reais
+            assets_value: simulation.assets_value != null ? simulation.assets_value / 100 : null,
             manufacture_year: vehicle.manufacture_year ?? null,
             model_year: vehicle.model_year ?? null,
             brand: vehicleModel.brand ?? null,
@@ -140,8 +141,9 @@ serve(async (req: Request) => {
                 bank: bestCondition.bank?.name ?? null,
                 installments: bestCondition.installments ?? null,
                 interest_monthly: bestCondition.interest_monthly ?? null,
-                down_payment: bestCondition.down_payment ?? null,
-                financed_amount: bestCondition.financed_amount ?? null,
+                // Credere envia em centavos — converter para reais
+                down_payment: bestCondition.down_payment != null ? bestCondition.down_payment / 100 : null,
+                financed_amount: bestCondition.financed_amount != null ? bestCondition.financed_amount / 100 : null,
               }
             : null,
           seller: simulation.seller

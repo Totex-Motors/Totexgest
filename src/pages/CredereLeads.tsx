@@ -197,7 +197,7 @@ function LeadsTab() {
               <TableHead>Nome</TableHead>
               <TableHead>Veículo</TableHead>
               <TableHead>Loja</TableHead>
-              <TableHead>Valor do bem</TableHead>
+              <TableHead>Valor do veículo</TableHead>
               <TableHead>Melhor condição</TableHead>
               <TableHead>Cidade</TableHead>
               <TableHead>Data</TableHead>
