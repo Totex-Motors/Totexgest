@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowRight, Eye, EyeOff, ShieldCheck, User } from 'lucide-react';
+import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 /* ─── Config ────────────────────────────────────────────────── */
 const BRAND = {
@@ -73,15 +73,12 @@ function AmbientOrb({ color, x, y, size, delay }: {
 /* ─── Main Login Page ───────────────────────────────────────── */
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, signUp, signUpAsAdmin } = useAuth();
+  const { signIn } = useAuth();
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [isAdminSignUp, setIsAdminSignUp] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [signUpName, setSignUpName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -92,34 +89,18 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
 
-    if (isSignUp) {
-      const name = signUpName || loginEmail.split('@')[0];
-      const fn = isAdminSignUp ? signUpAsAdmin : signUp;
-      const { error } = await fn(loginEmail, loginPassword, name);
-      if (error) {
-        toast({
-          title: 'Erro ao criar conta',
-          description: error.message,
-          variant: 'destructive',
-        });
-      } else {
-        toast({ title: isAdminSignUp ? 'Conta admin criada! Bem-vindo!' : 'Conta criada! Bem-vindo!' });
-        navigate('/');
-      }
+    const { error } = await signIn(loginEmail, loginPassword);
+    if (error) {
+      toast({
+        title: 'Erro ao entrar',
+        description: error.message === 'Invalid login credentials'
+          ? 'Email ou senha incorretos'
+          : error.message,
+        variant: 'destructive',
+      });
     } else {
-      const { error } = await signIn(loginEmail, loginPassword);
-      if (error) {
-        toast({
-          title: 'Erro ao entrar',
-          description: error.message === 'Invalid login credentials'
-            ? 'Email ou senha incorretos'
-            : error.message,
-          variant: 'destructive',
-        });
-      } else {
-        toast({ title: 'Bem-vindo!' });
-        navigate('/');
-      }
+      toast({ title: 'Bem-vindo!' });
+      navigate('/');
     }
 
     setIsLoading(false);
@@ -296,7 +277,7 @@ export default function Login() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
             >
-              {isSignUp ? 'Criar conta' : 'Bem-vindo de volta'}
+              Bem-vindo de volta
             </motion.h2>
             <motion.p
               className="text-[#f8f6f1]/35 text-sm"
@@ -304,85 +285,12 @@ export default function Login() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
             >
-              {isSignUp ? 'Preencha seus dados para começar' : 'Entre com suas credenciais para continuar'}
+              Entre com suas credenciais para continuar
             </motion.p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-5">
-            {/* Name field (sign up only) */}
-            <AnimatePresence>
-              {isSignUp && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-5"
-                >
-                  <div>
-                    <label
-                      className={`block text-[11px] tracking-[0.15em] uppercase mb-2 transition-colors duration-300 ${
-                        focusedField === 'name' ? 'text-teal-300' : 'text-[#f8f6f1]/30'
-                      }`}
-                    >
-                      Nome
-                    </label>
-                    <div className="relative group">
-                      <input
-                        type="text"
-                        value={signUpName}
-                        onChange={(e) => setSignUpName(e.target.value)}
-                        onFocus={() => setFocusedField('name')}
-                        onBlur={() => setFocusedField(null)}
-                        placeholder="Seu nome"
-                        className="w-full bg-[#f8f6f1]/[0.03] border border-[#f8f6f1]/[0.06] rounded-xl px-4 py-3.5 text-[#f8f6f1] text-sm placeholder:text-[#f8f6f1]/15 outline-none transition-all duration-300 focus:border-teal-400/40 focus:bg-[#f8f6f1]/[0.05] focus:shadow-[0_0_0_3px_rgba(20,184,166,0.06)] hover:border-[#f8f6f1]/[0.12]"
-                      />
-                      <div className={`absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-teal-400/60 via-teal-300/40 to-transparent transition-transform duration-500 origin-left ${focusedField === 'name' ? 'scale-x-100' : 'scale-x-0'}`} />
-                    </div>
-                  </div>
-
-                  {/* Account type toggle */}
-                  <div>
-                    <label className="block text-[11px] tracking-[0.15em] uppercase mb-2 text-[#f8f6f1]/30">
-                      Tipo de conta
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsAdminSignUp(false)}
-                        className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium transition-all duration-300 ${
-                          !isAdminSignUp
-                            ? 'border-teal-400/50 bg-teal-400/10 text-teal-300'
-                            : 'border-[#f8f6f1]/[0.06] bg-[#f8f6f1]/[0.03] text-[#f8f6f1]/40 hover:border-[#f8f6f1]/[0.12]'
-                        }`}
-                      >
-                        <User className="w-4 h-4 shrink-0" />
-                        <span>Vendedor</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsAdminSignUp(true)}
-                        className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium transition-all duration-300 ${
-                          isAdminSignUp
-                            ? 'border-teal-400/50 bg-teal-400/10 text-teal-300'
-                            : 'border-[#f8f6f1]/[0.06] bg-[#f8f6f1]/[0.03] text-[#f8f6f1]/40 hover:border-[#f8f6f1]/[0.12]'
-                        }`}
-                      >
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
-                        <span>Admin</span>
-                      </button>
-                    </div>
-                    {isAdminSignUp && (
-                      <p className="mt-2 text-[11px] text-teal-300/60 leading-relaxed">
-                        Acesso total ao CRM. Use apenas para o primeiro cadastro da empresa.
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Email field */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -486,7 +394,7 @@ export default function Login() {
                         className="flex items-center gap-2"
                       >
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        {isSignUp ? 'Criando conta...' : 'Entrando...'}
+                        Entrando...
                       </motion.span>
                     ) : (
                       <motion.span
@@ -496,7 +404,7 @@ export default function Login() {
                         exit={{ opacity: 0 }}
                         className="flex items-center gap-2"
                       >
-                        {isSignUp ? 'Criar conta' : 'Entrar'}
+                        Entrar
                         <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
                       </motion.span>
                     )}
@@ -505,23 +413,6 @@ export default function Login() {
               </button>
             </motion.div>
           </form>
-
-          {/* Toggle sign up / login */}
-          <motion.p
-            className="text-center text-[#f8f6f1]/35 text-sm mt-8"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-          >
-            {isSignUp ? 'Já tem uma conta?' : 'Não tem conta?'}{' '}
-            <button
-              type="button"
-              onClick={() => { setIsSignUp(!isSignUp); setIsAdminSignUp(false); }}
-              className="text-teal-300 hover:text-teal-200 transition-colors font-medium"
-            >
-              {isSignUp ? 'Entrar' : 'Criar conta'}
-            </button>
-          </motion.p>
 
           {/* Footer */}
           <motion.p
