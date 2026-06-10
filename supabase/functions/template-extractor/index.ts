@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,7 +129,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { imageBase64, imageUrl } = await req.json();
-    const GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY"));
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    // Chave DO tenant do usuário (fallback global). Cada loja paga a própria IA.
+    const tenantId = getTenantIdFromRequest(req);
+    const GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId));
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada");
 
     console.log("Template Extractor v8 - Starting extraction...");

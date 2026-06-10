@@ -109,12 +109,13 @@ serve(async (req: Request) => {
 
     if (pipeline) {
       await supabase.from("sales_pipeline_stages").insert([
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Novo Lead",          position: 0 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Em Qualificação",    position: 1 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Reunião Agendada",   position: 2 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Proposta Enviada",   position: 3 },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Ganho",              position: 4, is_won: true },
-        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Perdido",            position: 5, is_lost: true },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Novo Lead",                 position: 0 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Em Qualificação",           position: 1 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Test Drive",                position: 2 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Avaliação / Proposta",      position: 3 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Financiamento (Credere)",   position: 4 },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Ganho",                     position: 5, is_won: true },
+        { tenant_id: tenantId, pipeline_id: pipeline.id, name: "Perdido",                   position: 6, is_lost: true },
       ]);
     }
 

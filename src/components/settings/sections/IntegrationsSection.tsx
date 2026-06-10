@@ -27,7 +27,29 @@ interface IntegrationDef {
   placeholder: string;
   docsUrl?: string;
   category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "other";
+  // "tenant" → chave da loja (cada lojista paga a própria), gravada via RPC
+  //            set_my_tenant_integration_key. "global" → infra central da Totex
+  //            (Google OAuth, webhook secret do marketplace), gravada em `config`.
+  scope?: "tenant" | "global";
 }
+
+// Chaves que as edge functions leem por-tenant (espelha o allowlist da RPC
+// set_my_tenant_integration_key). Tudo que não estiver aqui é tratado como global.
+const TENANT_SCOPED_KEYS = new Set<string>([
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "GEMINI_API_KEY",
+  "UAZAPI_ADMIN_URL",
+  "UAZAPI_ADMIN_TOKEN",
+  "WHATSAPP_CLOUD_TOKEN",
+  "WHATSAPP_PHONE_NUMBER_ID",
+  "SONIOX_API_KEY",
+  "WAVOIP_API_KEY",
+  "ASAAS_API_KEY",
+  "RESEND_API_KEY",
+]);
+
+const isTenantScoped = (key: string) => TENANT_SCOPED_KEYS.has(key);
 
 const INTEGRATIONS: IntegrationDef[] = [
   // AI
@@ -172,20 +194,38 @@ export function IntegrationsSection() {
 
   const loadKeys = async () => {
     try {
-      const { data, error } = await supabase
-        .from("config")
-        .select("key, value")
-        .in(
-          "key",
-          INTEGRATIONS.map((i) => i.key)
-        );
-
-      if (error) throw error;
-
       const keyMap: Record<string, string> = {};
-      (data || []).forEach((row: any) => {
-        keyMap[row.key] = row.value || "";
-      });
+
+      // Chaves DO tenant (lojista paga as próprias) — via RPC SECURITY DEFINER.
+      const { data: tenantData, error: tenantErr } = await supabase.rpc(
+        "get_my_tenant_integration_keys"
+      );
+      if (tenantErr) {
+        console.error("Error loading tenant integration keys:", tenantErr);
+      } else {
+        (tenantData || []).forEach((row: any) => {
+          keyMap[row.key] = row.value || "";
+        });
+      }
+
+      // Chaves globais/centrais (Google, webhook secret) — tabela `config`.
+      const globalKeys = INTEGRATIONS.filter((i) => !isTenantScoped(i.key)).map(
+        (i) => i.key
+      );
+      if (globalKeys.length > 0) {
+        const { data: globalData, error: globalErr } = await supabase
+          .from("config")
+          .select("key, value")
+          .in("key", globalKeys);
+        if (globalErr) {
+          console.error("Error loading global config keys:", globalErr);
+        } else {
+          (globalData || []).forEach((row: any) => {
+            keyMap[row.key] = row.value || "";
+          });
+        }
+      }
+
       setKeys(keyMap);
     } catch (err) {
       console.error("Error loading integration keys:", err);
@@ -199,13 +239,21 @@ export function IntegrationsSection() {
     try {
       const value = keys[integration.key] || "";
 
-      // Upsert into config table
-      const { error } = await supabase.from("config").upsert(
-        { key: integration.key, value, updated_at: new Date().toISOString() },
-        { onConflict: "key" }
-      );
-
-      if (error) throw error;
+      if (isTenantScoped(integration.key)) {
+        // Chave DO tenant — grava via RPC (escrita controlada por SECURITY DEFINER).
+        const { error } = await supabase.rpc("set_my_tenant_integration_key", {
+          p_key: integration.key,
+          p_value: value,
+        });
+        if (error) throw error;
+      } else {
+        // Chave global/central — tabela `config`.
+        const { error } = await supabase.from("config").upsert(
+          { key: integration.key, value, updated_at: new Date().toISOString() },
+          { onConflict: "key" }
+        );
+        if (error) throw error;
+      }
 
       toast({ title: `${integration.label} salvo com sucesso` });
     } catch (err) {

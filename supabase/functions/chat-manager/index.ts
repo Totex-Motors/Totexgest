@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'; // SDK for Deno
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
@@ -31,7 +32,6 @@ serve(async (req)=>{
         persistSession: false
       }
     }); // Client read-only
-    const apiKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY") || "");
 
     // Client ADMIN para operações de escrita (bypass RLS)
     const supabaseAdmin = createClient(
@@ -39,6 +39,11 @@ serve(async (req)=>{
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );
+
+    // Chave DO tenant do usuário (fallback global). Lê via admin (service_role)
+    // pra enxergar tenant_integration_keys sob RLS.
+    const tenantId = getTenantIdFromRequest(req);
+    const apiKey = (await getIntegrationKey(supabaseAdmin, "ANTHROPIC_API_KEY", tenantId) || "");
     if (!apiKey || !supabaseUrl || !supabaseAnonKey) {
       console.error("Configuração incompleta");
       return new Response("Configuração incompleta", {

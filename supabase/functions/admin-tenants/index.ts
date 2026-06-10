@@ -24,12 +24,13 @@ function slugify(input: string): string {
 }
 
 const DEFAULT_STAGES = [
-  { name: "Novo Lead", position: 0 },
-  { name: "Em Qualificação", position: 1 },
-  { name: "Reunião Agendada", position: 2 },
-  { name: "Proposta Enviada", position: 3 },
-  { name: "Ganho", position: 4, is_won: true },
-  { name: "Perdido", position: 5, is_lost: true },
+  { name: "Novo Lead",                position: 0 },
+  { name: "Em Qualificação",          position: 1 },
+  { name: "Test Drive",               position: 2 },
+  { name: "Avaliação / Proposta",     position: 3 },
+  { name: "Financiamento (Credere)",  position: 4 },
+  { name: "Ganho",                    position: 5, is_won: true },
+  { name: "Perdido",                  position: 6, is_lost: true },
 ];
 
 Deno.serve(async (req: Request) => {

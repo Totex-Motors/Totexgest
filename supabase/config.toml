@@ -27,6 +27,15 @@ verify_jwt = false
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+# Chamada internamente pelo ai-sales-agent via fetch SEM header de auth → precisa
+# de no-verify-jwt (senão o gateway barra com 401 e o agente não envia Cloud API).
+[functions.send-whatsapp-cloud]
+verify_jwt = false
+
+# Chamada do browser (mint de token Soniox); deploy sem verify_jwt por design.
+[functions.soniox-token]
+verify_jwt = false
+
 [functions.whatsapp-cloud-webhook]
 verify_jwt = false
 

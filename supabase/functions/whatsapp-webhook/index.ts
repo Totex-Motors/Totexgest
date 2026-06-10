@@ -15,9 +15,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-// API keys hidratadas por request (regra: nada hardcoded, le da tabela config)
-let OPENAI_API_KEY: string | null = null;
-let GEMINI_API_KEY: string | null = null;
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -27,9 +24,11 @@ serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Hidratar API keys de transcricao da tabela config
-    OPENAI_API_KEY = await getIntegrationKey(supabase, 'OPENAI_API_KEY'); // Whisper (preferido)
-    GEMINI_API_KEY = await getIntegrationKey(supabase, 'GEMINI_API_KEY'); // Gemini multimodal (fallback)
+    // API keys hidratadas por request, DEPOIS de resolver a instância (pra usar
+    // a chave DO tenant da instância). Locais — sem global compartilhado entre
+    // tenants em requests concorrentes. Regra: nada hardcoded, lê da config.
+    let OPENAI_API_KEY: string | null = null;
+    let GEMINI_API_KEY: string | null = null;
 
     const payload = await req.json();
 
@@ -45,7 +44,7 @@ serve(async (req: Request) => {
     if (instanceIdentifier) {
       const { data } = await supabase
         .from('whatsapp_instances')
-        .select('id, teams, api_key, api_url, name')
+        .select('id, teams, api_key, api_url, name, tenant_id')
         .or(`name.eq.${instanceIdentifier},metadata->>uazapi_instance_id.eq.${instanceIdentifier}`)
         .single();
       instanceData = data;
@@ -57,7 +56,7 @@ serve(async (req: Request) => {
         const cleanToken = token.replace('Bearer ', '');
         const { data } = await supabase
           .from('whatsapp_instances')
-          .select('id, teams, api_key, api_url, name')
+          .select('id, teams, api_key, api_url, name, tenant_id')
           .eq('api_key', cleanToken)
           .single();
         instanceData = data;
@@ -71,7 +70,7 @@ serve(async (req: Request) => {
       if (queryToken) {
         const { data } = await supabase
           .from('whatsapp_instances')
-          .select('id, teams, api_key, api_url, name')
+          .select('id, teams, api_key, api_url, name, tenant_id')
           .eq('api_key', queryToken)
           .single();
         instanceData = data;
@@ -91,6 +90,11 @@ serve(async (req: Request) => {
     const instanceApiUrl = instanceData.api_url;
     console.log('[Webhook] Processing for instance:', instanceId, 'EventType:', eventType);
 
+    // Chaves de transcrição DO tenant da instância (fallback global).
+    // Cada loja paga a própria transcrição/visão (Whisper + Gemini).
+    OPENAI_API_KEY = await getIntegrationKey(supabase, 'OPENAI_API_KEY', instanceData.tenant_id);
+    GEMINI_API_KEY = await getIntegrationKey(supabase, 'GEMINI_API_KEY', instanceData.tenant_id);
+
     switch (eventType) {
       case 'messages':
       case 'message': {
@@ -106,7 +110,7 @@ serve(async (req: Request) => {
           await handleEditedMessage(supabase, instanceId, msgPayload);
         }
         else {
-          await handleIncomingMessage(supabase, instanceId, msgPayload, instanceData.teams, instanceApiKey, instanceApiUrl);
+          await handleIncomingMessage(supabase, instanceId, msgPayload, instanceData.teams, instanceApiKey, instanceApiUrl, OPENAI_API_KEY, GEMINI_API_KEY);
         }
         break;
       }
@@ -143,7 +147,9 @@ async function handleIncomingMessage(
   payload: any,
   teams: string[],
   instanceApiKey: string | null,
-  instanceApiUrl: string | null
+  instanceApiUrl: string | null,
+  OPENAI_API_KEY: string | null,
+  GEMINI_API_KEY: string | null
 ) {
   const messageId = payload.id || payload.messageid || payload.MessageID;
   const remoteJid = payload.chatid || payload.wa_chatid || payload.Chat || payload.chatId;
@@ -702,6 +708,7 @@ async function handleIncomingMessage(
       teams,
       leadId,
       groupTeam,
+      OPENAI_API_KEY,
     );
   }
 }
@@ -716,6 +723,7 @@ async function handleConversationMessage(
   teams: string[],
   leadId: string | null,
   groupTeam: string | null,
+  OPENAI_API_KEY: string | null,
 ) {
   const { content, senderPhone, pushName, mediaUrl, messageType, fromMe } = payload;
 

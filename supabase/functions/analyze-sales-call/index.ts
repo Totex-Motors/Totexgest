@@ -2,13 +2,13 @@ import "https://deno.land/x/xhr@0.3.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-let GEMINI_API_KEY = "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -166,7 +166,9 @@ serve(async (req) => {
 
     // Criar cliente Supabase
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-  GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY")) || "";
+    // Chave DO tenant (fallback global). Local — sem global compartilhado entre tenants.
+    const tenantId = getTenantIdFromRequest(req);
+    const GEMINI_API_KEY = (await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId)) || "";
 
     // Selecionar modelo e prompt baseado no depth
     const isDeep = depth === 'deep';

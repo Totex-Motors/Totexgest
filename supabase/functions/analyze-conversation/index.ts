@@ -60,7 +60,6 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const anthropicKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY"));
 
     // 1. Buscar dados completos do lead
     const { data: lead, error: leadError } = await supabase
@@ -76,6 +75,9 @@ Deno.serve(async (req: Request) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Chave DO tenant do lead (fallback global). O lojista paga a própria IA.
+    const anthropicKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY", lead.tenant_id));
 
     // Rastrear quais fontes de dados foram usadas
     const dataSources: string[] = ["lead"];
