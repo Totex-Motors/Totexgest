@@ -547,16 +547,16 @@ export function PipelineBoardContent() {
         {/* Header Fixo */}
         <div className="flex-shrink-0 pb-4 space-y-3">
           {/* Row 1: Title bar */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-semibold text-slate-900">Pipeline</h1>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 shrink-0">Pipeline</h1>
               {pipelines && pipelines.length > 1 && (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-x-auto">
                   {pipelines.map((p) => (
                     <button
                       key={p.id}
                       onClick={() => setSelectedPipelineId(p.id)}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                         activePipelineId === p.id
                           ? "bg-primary text-primary-foreground"
                           : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
@@ -568,7 +568,7 @@ export function PipelineBoardContent() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button onClick={() => handleAddDeal()} className="h-9 px-4 text-sm">
                 <Plus className="h-4 w-4 mr-1.5" />
                 Novo Deal
@@ -674,7 +674,7 @@ export function PipelineBoardContent() {
                   Filtros{activeAdvancedFilters.length > 0 ? ` (${activeAdvancedFilters.length})` : ""}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-[420px] p-0">
+              <PopoverContent align="start" className="w-[420px] max-w-[calc(100vw-1.5rem)] p-0">
                 <div className="px-4 pt-4 pb-3">
                   <p className="text-sm font-semibold text-slate-800">Filtros avancados</p>
                 </div>

@@ -141,17 +141,17 @@ const SalesPlaybook = () => {
     <AppLayout>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-              <BookOpen className="h-7 w-7 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-3">
+              <BookOpen className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
               Playbook de Vendas
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Configure o contexto e diretrizes para a IA de vendas
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {lastSaved && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />

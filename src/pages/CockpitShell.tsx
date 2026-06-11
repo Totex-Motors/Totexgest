@@ -177,7 +177,7 @@ export default function CockpitShell() {
   return (
     <AppLayout>
       <div
-        className="-m-6 flex flex-col"
+        className="-m-4 sm:-m-6 flex flex-col"
         style={{ height: 'calc(100vh - 3.5rem)' }}
       >
         <TabBar activeTab={activeTab} onTabChange={handleTabChange} />

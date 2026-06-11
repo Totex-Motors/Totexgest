@@ -207,7 +207,63 @@ function LeadsTab() {
         <Badge variant="secondary">{leads.length} lead{leads.length !== 1 ? "s" : ""}</Badge>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      {/* Mobile: cartões */}
+      <div className="md:hidden space-y-2.5">
+        {isLoading ? (
+          <p className="text-center py-10 text-sm text-muted-foreground">Carregando...</p>
+        ) : leads.length === 0 ? (
+          <p className="text-center py-10 text-sm text-muted-foreground">
+            {search
+              ? "Nenhum lead encontrado para essa busca."
+              : "Nenhum lead recebido ainda via marketplace."}
+          </p>
+        ) : (
+          leads.map((lead) => {
+            const v = lead.metadata?.vehicle;
+            return (
+              <button
+                key={lead.id}
+                onClick={() => navigate(`/comercial/leads/${lead.id}`)}
+                className="w-full text-left rounded-lg border bg-card p-3 active:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{lead.name}</div>
+                    {lead.phone && (
+                      <div className="text-xs text-muted-foreground">{lead.phone}</div>
+                    )}
+                  </div>
+                  <OriginBadge origin={lead.metadata?.marketplace_origin} />
+                </div>
+                {v?.brand && v?.model && (
+                  <div className="mt-2 text-sm">
+                    {v.brand} {v.model}
+                    {v.year ? ` · ${v.year}` : ""}
+                  </div>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {v?.price_formatted ?? formatCurrency(v?.price)}
+                  </span>
+                  {lead.metadata?.marketplace_store_name && (
+                    <span className="truncate">{lead.metadata.marketplace_store_name}</span>
+                  )}
+                  {lead.city_name && (
+                    <span>
+                      {lead.city_name}
+                      {lead.state ? ` / ${lead.state}` : ""}
+                    </span>
+                  )}
+                  <span className="ml-auto">{formatDate(lead.created_at)}</span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden md:block border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -338,7 +394,7 @@ function LojasTab() {
         </Button>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -466,13 +522,12 @@ function LojasTab() {
 
 export default function MarketplaceLeads() {
   return (
-    <AppLayout
-      title="Marketplace Digital"
-      subtitle="Leads do totexmotors.com"
-      icon={ShoppingBag}
-      breadcrumbs={[{ label: "Comercial" }, { label: "Marketplace Digital" }]}
-    >
-      <div className="p-6">
+    <AppLayout>
+      <div>
+        <div className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Marketplace Digital</h1>
+          <p className="text-sm text-muted-foreground">Leads do totexmotors.com</p>
+        </div>
         <Tabs defaultValue="leads">
           <TabsList className="mb-6">
             <TabsTrigger value="leads" className="gap-2">

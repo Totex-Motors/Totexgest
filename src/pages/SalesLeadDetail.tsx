@@ -633,9 +633,9 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
       <div className="max-w-7xl mx-auto space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-40 w-full" />
-        <div className="grid grid-cols-12 gap-6">
-          <Skeleton className="col-span-4 h-[600px]" />
-          <Skeleton className="col-span-8 h-[600px]" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <Skeleton className="lg:col-span-4 h-[300px] lg:h-[600px]" />
+          <Skeleton className="lg:col-span-8 h-[600px]" />
         </div>
       </div>
     );

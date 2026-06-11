@@ -406,14 +406,14 @@ const TeamMeetings = () => {
         animate="animate"
       >
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Reuniões do Time</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold">Reuniões do Time</h1>
+            <p className="text-sm text-muted-foreground">
               Grave, transcreva e extraia tarefas das reuniões
             </p>
           </div>
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+          <Button onClick={() => setIsCreateOpen(true)} className="gap-2 w-full sm:w-auto">
             <Plus className="h-4 w-4" />
             Nova Reunião
           </Button>

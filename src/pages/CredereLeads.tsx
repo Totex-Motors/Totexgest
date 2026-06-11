@@ -190,7 +190,66 @@ function LeadsTab() {
         <Badge variant="secondary">{leads.length} lead{leads.length !== 1 ? "s" : ""}</Badge>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      {/* Mobile: cartões */}
+      <div className="md:hidden space-y-2.5">
+        {isLoading ? (
+          <p className="text-center py-10 text-sm text-muted-foreground">Carregando...</p>
+        ) : leads.length === 0 ? (
+          <p className="text-center py-10 text-sm text-muted-foreground">
+            {search ? "Nenhum lead encontrado para essa busca." : "Nenhum lead recebido ainda via Credere."}
+          </p>
+        ) : (
+          leads.map((lead) => {
+            const v = lead.metadata?.vehicle;
+            const f = lead.metadata?.financing;
+            return (
+              <button
+                key={lead.id}
+                onClick={() => navigate(`/comercial/leads/${lead.id}`)}
+                className="w-full text-left rounded-lg border bg-card p-3 active:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{lead.name}</div>
+                    {lead.phone && (
+                      <div className="text-xs text-muted-foreground">{lead.phone}</div>
+                    )}
+                  </div>
+                  <span className="text-xs font-medium text-foreground whitespace-nowrap">
+                    {formatCurrency(v?.assets_value)}
+                  </span>
+                </div>
+                {v?.description && (
+                  <div className="mt-2 text-sm">{v.description}</div>
+                )}
+                {f && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {f.bank || "—"}
+                    {f.installments && f.financed_amount
+                      ? ` · ${f.installments}x de ${formatCurrency(f.financed_amount / f.installments)}`
+                      : ""}
+                  </div>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {lead.metadata?.credere_store_name && (
+                    <span className="truncate">{lead.metadata.credere_store_name}</span>
+                  )}
+                  {lead.city_name && (
+                    <span>
+                      {lead.city_name}
+                      {lead.state ? ` / ${lead.state}` : ""}
+                    </span>
+                  )}
+                  <span className="ml-auto">{formatDate(lead.created_at)}</span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden md:block border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -309,7 +368,7 @@ function LojasTab() {
         </Button>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -429,13 +488,12 @@ function LojasTab() {
 
 export default function CredereLeads() {
   return (
-    <AppLayout
-      title="Credere"
-      subtitle="Leads de simulação de financiamento"
-      icon={Car}
-      breadcrumbs={[{ label: "Comercial" }, { label: "Credere" }]}
-    >
-      <div className="p-6">
+    <AppLayout>
+      <div>
+        <div className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Credere</h1>
+          <p className="text-sm text-muted-foreground">Leads de simulação de financiamento</p>
+        </div>
         <Tabs defaultValue="leads">
           <TabsList className="mb-6">
             <TabsTrigger value="leads" className="gap-2">

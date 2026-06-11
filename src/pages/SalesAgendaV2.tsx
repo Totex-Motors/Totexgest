@@ -671,8 +671,8 @@ export function AgendaViewContent() {
         viewMode !== "calendar" ? "h-[calc(100vh-64px)]" : "",
       )}>
         {/* ── Header ──────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-background shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3 border-b bg-background shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
             <h1 className="text-lg font-bold hidden sm:block">Minha Agenda</h1>
 
             <Button variant="outline" size="sm" onClick={goToday} className="text-xs">
@@ -691,10 +691,10 @@ export function AgendaViewContent() {
             <span className="text-sm font-medium capitalize">{headerDateLabel}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {/* Team member selector */}
             <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
-              <SelectTrigger className="w-40 h-8 text-xs">
+              <SelectTrigger className="w-32 sm:w-40 h-8 text-xs">
                 <SelectValue placeholder="Minha agenda" />
               </SelectTrigger>
               <SelectContent>
@@ -752,7 +752,7 @@ export function AgendaViewContent() {
         </div>
 
         {/* ── Summary Badges Bar ─────────────────────────────────── */}
-        <div className="flex items-center gap-2 px-4 py-1.5 border-b bg-muted/30 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 border-b bg-muted/30 shrink-0">
           <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300")}>
             <Video className="h-3.5 w-3.5" />
             <span>{summaryBadges.reunioes} reuniões</span>
@@ -773,9 +773,9 @@ export function AgendaViewContent() {
 
         {/* ── View: Calendar (original month + list) ──────────────── */}
         {viewMode === "calendar" && (
-          <div className="flex-1 overflow-auto p-6 space-y-6">
+          <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
             {/* Compact metrics bar */}
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs">
               <button onClick={() => setActiveMetric(prev => prev === 'overdue' ? null : 'overdue')} className={cn("flex items-center gap-1 px-2 py-1 rounded-md transition-colors", activeMetric === 'overdue' ? "bg-red-100 text-red-700" : "text-muted-foreground hover:bg-muted")}>
                 <AlertTriangle className="h-3 w-3" />
                 <span className="font-medium">Atrasadas: {metrics.overdue}</span>

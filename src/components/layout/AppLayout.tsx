@@ -106,11 +106,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         <AppSidebar />
         <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
           {/* Header */}
-          <header className="h-14 border-b border-border flex items-center justify-between px-6 bg-card sticky top-0 z-10">
-            <div className="flex items-center">
-              <SidebarTrigger className="mr-4 text-muted-foreground hover:text-foreground" />
-              <Breadcrumb>
-                <BreadcrumbList>
+          <header className="h-14 border-b border-border flex items-center justify-between px-3 sm:px-6 bg-card sticky top-0 z-10">
+            <div className="flex items-center min-w-0">
+              <SidebarTrigger className="mr-2 sm:mr-4 shrink-0 text-muted-foreground hover:text-foreground" />
+              <Breadcrumb className="min-w-0">
+                <BreadcrumbList className="flex-nowrap">
                   {breadcrumbs.map((crumb, index) => (
                     <BreadcrumbItem key={crumb.path + index}>
                       {index > 0 && <BreadcrumbSeparator />}
@@ -131,7 +131,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <WhatsAppDisconnectedAlert />
               <InstanceHealthHeaderBadge />
               <MuteNotificationsToggle variant="header" />
@@ -146,7 +146,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <DailyActivityBanner />
 
           {/* Main Content */}
-          <div ref={scrollRef} onScroll={handleScroll} className={`flex-1 p-6 overflow-y-auto overflow-x-hidden${activeCall ? ' pb-20' : ''}`}>{children}</div>
+          <div ref={scrollRef} onScroll={handleScroll} className={`flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden${activeCall ? ' pb-20' : ''}`}>{children}</div>
         </main>
       </div>
     </SidebarProvider>
