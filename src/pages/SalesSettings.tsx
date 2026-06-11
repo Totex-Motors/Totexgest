@@ -113,7 +113,6 @@ import { CoachPlaybooksTab } from "@/components/coach/CoachPlaybooksTab";
 import { MaterialsTabContent } from "@/pages/SalesMaterialsConfig";
 import { AIAgentTab } from "@/components/sales/ai/AIAgentTab";
 import { PipelineConfigTab } from "@/components/settings/PipelineConfigTab";
-import { TrainingCallsTab } from "@/components/settings/TrainingCallsTab";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useAllTeamMembers,
@@ -205,12 +204,6 @@ export default function SalesSettings() {
               <Phone className="h-4 w-4" />
               WaVoIP
             </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="training" className="flex items-center gap-2">
-                <Star className="h-4 w-4" />
-                Treinamento
-              </TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="pipeline" className="mt-6">
@@ -257,11 +250,6 @@ export default function SalesSettings() {
             <WavoipDeviceConfig />
           </TabsContent>
 
-          {isAdmin && (
-            <TabsContent value="training" className="mt-6">
-              <TrainingCallsTab />
-            </TabsContent>
-          )}
         </Tabs>
       </div>
     </AppLayout>

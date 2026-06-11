@@ -33,7 +33,6 @@ import {
   Save,
   X,
   FileDown,
-  BookOpen,
   NotebookPen,
 } from "lucide-react";
 import {
@@ -75,7 +74,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { CreateTaskModal } from "@/components/tasks/CreateTaskModal";
 import type { MeetingPDFData } from "@/components/meeting/MeetingPDF";
 import { cn } from "@/lib/utils";
-import { SaveToTrainingModal } from "@/components/sales/training/SaveToTrainingModal";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -331,11 +329,6 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
   const [editTranscriptionText, setEditTranscriptionText] = useState("");
   const [isSavingTranscription, setIsSavingTranscription] = useState(false);
 
-  // Training
-  const [showTrainingModal, setShowTrainingModal] = useState(false);
-  const [showTrainingNotes, setShowTrainingNotes] = useState(!!call?.training_notes);
-  const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [trainingNotesText, setTrainingNotesText] = useState(call?.training_notes || '');
   const rateCall = useRateCall();
 
   // PDF State
@@ -1261,87 +1254,6 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
                 </Collapsible>
               )}
 
-              {/* Notas de Estudo */}
-              <Collapsible open={showTrainingNotes} onOpenChange={setShowTrainingNotes}>
-                <CollapsibleTrigger asChild>
-                  <button className="w-full flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50 rounded-xl transition-colors">
-                    <span className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-                      <NotebookPen className="h-4 w-4" />
-                      Notas de Estudo
-                      {call?.training_notes && (
-                        <Badge variant="secondary" className="ml-1 font-normal text-[10px] bg-amber-200/60 dark:bg-amber-900/40">
-                          Com anotações
-                        </Badge>
-                      )}
-                    </span>
-                    {showTrainingNotes ? (
-                      <ChevronUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    )}
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="mt-2 p-3 border border-amber-200 dark:border-amber-800/50 rounded-xl space-y-2">
-                    {isEditingNotes || !call?.training_notes ? (
-                      <>
-                        <Textarea
-                          placeholder="Ex: Falei demais na hora de construir a lógica do advisor. Preciso ser mais objetivo na qualificação..."
-                          value={trainingNotesText}
-                          onChange={e => setTrainingNotesText(e.target.value)}
-                          className="min-h-[80px] text-sm resize-none"
-                        />
-                        <div className="flex items-center gap-2 justify-end">
-                          {call?.training_notes && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setTrainingNotesText(call.training_notes || '');
-                                setIsEditingNotes(false);
-                              }}
-                            >
-                              Cancelar
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            disabled={rateCall.isPending || !trainingNotesText.trim()}
-                            onClick={() => {
-                              rateCall.mutate(
-                                { callId: call.id, rating: call.rating ?? null, training_notes: trainingNotesText.trim() },
-                                {
-                                  onSuccess: () => {
-                                    toast({ title: "Notas salvas!" });
-                                    call.training_notes = trainingNotesText.trim();
-                                    setIsEditingNotes(false);
-                                  },
-                                  onError: () => toast({ title: "Erro ao salvar notas", variant: "destructive" }),
-                                }
-                              );
-                            }}
-                          >
-                            <Save className="h-3.5 w-3.5 mr-1.5" />
-                            Salvar
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-sm whitespace-pre-wrap text-muted-foreground">{call.training_notes}</p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsEditingNotes(true)}
-                        >
-                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                          Editar
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
 
               {/* Transcrição */}
               {(finalTranscriptions.length > 0 || isEditingTranscription) && (
@@ -1603,22 +1515,6 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
         </DialogContent>
       </Dialog>
 
-      {showTrainingModal && (
-        <SaveToTrainingModal
-          open={showTrainingModal}
-          onOpenChange={setShowTrainingModal}
-          defaultData={{
-            title: `Call: ${call.peer_name || 'Sem nome'}`,
-            source_type: 'call',
-            call_history_id: call.id,
-            transcription: call.transcriptions,
-            ai_analysis: rawAnalysis,
-            record_url: call.record_url || undefined,
-            lead_id: call.lead_id || undefined,
-            sales_rep_id: undefined,
-          }}
-        />
-      )}
 
       {/* Modal de criação de tarefa */}
       <CreateTaskModal

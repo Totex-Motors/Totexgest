@@ -22,7 +22,6 @@ import {
   ExternalLink,
   Copy,
   ClipboardCheck,
-  BookOpen,
 } from "lucide-react";
 import {
   Dialog,
@@ -59,7 +58,6 @@ import { cn } from "@/lib/utils";
 import type { TranscriptionSegment } from "@/hooks/useCallTranscription";
 import { PostCallNextSteps } from "./PostCallNextSteps";
 import { CallRating } from "./CallRating";
-import { SaveToTrainingModal } from "@/components/sales/training/SaveToTrainingModal";
 
 // Helper para inferir task_type
 function inferTaskType(titulo: string, descricao?: string): 'call' | 'meeting' | 'whatsapp' | 'email' | 'follow_up' {
@@ -146,7 +144,6 @@ export function CallEndedModal({ externalData, externalOpen, onExternalClose }: 
   const [copiedTranscription, setCopiedTranscription] = useState(false);
 
   // Training
-  const [showTrainingModal, setShowTrainingModal] = useState(false);
 
   // Task State
   const [tasks, setTasks] = useState<(SuggestedTask & { created: boolean })[]>([]);
@@ -852,15 +849,7 @@ export function CallEndedModal({ externalData, externalOpen, onExternalClose }: 
               Fechar
             </Button>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowTrainingModal(true)}
-              >
-                <BookOpen className="h-4 w-4 mr-2" />
-                Treinamento
-              </Button>
-              {callRecord?.lead_id && (
+{callRecord?.lead_id && (
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -877,22 +866,6 @@ export function CallEndedModal({ externalData, externalOpen, onExternalClose }: 
         </DialogContent>
       </Dialog>
 
-      {showTrainingModal && (
-        <SaveToTrainingModal
-          open={showTrainingModal}
-          onOpenChange={setShowTrainingModal}
-          defaultData={{
-            title: `Call: ${callEndedResult?.peerName || callRecord?.peer_name || 'Sem nome'}`,
-            source_type: 'call',
-            call_history_id: callEndedResult?.callId || callRecord?.id,
-            transcription: callRecord?.transcriptions || callEndedResult?.transcriptions,
-            ai_analysis: rawAnalysis,
-            record_url: callRecord?.record_url || undefined,
-            lead_id: callEndedResult?.leadId || callRecord?.lead_id || undefined,
-            sales_rep_id: undefined,
-          }}
-        />
-      )}
 
       {/* Modal de criação de tarefa */}
       <CreateTaskModal
