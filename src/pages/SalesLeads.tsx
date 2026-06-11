@@ -124,17 +124,17 @@ const SalesLeads = () => {
     <AppLayout>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-              <Users className="h-7 w-7 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-3">
+              <Users className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
               Leads Comerciais
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {leads?.length || 0} leads encontrados
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant={showHotOnly ? "default" : "outline"}
               size="sm"

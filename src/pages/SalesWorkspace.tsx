@@ -165,7 +165,7 @@ function HeroCard({
 
         <div className="relative">
           <p className="text-slate-400 text-sm">{saudacao}!</p>
-          <h1 className="text-2xl font-bold mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold mt-1 capitalize">
             {new Date().toLocaleDateString('pt-BR', {
               weekday: 'long',
               day: 'numeric',
@@ -173,7 +173,7 @@ function HeroCard({
             })}
           </h1>
 
-          <div className="mt-6 flex items-end gap-6">
+          <div className="mt-6 flex flex-wrap items-end gap-x-6 gap-y-3">
             <div>
               <p className="text-slate-400 text-sm">Ações pendentes</p>
               {loading ? (

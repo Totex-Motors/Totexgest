@@ -97,9 +97,9 @@ export function WeekViewGrid({
   const showNowLine = nowTop >= 0 && nowTop <= TOTAL_HOURS * HOUR_HEIGHT;
 
   return (
-    <div className="flex flex-col h-full border rounded-lg bg-background overflow-hidden">
+    <div className="flex flex-col h-full border rounded-lg bg-background overflow-x-auto overflow-y-hidden">
       {/* Header with day names */}
-      <div className="flex border-b bg-muted/30 sticky top-0 z-20">
+      <div className="flex border-b bg-muted/30 sticky top-0 z-20 min-w-[680px] md:min-w-0">
         <div className="w-14 shrink-0 border-r" />
         {weekDays.map((day, i) => (
           <div
@@ -127,7 +127,7 @@ export function WeekViewGrid({
 
       {/* Quick tasks chips row */}
       {quickTasks.length > 0 && (
-        <div className="flex border-b bg-muted/10">
+        <div className="flex border-b bg-muted/10 min-w-[680px] md:min-w-0">
           <div className="w-14 shrink-0 border-r" />
           {weekDays.map((day, i) => {
             const dayQuickTasks = quickTasks.filter(t => {
@@ -165,8 +165,8 @@ export function WeekViewGrid({
       )}
 
       {/* Scrollable time grid */}
-      <div ref={scrollRef} className="flex-1 overflow-auto relative">
-        <div className="flex" style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
+        <div className="flex min-w-[680px] md:min-w-0" style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}>
           {/* Time labels column */}
           <div className="w-14 shrink-0 border-r relative">
             {Array.from({ length: TOTAL_HOURS }, (_, i) => (

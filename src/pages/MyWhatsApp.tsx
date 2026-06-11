@@ -817,10 +817,10 @@ function CloudAPISection() {
 export default function MyWhatsApp() {
   return (
     <AppLayout>
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Meu WhatsApp</h1>
-          <p className="text-muted-foreground mt-1">Gerencie suas conexões de mensagens e ligações</p>
+          <h1 className="text-xl sm:text-2xl font-bold">Meu WhatsApp</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gerencie suas conexões de mensagens e ligações</p>
         </div>
 
         <CloudAPISection />

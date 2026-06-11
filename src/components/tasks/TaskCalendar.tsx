@@ -183,7 +183,7 @@ export function TaskCalendar({ tasks }: TaskCalendarProps) {
   return (
     <>
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-2 sm:p-4">
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -309,7 +309,7 @@ export function TaskCalendar({ tasks }: TaskCalendarProps) {
                           key={day.toISOString()}
                           onClick={(e) => handleDayClick(day, e)}
                           className={cn(
-                            "min-h-[70px] p-1 border rounded-lg cursor-pointer transition-all group",
+                            "min-h-[56px] sm:min-h-[70px] p-1 border rounded-lg cursor-pointer transition-all group",
                             !isCurrentMonth && "bg-muted/30 text-muted-foreground",
                             isCurrentDay && "ring-2 ring-primary",
                             "hover:bg-primary/5 hover:border-primary/30"

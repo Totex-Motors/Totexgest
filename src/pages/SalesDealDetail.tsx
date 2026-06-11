@@ -175,8 +175,8 @@ const SalesDealDetail = () => {
               </div>
 
               {/* Value and Actions */}
-              <div className="flex flex-col items-end gap-3">
-                <div className="text-right">
+              <div className="flex flex-col items-start md:items-end gap-3 w-full md:w-auto">
+                <div className="text-left md:text-right">
                   <p className="text-3xl font-bold text-primary">
                     {formatCurrency(Number(deal.negotiated_price) || 0)}
                   </p>
@@ -190,7 +190,7 @@ const SalesDealDetail = () => {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 md:justify-end">
                   {deal.status !== "lost" && (
                     <Button
                       variant="outline"

@@ -28,6 +28,7 @@ import {
   LogOut,
   LayoutGrid,
   Building2,
+  ChevronLeft,
   type LucideIcon,
 } from "lucide-react";
 
@@ -259,8 +260,13 @@ export default function SettingsUnified() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection = searchParams.get("s") || "modulos";
 
+  // No mobile alternamos entre o menu e o conteúdo da seção (sem isso o menu
+  // de 260px ocupa a tela toda e o conteúdo fica invisível).
+  const [mobileShowContent, setMobileShowContent] = useState(false);
+
   const handleNavigate = (sectionId: string) => {
     setSearchParams({ s: sectionId });
+    setMobileShowContent(true);
   };
 
   // Filter out admin-only / super-admin-only items
@@ -286,9 +292,14 @@ export default function SettingsUnified() {
 
   return (
     <AppLayout>
-      <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+      <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden -m-4 sm:-m-6">
         {/* ===== LEFT SIDEBAR ===== */}
-        <aside className="w-[260px] shrink-0 border-r border-border/50 bg-background/50">
+        <aside
+          className={cn(
+            "w-full md:w-[260px] shrink-0 border-r border-border/50 bg-background/50",
+            mobileShowContent && "max-md:hidden",
+          )}
+        >
           <ScrollArea className="h-full">
             <div className="p-4">
               {/* Header */}
@@ -353,9 +364,23 @@ export default function SettingsUnified() {
         </aside>
 
         {/* ===== CONTENT AREA ===== */}
-        <main className="flex-1 overflow-hidden">
+        <main
+          className={cn(
+            "flex-1 overflow-hidden",
+            !mobileShowContent && "max-md:hidden",
+          )}
+        >
           <ScrollArea className="h-full">
-            <div className="max-w-4xl p-6 lg:p-8">
+            <div className="max-w-4xl p-4 sm:p-6 lg:p-8">
+              {/* Botão voltar — só no mobile */}
+              <button
+                onClick={() => setMobileShowContent(false)}
+                className="md:hidden flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Configurações
+              </button>
+
               {/* Section header with description */}
               {activeItem && (
                 <div className="mb-6 pb-4 border-b border-border/30">

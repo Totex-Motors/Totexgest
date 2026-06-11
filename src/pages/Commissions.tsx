@@ -12,16 +12,16 @@ const Commissions = () => {
   const [activeTab, setActiveTab] = useState("commissions");
 
   return (
-    <AppLayout
-      title="Comissoes"
-      subtitle="Gerencie comissoes e regras de pagamento"
-      icon={<DollarSign className="h-6 w-6" />}
-      breadcrumbs={[
-        { label: "Comercial", href: "/comercial" },
-        { label: "Comissoes" },
-      ]}
-    >
-      <div className="p-6 space-y-6">
+    <AppLayout>
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <DollarSign className="h-6 w-6 text-primary shrink-0" />
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Comissões</h1>
+            <p className="text-sm text-muted-foreground">Gerencie comissões e regras de pagamento</p>
+          </div>
+        </div>
+
         {/* Summary Cards */}
         <CommissionSummaryCard />
 

@@ -382,28 +382,28 @@ const TeamCalendar = () => {
         animate="animate"
       >
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">
               Calendário do Time
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Clique em um dia ou horário para criar uma tarefa
             </p>
           </div>
           <div className="flex gap-2">
             {teamMember?.google_calendar_connected && (
-              <Button 
-                variant="outline" 
-                onClick={handleSyncGoogleCalendar} 
+              <Button
+                variant="outline"
+                onClick={handleSyncGoogleCalendar}
                 disabled={isSyncing}
-                className="gap-2"
+                className="gap-2 flex-1 sm:flex-none"
               >
                 <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Sincronizando...' : 'Sync Google'}
+                <span className="truncate">{isSyncing ? 'Sincronizando...' : 'Sync Google'}</span>
               </Button>
             )}
-            <Button onClick={handleNewTask} className="gap-2">
+            <Button onClick={handleNewTask} className="gap-2 flex-1 sm:flex-none">
               <Plus className="h-4 w-4" />
               Nova Tarefa
             </Button>
@@ -413,9 +413,9 @@ const TeamCalendar = () => {
         {/* Controls */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Left side - Navigation */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <Button variant="outline" size="sm" onClick={goToToday}>
                   Hoje
                 </Button>
@@ -427,7 +427,7 @@ const TeamCalendar = () => {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-                <h2 className="text-lg font-semibold min-w-[200px]">
+                <h2 className="text-base sm:text-lg font-semibold sm:min-w-[200px] capitalize">
                   {viewMode === "month"
                     ? format(currentDate, "MMMM yyyy", { locale: ptBR })
                     : `Semana de ${format(
@@ -439,7 +439,7 @@ const TeamCalendar = () => {
               </div>
 
               {/* Right side - Filters */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                 {/* View mode toggle */}
                 <div className="flex items-center border rounded-lg p-1">
                   <Button
@@ -508,7 +508,7 @@ const TeamCalendar = () => {
         {viewMode === "month" ? (
           /* Month View */
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-2 sm:p-4">
               {/* Week days header */}
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {weekDays.map((day) => (
@@ -611,7 +611,7 @@ const TeamCalendar = () => {
                               key={day.toISOString()}
                               onClick={(e) => handleDayClick(day, e)}
                               className={cn(
-                                "min-h-[80px] p-1.5 border rounded-lg cursor-pointer transition-all group",
+                                "min-h-[64px] sm:min-h-[80px] p-1 sm:p-1.5 border rounded-lg cursor-pointer transition-all group",
                                 !isCurrentMonth && "bg-muted/30 text-muted-foreground",
                                 isCurrentDay && "ring-2 ring-primary",
                                 "hover:bg-primary/5 hover:border-primary/30"
@@ -750,7 +750,8 @@ const TeamCalendar = () => {
         ) : (
           /* Week View */
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-2 sm:p-4 overflow-x-auto">
+             <div className="min-w-[640px]">
               {/* Week header */}
               <div className="grid grid-cols-8 gap-1 mb-2">
                 <div className="w-16" /> {/* Time column spacer */}
@@ -843,6 +844,7 @@ const TeamCalendar = () => {
                   </div>
                 ))}
               </div>
+             </div>
             </CardContent>
           </Card>
         )}

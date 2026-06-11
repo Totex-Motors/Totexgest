@@ -205,12 +205,12 @@ const TaskManagement = () => {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">
               Gestão de Tarefas
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {viewMode === "my" ? "Suas tarefas pendentes e concluídas" : "Todas as tarefas do time"}
             </p>
           </div>
@@ -221,12 +221,13 @@ const TaskManagement = () => {
                 size="sm"
                 onClick={handleSyncGoogleCalendar}
                 disabled={isSyncing}
+                className="flex-1 sm:flex-none"
               >
                 <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
                 {isSyncing ? "Sincronizando..." : "Sync"}
               </Button>
             )}
-            <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Button onClick={() => setIsCreateModalOpen(true)} className="flex-1 sm:flex-none">
               <Plus className="h-4 w-4 mr-2" />
               Nova Tarefa
             </Button>
