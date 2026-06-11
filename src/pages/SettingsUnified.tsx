@@ -45,7 +45,6 @@ import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConf
 // === Comercial sub-tabs (reused) ===
 import { PipelineConfigTab } from "@/components/settings/PipelineConfigTab";
 import { AutomationRulesTab } from "@/components/settings/AutomationRulesTab";
-import { TrainingCallsTab } from "@/components/settings/TrainingCallsTab";
 import { AIAgentTab } from "@/components/sales/ai/AIAgentTab";
 import { CoachPlaybooksTab } from "@/components/coach/CoachPlaybooksTab";
 import { MaterialsTabContent } from "@/pages/SalesMaterialsConfig";
@@ -213,13 +212,6 @@ const navigationSections: NavSection[] = [
         label: "Membros do Time",
         icon: Users,
         description: "Adicione, edite e desative membros da equipe. Defina cargos (admin, vendedor, closer, SDR) e permissões de acesso.",
-      },
-      {
-        id: "treinamento",
-        label: "Treinamento",
-        icon: Star,
-        description: "Ligações marcadas para treinamento. Ouça gravações com a equipe e use a análise da IA para capacitar vendedores.",
-        adminOnly: true,
       },
     ],
   },
@@ -433,8 +425,6 @@ function SettingsContent({ section }: { section: string }) {
     // Equipe
     case "membros":
       return <TeamTab />;
-    case "treinamento":
-      return <TrainingCallsTab />;
 
     // Notificações
     case "regras-notificacao":

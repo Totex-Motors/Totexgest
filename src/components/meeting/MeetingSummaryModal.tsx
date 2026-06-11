@@ -39,10 +39,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Minus,
-  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SaveToTrainingModal } from '@/components/sales/training/SaveToTrainingModal';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -77,7 +75,6 @@ export function MeetingSummaryModal({
   const createTasks = useCreateTasksFromSuggestions();
 
   const analysis = meeting?.ai_analysis as MeetingAIAnalysis | null;
-  const [showTrainingModal, setShowTrainingModal] = useState(false);
 
   // Estado para tarefas selecionadas e editáveis
   const [selectedTasks, setSelectedTasks] = useState<Record<number, boolean>>({});
@@ -547,11 +544,7 @@ export function MeetingSummaryModal({
               {Object.values(selectedTasks).filter(Boolean).length} tarefa(s) selecionada(s)
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowTrainingModal(true)}>
-                <BookOpen className="h-4 w-4 mr-2" />
-                Treinamento
-              </Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+<Button variant="outline" onClick={() => onOpenChange(false)}>
                 Fechar
               </Button>
               <Button
@@ -569,22 +562,6 @@ export function MeetingSummaryModal({
       </DialogContent>
     </Dialog>
 
-    {showTrainingModal && meeting && (
-      <SaveToTrainingModal
-        open={showTrainingModal}
-        onOpenChange={setShowTrainingModal}
-        defaultData={{
-          title: `Reunião: ${meeting.lead?.name || meeting.title || 'Sem nome'}`,
-          source_type: 'meeting',
-          meeting_id: meeting.id,
-          transcription: meeting.transcriptions,
-          ai_analysis: analysis,
-          record_url: undefined,
-          lead_id: meeting.lead_id || undefined,
-          sales_rep_id: undefined,
-        }}
-      />
-    )}
   </>
   );
 }

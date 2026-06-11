@@ -31,7 +31,7 @@ const MODULES: ModuleDef[] = [
   {
     id: "comercial",
     label: "Comercial",
-    description: "Pipeline de vendas, leads, deals, propostas e todo o funil comercial. Inclui Cockpit do vendedor, inbox de WhatsApp comercial, agenda e treinamento.",
+    description: "Pipeline de vendas, leads, deals, propostas e todo o funil comercial. Inclui Cockpit do vendedor, inbox de WhatsApp comercial e agenda.",
     icon: DollarSign,
     defaultEnabled: true,
     category: "core",
