@@ -444,7 +444,7 @@ function LojasTab() {
 
       <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
         <p className="font-medium">URL do webhook para a Credere:</p>
-        <code className="block text-xs bg-background border rounded px-3 py-2 select-all overflox-x-auto">
+        <code className="block text-xs bg-background border rounded px-3 py-2 select-all break-all">
           {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/credere-webhook`}
         </code>
         <p className="text-xs text-muted-foreground">
