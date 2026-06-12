@@ -366,12 +366,12 @@ export default function SettingsUnified() {
         {/* ===== CONTENT AREA ===== */}
         <main
           className={cn(
-            "flex-1 overflow-hidden",
+            "flex-1 min-w-0 overflow-hidden",
             !mobileShowContent && "max-md:hidden",
           )}
         >
-          <ScrollArea className="h-full">
-            <div className="max-w-4xl p-4 sm:p-6 lg:p-8">
+          <div className="h-full overflow-y-auto overflow-x-hidden">
+            <div className="max-w-4xl min-w-0 p-4 sm:p-6 lg:p-8">
               {/* Botão voltar — só no mobile */}
               <button
                 onClick={() => setMobileShowContent(false)}
@@ -394,7 +394,7 @@ export default function SettingsUnified() {
               {/* Dynamic content */}
               <SettingsContent section={activeSection} />
             </div>
-          </ScrollArea>
+          </div>
         </main>
       </div>
     </AppLayout>

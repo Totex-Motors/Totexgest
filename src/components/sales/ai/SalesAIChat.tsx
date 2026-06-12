@@ -833,8 +833,8 @@ ${playbookContent}
         "fixed shadow-2xl z-50 transition-all duration-300 flex flex-col border-2 border-blue-200",
         isExpanded
           ? "bottom-4 right-4 left-4 top-4 w-auto md:bottom-6 md:right-6 md:left-auto md:top-auto md:w-[750px] md:h-[85vh]"
-          : "bottom-6 right-6 w-[450px] h-[650px]",
-        isMinimized && "h-14"
+          : "inset-x-3 bottom-3 w-auto h-[75vh] sm:inset-x-auto sm:left-auto sm:bottom-6 sm:right-6 sm:w-[450px] sm:h-[650px]",
+        isMinimized && "h-14 sm:h-14"
       )}
     >
       {/* Header */}

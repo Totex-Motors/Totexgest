@@ -620,11 +620,11 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, defaultValues, 
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 min-h-0 pr-1">
-          {/* Layout em 2 colunas */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Layout em 2 colunas (empilha no celular) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* COLUNA ESQUERDA - Configurações */}
             <div className="space-y-3">
-              {/* Tipo e Respons\u00e1vel */}
+              {/* Tipo e Responsável */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Tipo</Label>
@@ -649,7 +649,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, defaultValues, 
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs">Respons\u00e1vel</Label>
+                  <Label className="text-xs">Responsável</Label>
                   <Select value={assigneeId} onValueChange={setAssigneeId}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Selecionar..." />
@@ -1045,7 +1045,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, defaultValues, 
                   <RadioGroup
                     value={meetingType}
                     onValueChange={(v) => setMeetingType(v as 'auto' | 'external' | 'none')}
-                    className="flex gap-3"
+                    className="flex flex-wrap gap-2"
                   >
                     <Label
                       htmlFor="meeting-auto"

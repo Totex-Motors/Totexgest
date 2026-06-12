@@ -599,8 +599,8 @@ export function ProductsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Categoria</TableHead>
+                <TableHead className="hidden md:table-cell">SKU</TableHead>
+                <TableHead className="hidden sm:table-cell">Categoria</TableHead>
                 <TableHead className="text-right">Preco</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="w-[120px]">Acoes</TableHead>
@@ -610,8 +610,8 @@ export function ProductsTab() {
               {products?.map((product) => (
                 <TableRow key={product.id} className={cn(!product.is_active && "opacity-60")}>
                   <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{product.sku || "-"}</TableCell>
-                  <TableCell>{product.category || "-"}</TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">{product.sku || "-"}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{product.category || "-"}</TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatCurrency(product.price)}
                   </TableCell>
@@ -998,12 +998,12 @@ export function TeamTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead>Cargo</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>WhatsApp</TableHead>
-                  <TableHead>Ligações (WaVoIP)</TableHead>
+                  <TableHead className="hidden lg:table-cell">Email</TableHead>
+                  <TableHead className="hidden xl:table-cell">Telefone</TableHead>
+                  <TableHead className="hidden sm:table-cell">Cargo</TableHead>
+                  <TableHead className="hidden lg:table-cell">Time</TableHead>
+                  <TableHead className="hidden md:table-cell">WhatsApp</TableHead>
+                  <TableHead className="hidden xl:table-cell">Ligações (WaVoIP)</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead className="w-[140px]">Ações</TableHead>
                 </TableRow>
@@ -1012,24 +1012,24 @@ export function TeamTab() {
                 {allMembers.map((member) => (
                   <TableRow key={member.id} className={cn(!member.is_active && "opacity-50")}>
                     <TableCell className="font-medium">{member.name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
                       <div className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
                         {member.email}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{member.phone || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden xl:table-cell text-muted-foreground text-sm">{member.phone || "-"}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <Badge variant="outline" className="text-xs">
                         {roleLabels[member.role || ""] || member.role}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden lg:table-cell">
                       <Badge variant="secondary" className="text-xs">
                         {teamLabels[member.team || ""] || member.team || "-"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {savingWAId === member.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : loadingInstances ? (
@@ -1054,7 +1054,7 @@ export function TeamTab() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden xl:table-cell">
                       {loadingWavoip ? (
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                       ) : (() => {
