@@ -10,13 +10,15 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, Building2, Copy, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { Plus, Building2, Copy, CheckCircle2, Loader2, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import {
   useSuperAdminTenants,
   useProvisionTenant,
   useSetTenantStatus,
   useSetTenantModule,
+  useInviteTenantAdmin,
+  type AdminTenant,
 } from "@/hooks/useSuperAdminTenants";
 
 function formatDate(iso?: string) {
@@ -169,6 +171,100 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+// ─── Convidar admin para uma loja existente ────────────────────────────────────
+
+function InviteAdminDialog({ tenant, onClose }: { tenant: AdminTenant; onClose: () => void }) {
+  const invite = useInviteTenantAdmin();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+    const res = await invite.mutateAsync({
+      tenant_id: tenant.id,
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
+    });
+    setInviteUrl(res.invite_url ?? null);
+    setDone(true);
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Convidar admin — {tenant.name}</DialogTitle>
+          <DialogDescription>
+            Envia um convite por email pro responsável da loja. Ele define a senha e entra
+            como admin do tenant.
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">Convite enviado!</span>
+            </div>
+            {inviteUrl ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Link de convite (válido por tempo limitado — envie pro lojista se o email não chegar):
+                </Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted rounded px-2 py-2 truncate">{inviteUrl}</code>
+                  <Button
+                    type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0"
+                    onClick={() => { navigator.clipboard.writeText(inviteUrl); toast.success("Link copiado"); }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                O convite foi enviado por email. Se o envio de email não estiver configurado,
+                gere o link pelo Supabase Dashboard.
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" onClick={onClose}>Concluir</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="invName">Nome *</Label>
+              <Input id="invName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do responsável" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="invEmail">Email *</Label>
+                <Input id="invEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@loja.com.br" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="invPhone">Telefone</Label>
+                <Input id="invPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button type="submit" disabled={invite.isPending}>
+                {invite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar convite"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Seção principal ────────────────────────────────────────────────────────────
 
 export function SuperAdminTenantsSection() {
@@ -176,6 +272,7 @@ export function SuperAdminTenantsSection() {
   const setStatus = useSetTenantStatus();
   const setModule = useSetTenantModule();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [inviteTenant, setInviteTenant] = useState<AdminTenant | null>(null);
 
   return (
     <div className="space-y-4">
@@ -222,7 +319,20 @@ export function SuperAdminTenantsSection() {
                     </div>
                   </TableCell>
                   <TableCell><code className="text-xs text-muted-foreground">{t.slug}</code></TableCell>
-                  <TableCell className="text-sm">{t.members_active}/{t.members_total}</TableCell>
+                  <TableCell className="text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>{t.members_active}/{t.members_total}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => setInviteTenant(t)}
+                        title="Convidar admin para esta loja"
+                      >
+                        <UserPlus className="h-3 w-3" /> Convidar
+                      </Button>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Switch
                       checked={t.enabled_modules?.credere === true}
@@ -247,6 +357,14 @@ export function SuperAdminTenantsSection() {
       </div>
 
       <NewTenantDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+
+      {inviteTenant && (
+        <InviteAdminDialog
+          key={inviteTenant.id}
+          tenant={inviteTenant}
+          onClose={() => setInviteTenant(null)}
+        />
+      )}
     </div>
   );
 }

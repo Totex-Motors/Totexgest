@@ -100,3 +100,21 @@ export const useSetTenantModule = () => {
     onError: (err: Error) => toast.error(err.message || "Erro ao atualizar módulo"),
   });
 };
+
+export interface InviteAdminResult {
+  user_id: string;
+  invite_url: string | null;
+}
+
+export const useInviteTenantAdmin = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { tenant_id: string; name: string; email: string; phone?: string }) =>
+      callAdminTenants<InviteAdminResult>("invite_admin", vars),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["super-admin-tenants"] });
+      toast.success("Convite enviado ao admin da loja");
+    },
+    onError: (err: Error) => toast.error(err.message || "Erro ao convidar admin"),
+  });
+};
