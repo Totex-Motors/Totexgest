@@ -140,7 +140,7 @@ export function TimeInput({ value, onChange, className }: TimeInputProps) {
           onKeyDown={handleInputKeyDown}
           onBlur={handleInputBlur}
           onFocus={() => setIsOpen(true)}
-          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground h-full py-2 pr-1"
+          className="flex-1 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground h-full py-2 pr-1"
           maxLength={5}
         />
         <button

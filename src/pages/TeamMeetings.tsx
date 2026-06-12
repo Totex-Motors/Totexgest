@@ -709,7 +709,7 @@ const TeamMeetings = () => {
               Nova Reunião do Time
             </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* COLUNA ESQUERDA */}
             <div className="space-y-3">
               {/* Título */}
@@ -786,7 +786,7 @@ const TeamMeetings = () => {
                 <RadioGroup
                   value={meetingLinkType}
                   onValueChange={(v) => setMeetingLinkType(v as 'auto' | 'external' | 'none')}
-                  className="flex gap-3"
+                  className="flex flex-wrap gap-2"
                 >
                   <Label
                     htmlFor="mt-auto"

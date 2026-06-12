@@ -290,10 +290,10 @@ export function SuperAdminTenantsSection() {
           <TableHeader>
             <TableRow>
               <TableHead>Loja</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Membros</TableHead>
+              <TableHead className="hidden lg:table-cell">Slug</TableHead>
+              <TableHead className="hidden sm:table-cell">Membros</TableHead>
               <TableHead>Credere</TableHead>
-              <TableHead>Criada</TableHead>
+              <TableHead className="hidden md:table-cell">Criada</TableHead>
               <TableHead>Ativa</TableHead>
             </TableRow>
           </TableHeader>
@@ -318,8 +318,8 @@ export function SuperAdminTenantsSection() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell><code className="text-xs text-muted-foreground">{t.slug}</code></TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="hidden lg:table-cell"><code className="text-xs text-muted-foreground">{t.slug}</code></TableCell>
+                  <TableCell className="hidden sm:table-cell text-sm">
                     <div className="flex items-center gap-2">
                       <span>{t.members_active}/{t.members_total}</span>
                       <Button
@@ -340,7 +340,7 @@ export function SuperAdminTenantsSection() {
                       onCheckedChange={(v) => setModule.mutate({ tenant_id: t.id, module: "credere", enabled: v })}
                     />
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(t.created_at)}</TableCell>
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{formatDate(t.created_at)}</TableCell>
                   <TableCell>
                     <Switch
                       checked={t.is_active}
