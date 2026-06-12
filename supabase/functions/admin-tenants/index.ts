@@ -236,7 +236,46 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, enabled_modules: next });
     }
 
-    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status, set_module` }, 400);
+    // ── INVITE_ADMIN: convida um admin para um tenant EXISTENTE ───────────────
+    if (action === "invite_admin") {
+      const { tenant_id, name, email, phone } = data ?? {};
+      if (!tenant_id || !email || !name) {
+        return json({ error: "Campos obrigatórios: tenant_id, name, email" }, 400);
+      }
+
+      const { data: tenant } = await supabase
+        .from("tenants").select("id, name").eq("id", tenant_id).maybeSingle();
+      if (!tenant) return json({ error: "Tenant não encontrado" }, 404);
+
+      const { data: invite, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(
+        email,
+        { data: { name } },
+      );
+      if (inviteErr || !invite?.user) {
+        return json({ error: `Falha ao convidar admin: ${inviteErr?.message ?? "desconhecido"}` }, 400);
+      }
+
+      const userId = invite.user.id;
+      const inviteUrl = (invite as { properties?: { action_link?: string } }).properties?.action_link ?? null;
+
+      // app_metadata amarra o usuário ao tenant (RLS); team_members dá o papel admin.
+      await supabase.auth.admin.updateUserById(userId, {
+        app_metadata: { tenant_id, role: "admin" },
+      });
+      await supabase.from("team_members").insert({
+        tenant_id,
+        auth_user_id: userId,
+        name,
+        email,
+        phone: phone ?? null,
+        role: "admin",
+        is_active: true,
+      });
+
+      return json({ user_id: userId, invite_url: inviteUrl });
+    }
+
+    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status, set_module, invite_admin` }, 400);
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }
