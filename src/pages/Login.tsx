@@ -157,7 +157,7 @@ export default function Login() {
           >
             <div className="flex items-center gap-3 mb-2">
               <img
-                src="/logo_totex.png"
+                src="/logo_totex1.png"
                 alt={BRAND.name}
                 className="h-12 w-auto object-contain drop-shadow-[0_0_25px_rgba(20,184,166,0.25)]"
               />
@@ -260,7 +260,7 @@ export default function Login() {
           <div className="lg:hidden text-center mb-10">
             <div className="flex items-center justify-center mb-3">
               <img
-                src="/logo_totex.png"
+                src="/logo_totex1.png"
                 alt={BRAND.name}
                 className="h-14 w-auto object-contain drop-shadow-[0_0_20px_rgba(20,184,166,0.25)]"
               />

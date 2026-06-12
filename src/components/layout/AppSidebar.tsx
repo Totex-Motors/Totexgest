@@ -164,21 +164,21 @@ export function AppSidebar() {
           >
             <div
               className={cn(
-                "relative shrink-0 w-9 h-9 rounded-xl overflow-hidden",
+                "relative shrink-0 w-20 h-12",
                 "flex items-center justify-center",
                 "transition-transform duration-300 group-hover:scale-105"
               )}
             >
               <img
-                src="/logo_totex.png"
+                src="/logo_totex1.png"
                 alt="Totex Motors"
-                className="w-full h-full object-contain"
+                className="w-[140%] h-[140%] object-contain"
               />
             </div>
 
             {!isCollapsed && (
               <div className="flex flex-col min-w-0 leading-tight">
-                <span className="text-[13px] font-semibold tracking-tight text-sidebar-accent-foreground truncate">
+                <span className="text-[15px] font-semibold tracking-tight text-sidebar-accent-foreground truncate">
                   TotexGest
                 </span>
               </div>
