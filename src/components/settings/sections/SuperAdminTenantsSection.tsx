@@ -116,7 +116,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
               <Label htmlFor="tradeName">Nome da loja *</Label>
               <Input id="tradeName" value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="Ex: Auto Premium SP" required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="cnpj">CNPJ</Label>
                 <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" />
@@ -145,7 +145,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
                   <Label htmlFor="adminName">Nome</Label>
                   <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nome do responsável" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="adminEmail">Email</Label>
                     <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@loja.com.br" />
@@ -276,11 +276,11 @@ export function SuperAdminTenantsSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {tenants.length} {tenants.length === 1 ? "loja" : "lojas"} cadastrada(s) no CRM.
         </p>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" onClick={() => setDialogOpen(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" /> Nova loja
         </Button>
       </div>

@@ -158,7 +158,7 @@ export function WavoipAdminPanel() {
             </AlertDescription>
           </Alert>
 
-          <div className="grid grid-cols-3 gap-3 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
             <div className="p-3 rounded-lg border bg-muted/40">
               <div className="text-2xl font-bold">{activeMembers.length}</div>
               <div className="text-xs text-muted-foreground flex items-center gap-1">

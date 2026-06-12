@@ -472,13 +472,13 @@ function LojasTab() {
         <p className="font-medium">Configuração do webhook no marketplace:</p>
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">URL do webhook:</p>
-          <code className="block text-xs bg-background border rounded px-3 py-2 select-all">
+          <code className="block text-xs bg-background border rounded px-3 py-2 select-all break-all">
             {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/marketplace-lead-webhook`}
           </code>
         </div>
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">
-            Header de autenticação: <code>Authorization: Bearer &lt;MARKETPLACE_WEBHOOK_SECRET&gt;</code>
+          <p className="text-xs text-muted-foreground break-words">
+            Header de autenticação: <code className="break-all">Authorization: Bearer &lt;MARKETPLACE_WEBHOOK_SECRET&gt;</code>
           </p>
           <p className="text-xs text-muted-foreground">
             Configure o secret em <strong>Configurações → Integrações → API Keys</strong> (chave: MARKETPLACE_WEBHOOK_SECRET).
