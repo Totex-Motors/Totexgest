@@ -547,7 +547,7 @@ export function PipelineBoardContent() {
         {/* Header Fixo */}
         <div className="flex-shrink-0 pb-4 space-y-3">
           {/* Row 1: Title bar */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0">
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 shrink-0">Pipeline</h1>
               {pipelines && pipelines.length > 1 && (

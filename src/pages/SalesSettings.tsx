@@ -424,7 +424,7 @@ export function AnalysisTemplatesTab() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
@@ -579,12 +579,12 @@ export function ProductsTab() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <CardTitle>Produtos</CardTitle>
           <CardDescription>Gerencie os produtos disponíveis para venda</CardDescription>
         </div>
-        <Button onClick={openCreateModal}>
+        <Button onClick={openCreateModal} className="w-full sm:w-auto shrink-0">
           <Plus className="h-4 w-4 mr-2" />
           Novo Produto
         </Button>
@@ -678,7 +678,7 @@ export function ProductsTab() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Preco (R$)</Label>
                 <Input
@@ -743,18 +743,18 @@ export function CommissionsTab() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <CardTitle>Comissoes</CardTitle>
               <CardDescription>
                 Gerencie comissoes, regras e gateways de pagamento
               </CardDescription>
             </div>
-            <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
-              <TabsList>
-                <TabsTrigger value="list">Lista</TabsTrigger>
-                <TabsTrigger value="rules">Regras</TabsTrigger>
-                <TabsTrigger value="gateways">Gateways</TabsTrigger>
+            <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full sm:w-auto">
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="list" className="flex-1 sm:flex-none">Lista</TabsTrigger>
+                <TabsTrigger value="rules" className="flex-1 sm:flex-none">Regras</TabsTrigger>
+                <TabsTrigger value="gateways" className="flex-1 sm:flex-none">Gateways</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -972,8 +972,8 @@ export function TeamTab() {
       {/* ===== GESTÃO DE EQUIPE ===== */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
                 Gestão de Equipe
@@ -982,7 +982,7 @@ export function TeamTab() {
                 Crie, edite e gerencie os membros do time
               </CardDescription>
             </div>
-            <Button onClick={() => setIsCreateOpen(true)}>
+            <Button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto shrink-0">
               <UserPlus className="h-4 w-4 mr-2" />
               Novo Membro
             </Button>
@@ -1154,7 +1154,7 @@ export function TeamTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nome *</Label>
                 <Input
@@ -1190,7 +1190,7 @@ export function TeamTab() {
                 placeholder="Senha inicial"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Cargo</Label>
                 <Select
@@ -1247,7 +1247,7 @@ export function TeamTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
@@ -1264,7 +1264,7 @@ export function TeamTab() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Cargo</Label>
                 <Select value={editForm.role} onValueChange={(v) => setEditForm({ ...editForm, role: v })}>
@@ -1503,8 +1503,8 @@ export function PlaybooksTab() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
               <BookOpen className="h-5 w-5" />
               Playbook de Vendas
@@ -1518,7 +1518,7 @@ export function PlaybooksTab() {
               Configure o contexto e diretrizes para a IA de vendas
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Tabs value={activeView} onValueChange={(v) => setActiveView(v as "edit" | "preview")}>
               <TabsList>
                 <TabsTrigger value="edit" className="gap-2">
@@ -1694,7 +1694,7 @@ function InstagramAccountModal({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="instagram_business_id">Instagram Business ID (opcional)</Label>
               <Input
@@ -1832,7 +1832,7 @@ function InstagramRuleModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="rule_name">Nome da Regra</Label>
               <Input
@@ -1886,7 +1886,7 @@ function InstagramRuleModal({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>De Estágio</Label>
               <Select

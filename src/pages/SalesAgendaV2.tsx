@@ -668,7 +668,7 @@ export function AgendaViewContent() {
     <>
       <div className={cn(
         "flex flex-col",
-        viewMode !== "calendar" ? "h-[calc(100vh-64px)]" : "",
+        viewMode !== "calendar" ? "h-[calc(100vh-64px)]" : "h-full min-h-0",
       )}>
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3 border-b bg-background shrink-0">
