@@ -6,4 +6,10 @@ import { patchAudioWorkletForWavoip } from "./lib/wavoip-init";
 // Aplica patch no AudioWorklet antes de qualquer import do SDK WaVoIP rodar.
 patchAudioWorkletForWavoip();
 
+// Quando um chunk lazy falha (index.html cacheado com hashes antigos após deploy),
+// recarrega a página para buscar o index.html novo e os chunks corretos.
+window.addEventListener('vite:preloadError', () => {
+  window.location.reload();
+});
+
 createRoot(document.getElementById("root")!).render(<App />);
