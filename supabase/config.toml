@@ -178,6 +178,24 @@ verify_jwt = false
 [functions.asaas-sync-payments]
 verify_jwt = false
 
+# ── Plataforma de Agentes IA ──
+# (runner chamado por webhooks/cron com service key; telegram pelo Telegram sem JWT;
+#  codex-import/generate-embedding chamados internamente)
+[functions.agent-runner]
+verify_jwt = false
+
+[functions.agent-jobs-poller]
+verify_jwt = false
+
+[functions.generate-embedding]
+verify_jwt = false
+
+[functions.agents-codex-import]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
+
 # ============================================================
 # DEFAULT (verify_jwt = true) — não listadas aqui
 # ============================================================
