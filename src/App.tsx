@@ -82,6 +82,17 @@ import NotFound from "./pages/NotFound";
 import SettingsUnified from "./pages/SettingsUnified";
 const MyWhatsApp = React.lazy(() => import("./pages/MyWhatsApp"));
 
+// Plataforma de Agentes IA
+const AgentList = React.lazy(() => import("./agents-platform/pages/AgentList"));
+const AgentConfigPage = React.lazy(() => import("./agents-platform/pages/AgentConfigPage"));
+const AgentChatPage = React.lazy(() => import("./agents-platform/pages/AgentChatPage"));
+const AgentPlaygroundPage = React.lazy(() => import("./agents-platform/pages/AgentPlaygroundPage"));
+const AgentSkillsLibraryPage = React.lazy(() => import("./agents-platform/pages/AgentSkillsLibraryPage"));
+const AgentCredentialsPage = React.lazy(() => import("./agents-platform/pages/AgentCredentialsPage"));
+const AgentSessionsPage = React.lazy(() => import("./agents-platform/pages/AgentSessionsPage"));
+const AgentMetricsPage = React.lazy(() => import("./agents-platform/pages/AgentMetricsPage"));
+const AgentOrgChartPage = React.lazy(() => import("./agents-platform/pages/AgentOrgChartPage"));
+
 // Sales/Commercial pages (core CRM)
 import SalesDashboard from "./pages/SalesDashboardV3";
 import SalesLeads from "./pages/SalesLeads";
@@ -188,6 +199,21 @@ const AppRoutes = () => {
       <Route path="/settings" element={<Navigate to="/configuracoes" replace />} />
       <Route path="/whatsapp" element={<Navigate to="/configuracoes?s=whatsapp" replace />} />
       <Route path="/meu-whatsapp" element={<ProtectedRoute><React.Suspense fallback={<div />}><MyWhatsApp /></React.Suspense></ProtectedRoute>} />
+
+      {/* Plataforma de Agentes IA — rotas FIXAS antes das :slug (senão "habilidades" vira slug) */}
+      <Route path="/agentes" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentList /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/habilidades" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentSkillsLibraryPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/credenciais" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentCredentialsPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/organograma" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentOrgChartPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/sessoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentSessionsPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/playground" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentPlaygroundPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentConfigPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug/config" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentConfigPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug/chat" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentChatPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug/playground" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentPlaygroundPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug/sessoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentSessionsPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
 
       {/* Sales/Commercial routes */}
       <Route path="/comercial/cockpit" element={<ProtectedRoute><CockpitShell /></ProtectedRoute>} />

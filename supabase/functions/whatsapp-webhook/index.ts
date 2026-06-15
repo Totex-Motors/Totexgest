@@ -7,6 +7,7 @@ import { callTicketRouterLLM, TicketDecisionAction } from "./llm.ts";
 import { getOrCreateContactWithProfilePic } from "./contacts.ts";
 import { getOrCreateGroup } from "./groups.ts";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,7 +111,7 @@ serve(async (req: Request) => {
           await handleEditedMessage(supabase, instanceId, msgPayload);
         }
         else {
-          await handleIncomingMessage(supabase, instanceId, msgPayload, instanceData.teams, instanceApiKey, instanceApiUrl, OPENAI_API_KEY, GEMINI_API_KEY);
+          await handleIncomingMessage(supabase, instanceId, msgPayload, instanceData.teams, instanceApiKey, instanceApiUrl, OPENAI_API_KEY, GEMINI_API_KEY, instanceData.tenant_id);
         }
         break;
       }
@@ -149,7 +150,8 @@ async function handleIncomingMessage(
   instanceApiKey: string | null,
   instanceApiUrl: string | null,
   OPENAI_API_KEY: string | null,
-  GEMINI_API_KEY: string | null
+  GEMINI_API_KEY: string | null,
+  tenantId: string | null = null
 ) {
   const messageId = payload.id || payload.messageid || payload.MessageID;
   const remoteJid = payload.chatid || payload.wa_chatid || payload.Chat || payload.chatId;
@@ -440,6 +442,28 @@ async function handleIncomingMessage(
   }
 
   console.log('[Webhook] Message saved:', savedMessage.id);
+
+  // === ROTEADOR V2 (Plataforma de Agentes) — PORTEIRO ===
+  // Gated por config.agent_platform_v2_enabled (off = legado intacto).
+  // tenantId vem da instância (whatsapp_instances.tenant_id) → escopa loja.
+  if (!fromMe && !isGroup && content && content.trim()) {
+    try {
+      const handledByV2 = await tryHandleViaAgentPlatform({
+        supabase,
+        instance: { id: instanceId, api_url: instanceApiUrl, api_key: instanceApiKey },
+        senderPhone,
+        text: content,
+        messageId,
+        leadId,
+        tenantId,
+      });
+      if (handledByV2) {
+        return; // agente V2 respondeu — não segue pro fluxo legado
+      }
+    } catch (e) {
+      console.error("[Webhook] V2 router error (caindo pro legado):", (e as Error).message);
+    }
+  }
 
   // === LEAD REPLIED — TRIGGER AUTOMATION RULES ===
   if (leadId && !fromMe && !isGroup) {

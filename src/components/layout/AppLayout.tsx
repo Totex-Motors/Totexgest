@@ -8,6 +8,10 @@ import { AITransferAlertOverlay } from "@/components/inbox/AITransferAlertOverla
 import { WhatsAppDisconnectedAlert } from "@/components/inbox/WhatsAppDisconnectedAlert";
 import { InstanceHealthHeaderBadge } from "@/components/inbox/InstanceHealthBanner";
 import { FocusBanner } from "./FocusBanner";
+import React from "react";
+const FloatingAgentHost = React.lazy(() =>
+  import("@/agents-platform/components/FloatingAgentHost").then((m) => ({ default: m.FloatingAgentHost }))
+);
 import { DailyActivityBanner } from "./DailyActivityBanner";
 import { useLocation } from "react-router-dom";
 import { useCall } from "@/contexts/CallContext";
@@ -149,6 +153,11 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div ref={scrollRef} onScroll={handleScroll} className={`flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden${activeCall ? ' pb-20' : ''}`}>{children}</div>
         </main>
       </div>
+
+      {/* Bolha de chat flutuante do agente (canais: floating) — lazy pra não poluir bundle inicial */}
+      <React.Suspense fallback={null}>
+        <FloatingAgentHost />
+      </React.Suspense>
     </SidebarProvider>
   );
 }

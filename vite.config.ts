@@ -28,7 +28,14 @@ export default defineConfig(({ mode }) => ({
     //
     // Workaround: monkey-patch em src/lib/wavoip-init.ts intercepta addModule
     // e reconstroi o blob URL a partir do base64 embutido.
-    include: ['@wavoip/wavoip-api', 'grapesjs', 'reactflow'],
+    include: [
+      '@wavoip/wavoip-api',
+      'grapesjs',
+      'reactflow',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-tabs',
+    ],
   },
   build: {
     target: "esnext",
