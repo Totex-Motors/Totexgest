@@ -43,6 +43,13 @@ export default defineConfig(({ mode }) => ({
     // Usar terser ao invés de esbuild para evitar corrupção de strings longas (JWT keys)
     minify: 'terser',
     terserOptions: {
+      // compress: false é OBRIGATORIO. O passo de compress do terser eliminava
+      // a declaracao `const AlertDialog = AlertDialogPrimitive.Root` (e similares)
+      // dos wrappers shadcn, mantendo as referencias/re-exports — o que causava
+      // "Export 'AlertDialog' is not defined in module" + tela branca SOMENTE no
+      // build de producao em Linux/CI (Vercel), nao no Windows local, por causa da
+      // ordenacao de modulos do Rollup. Nao reative sem reproduzir o build em Linux.
+      compress: false,
       format: {
         // Não inserir quebras de linha baseadas em comprimento máximo
         max_line_len: false,
