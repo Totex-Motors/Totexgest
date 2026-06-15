@@ -32,9 +32,6 @@ export default defineConfig(({ mode }) => ({
       '@wavoip/wavoip-api',
       'grapesjs',
       'reactflow',
-      '@radix-ui/react-alert-dialog',
-      '@radix-ui/react-dialog',
-      '@radix-ui/react-tabs',
     ],
   },
   build: {
