@@ -51,5 +51,15 @@ export default defineConfig(({ mode }) => ({
         max_line_len: false,
       },
     },
+    rollupOptions: {
+      output: {
+        // Agrupa todos os @radix-ui em um único chunk para evitar quebra de
+        // re-exports de namespace (import * as X + const Y = X.Root) quando
+        // pacotes ESM-only (react-markdown etc.) mudam o layout de chunks.
+        manualChunks(id) {
+          if (id.includes('@radix-ui')) return 'radix-vendor';
+        },
+      },
+    },
   },
 }));
