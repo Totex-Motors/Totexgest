@@ -15,12 +15,13 @@ import type {
   AgentRegistry,
   AgentTool,
   ProviderCallResult,
+  ProviderCredential,
   ToolCall,
 } from "../../_shared/types.ts";
 import { sanitizeForJSON } from "../safety.ts";
 
 const OPENAI_BASE = "https://api.openai.com/v1/chat/completions";
-const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY") || "";
+const OPENAI_ENV_KEY = Deno.env.get("OPENAI_API_KEY") || "";
 
 const PRICING: Record<string, { in: number; out: number; cached: number }> = {
   "gpt-5":      { in: 5,    out: 15,  cached: 0.5 },
@@ -37,11 +38,21 @@ export interface OpenAICallParams {
   history: AgentMessage[];
   newUserMessage: string;
   onTextDelta: (delta: string) => void;
+  /** Credencial da loja (auth_data.api_key) — tem prioridade sobre o secret de env. */
+  credential?: ProviderCredential | null;
 }
 
 export async function callOpenAI(params: OpenAICallParams): Promise<ProviderCallResult> {
+  // Prioridade: API key da credencial configurada na UI (/agentes/credenciais)
+  // → fallback pro secret de env (legacy/global).
+  const OPENAI_KEY =
+    (params.credential?.auth_data?.api_key as string | undefined)?.trim() ||
+    OPENAI_ENV_KEY;
   if (!OPENAI_KEY) {
-    throw new Error("OPENAI_API_KEY ausente nos secrets");
+    throw new Error(
+      "OPENAI_API_KEY ausente — configure uma credencial OpenAI em " +
+      "/agentes/credenciais e vincule ao agente, ou defina o secret no Supabase.",
+    );
   }
 
   // ────────── Messages ──────────
