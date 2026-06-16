@@ -20,13 +20,14 @@ import type {
   AgentRegistry,
   AgentTool,
   ProviderCallResult,
+  ProviderCredential,
   ToolCall,
 } from "../../_shared/types.ts";
 import { cacheControl, estimateTokens, getCacheConfig, shouldCacheCumulative } from "../caching.ts";
 import { sanitizeForJSON } from "../safety.ts";
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
+const ANTHROPIC_ENV_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const ANTHROPIC_BETA = "prompt-caching-2024-07-31";
 
 // USD por milhão de tokens (atualizar quando mudar tabela)
@@ -47,13 +48,23 @@ export interface AnthropicCallParams {
   history: AgentMessage[];
   newUserMessage: string;
   onTextDelta: (delta: string) => void;
+  /** Credencial da loja (auth_data.api_key) — tem prioridade sobre o secret de env. */
+  credential?: ProviderCredential | null;
 }
 
 export async function callAnthropic(
   params: AnthropicCallParams,
 ): Promise<ProviderCallResult> {
+  // Prioridade: API key da credencial configurada na UV (/agentes/credenciais)
+  // → fallback pro secret de env (legacy/global).
+  const ANTHROPIC_KEY =
+    (params.credential?.auth_data?.api_key as string | undefined)?.trim() ||
+    ANTHROPIC_ENV_KEY;
   if (!ANTHROPIC_KEY) {
-    throw new Error("ANTHROPIC_API_KEY ausente nos secrets");
+    throw new Error(
+      "ANTHROPIC_API_KEY ausente — configure uma credencial Anthropic em " +
+      "/agentes/credenciais e vincule ao agente, ou defina o secret no Supabase.",
+    );
   }
 
   const cacheCfg = getCacheConfig(params.agent);
