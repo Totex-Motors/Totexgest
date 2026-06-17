@@ -831,6 +831,8 @@ ${playbookContent}
     <Card
       className={cn(
         "fixed shadow-2xl z-50 transition-all duration-300 flex flex-col border-2 border-blue-200",
+        // Nunca deixar o card maior que a tela, senao o header (botoes de fechar/expandir) some pro topo
+        "max-h-[calc(100dvh-2rem)]",
         isExpanded
           ? "bottom-4 right-4 left-4 top-4 w-auto md:bottom-6 md:right-6 md:left-auto md:top-auto md:w-[750px] md:h-[85vh]"
           : "inset-x-3 bottom-3 w-auto h-[75vh] sm:inset-x-auto sm:left-auto sm:bottom-6 sm:right-6 sm:w-[450px] sm:h-[650px]",
