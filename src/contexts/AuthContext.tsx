@@ -234,6 +234,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      // Conta banida = membro desativado: troca a mensagem técnica por uma amigável
+      const code = (error as { code?: string }).code;
+      if (code === 'user_banned' || /banned/i.test(error.message)) {
+        return { error: new Error('Usuário inativado') };
+      }
+    }
     return { error: error as Error | null };
   };
 
