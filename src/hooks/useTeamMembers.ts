@@ -55,9 +55,24 @@ export const useAllTeamMembers = () => {
 // Helper: call edge function
 async function callManageTeamMember(action: string, payload: Record<string, unknown>) {
   const { data: result, error: invokeError } = await supabase.functions.invoke('manage-team-member', {
-    body: { action, ...payload },
+    body: { action, data: payload },
   });
-  if (invokeError) throw invokeError;
+  if (invokeError) {
+    // supabase-js encapsula o corpo da resposta em error.context — extrai a mensagem real
+    let message = invokeError.message;
+    try {
+      const ctx = (invokeError as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') {
+        const body = await ctx.json();
+        if (body?.error) message = body.error;
+      }
+    } catch {
+      // mantém a mensagem genérica se não conseguir ler o corpo
+    }
+    throw new Error(message);
+  }
+  // A função sempre responde { success, ... } ou { error } com status 2xx só no sucesso
+  if (result?.error) throw new Error(result.error);
   return result;
 }
 

@@ -142,18 +142,18 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true, team_member: teamMember });
     }
 
-    if (action === "reset_password") {
-      const { auth_user_id, password } = data;
+    if (action === "update") {
+      const { member_id, name, phone, role, team } = data;
 
-      if (!auth_user_id || !password) {
-        return jsonResponse({ error: "Missing required fields: auth_user_id, password" }, 400);
+      if (!member_id) {
+        return jsonResponse({ error: "Missing required field: member_id" }, 400);
       }
 
-      // Garante que o alvo é do mesmo tenant do caller (evita reset cross-tenant)
+      // Confirma que o alvo é do mesmo tenant e pega o auth_user_id
       const { data: target } = await supabase
         .from("team_members")
-        .select("id")
-        .eq("auth_user_id", auth_user_id)
+        .select("id, auth_user_id")
+        .eq("id", member_id)
         .eq("tenant_id", callerTenantId)
         .maybeSingle();
 
@@ -161,31 +161,55 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
       }
 
-      const { error } = await supabase.auth.admin.updateUserById(auth_user_id, { password });
+      // Monta o update só com os campos enviados
+      const updateFields: Record<string, unknown> = {};
+      if (name !== undefined) updateFields.name = name;
+      if (phone !== undefined) updateFields.phone = phone || null;
+      if (role !== undefined) updateFields.role = role;
+      if (team !== undefined) updateFields.team = team;
 
-      if (error) {
-        return jsonResponse({ error: `Reset password error: ${error.message}` }, 400);
+      const { data: updated, error: updErr } = await supabase
+        .from("team_members")
+        .update(updateFields)
+        .eq("id", member_id)
+        .eq("tenant_id", callerTenantId)
+        .select()
+        .single();
+
+      if (updErr) {
+        return jsonResponse({ error: `Update error: ${updErr.message}` }, 400);
       }
 
-      return jsonResponse({ success: true });
+      // Se a role mudou, propaga para app_metadata (JWT/RLS) e profiles
+      if (role !== undefined && target.auth_user_id) {
+        await supabase.auth.admin.updateUserById(target.auth_user_id, {
+          app_metadata: { tenant_id: callerTenantId, role },
+        });
+        await supabase
+          .from("profiles")
+          .update({ role })
+          .eq("id", target.auth_user_id);
+      }
+
+      return jsonResponse({ success: true, team_member: updated });
     }
 
-    if (action === "deactivate") {
-      const { team_member_id } = data;
+    if (action === "toggle_active") {
+      const { member_id, is_active } = data;
 
-      if (!team_member_id) {
-        return jsonResponse({ error: "Missing required field: team_member_id" }, 400);
+      if (!member_id || typeof is_active !== "boolean") {
+        return jsonResponse({ error: "Missing required fields: member_id, is_active (boolean)" }, 400);
       }
 
       const { data: updated, error } = await supabase
         .from("team_members")
-        .update({ is_active: false })
-        .eq("id", team_member_id)
+        .update({ is_active })
+        .eq("id", member_id)
         .eq("tenant_id", callerTenantId)
         .select("id");
 
       if (error) {
-        return jsonResponse({ error: `Deactivate error: ${error.message}` }, 400);
+        return jsonResponse({ error: `Toggle error: ${error.message}` }, 400);
       }
 
       if (!updated || updated.length === 0) {
@@ -195,8 +219,38 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
+    if (action === "reset_password") {
+      const { member_id, new_password } = data;
+
+      if (!member_id || !new_password) {
+        return jsonResponse({ error: "Missing required fields: member_id, new_password" }, 400);
+      }
+
+      // Garante que o alvo é do mesmo tenant do caller (evita reset cross-tenant)
+      const { data: target } = await supabase
+        .from("team_members")
+        .select("id, auth_user_id")
+        .eq("id", member_id)
+        .eq("tenant_id", callerTenantId)
+        .maybeSingle();
+
+      if (!target || !target.auth_user_id) {
+        return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
+      }
+
+      const { error } = await supabase.auth.admin.updateUserById(target.auth_user_id, {
+        password: new_password,
+      });
+
+      if (error) {
+        return jsonResponse({ error: `Reset password error: ${error.message}` }, 400);
+      }
+
+      return jsonResponse({ success: true });
+    }
+
     return jsonResponse(
-      { error: `Unknown action: ${action}. Valid: create, reset_password, deactivate` },
+      { error: `Unknown action: ${action}. Valid: create, update, toggle_active, reset_password` },
       400
     );
   } catch (err) {

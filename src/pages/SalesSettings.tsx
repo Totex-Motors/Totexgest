@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -1165,10 +1166,9 @@ export function TeamTab() {
               </div>
               <div className="space-y-2">
                 <Label>Telefone</Label>
-                <Input
+                <PhoneInput
                   value={createForm.phone}
-                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
-                  placeholder="(11) 99999-9999"
+                  onChange={(digits) => setCreateForm({ ...createForm, phone: digits })}
                 />
               </div>
             </div>
@@ -1257,10 +1257,9 @@ export function TeamTab() {
               </div>
               <div className="space-y-2">
                 <Label>Telefone</Label>
-                <Input
+                <PhoneInput
                   value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  placeholder="(11) 99999-9999"
+                  onChange={(digits) => setEditForm({ ...editForm, phone: digits })}
                 />
               </div>
             </div>

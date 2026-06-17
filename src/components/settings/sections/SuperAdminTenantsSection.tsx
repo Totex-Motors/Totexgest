@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -152,7 +153,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="adminPhone">Telefone</Label>
-                    <Input id="adminPhone" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                    <PhoneInput id="adminPhone" value={adminPhone} onChange={(digits) => setAdminPhone(digits)} />
                   </div>
                 </div>
               </div>
@@ -249,7 +250,7 @@ function InviteAdminDialog({ tenant, onClose }: { tenant: AdminTenant; onClose: 
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="invPhone">Telefone</Label>
-                <Input id="invPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                <PhoneInput id="invPhone" value={phone} onChange={(digits) => setPhone(digits)} />
               </div>
             </div>
             <DialogFooter>
