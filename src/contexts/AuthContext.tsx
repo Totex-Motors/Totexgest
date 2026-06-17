@@ -99,7 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasInitiallySignedIn = true; // Já tem sessão — próximos SIGNED_IN são refreshes
         const tm = await fetchTeamMember(initialSession.user.email);
         if (isMounted && tm) {
-          setTeamMember(tm);
+          // Membro desativado não pode acessar — encerra a sessão imediatamente
+          if (tm.is_active === false) {
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            setTeamMember(null);
+            sessionRef.current = null;
+          } else {
+            setTeamMember(tm);
+          }
         }
       }
 
@@ -140,8 +149,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (newSession?.user?.email) {
           const tm = await fetchTeamMember(newSession.user.email);
           if (isMounted && tm) {
-            setTeamMember(tm);
-            linkAuthUser(newSession.user.id, newSession.user.email); // fire-and-forget
+            // Membro desativado não pode acessar — encerra a sessão imediatamente
+            if (tm.is_active === false) {
+              await supabase.auth.signOut();
+              setSession(null);
+              setUser(null);
+              setTeamMember(null);
+              hasInitiallySignedIn = false;
+            } else {
+              setTeamMember(tm);
+              linkAuthUser(newSession.user.id, newSession.user.email); // fire-and-forget
+            }
           }
         }
         if (isMounted) setLoading(false);
@@ -216,6 +234,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      // Conta banida = membro desativado: troca a mensagem técnica por uma amigável
+      const code = (error as { code?: string }).code;
+      if (code === 'user_banned' || /banned/i.test(error.message)) {
+        return { error: new Error('Usuário inativado') };
+      }
+    }
     return { error: error as Error | null };
   };
 
