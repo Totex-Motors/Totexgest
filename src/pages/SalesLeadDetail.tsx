@@ -94,6 +94,7 @@ import {
   StickyNote, Ticket, Merge, GitMerge, Receipt, Send, Star, GitBranch, ChevronDown, Zap, Loader2, UserX, Mic, Trash2, Sprout, XCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -2816,11 +2817,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-phone">Telefone</Label>
-                <Input
+                <PhoneInput
                   id="edit-phone"
                   value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  placeholder="5511999999999"
+                  onChange={(digits) => setEditForm({ ...editForm, phone: digits })}
                 />
               </div>
               <div className="space-y-2">

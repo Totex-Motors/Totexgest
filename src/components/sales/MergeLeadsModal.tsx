@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -616,10 +617,9 @@ export function MergeLeadsModal({ open, onOpenChange, lead }: MergeLeadsModalPro
                       <Label className="text-xs">Telefone</Label>
                       <div className="relative">
                         <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                        <Input
-                          placeholder="5548991372996"
+                        <PhoneInput
                           value={newLeadForm.phone}
-                          onChange={(e) => setNewLeadForm({ ...newLeadForm, phone: e.target.value })}
+                          onChange={(digits) => setNewLeadForm({ ...newLeadForm, phone: digits })}
                           className="h-9 pl-8"
                         />
                       </div>

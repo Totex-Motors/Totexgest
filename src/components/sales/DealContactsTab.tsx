@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -469,10 +470,9 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
                     value={newLeadForm.name}
                     onChange={(e) => setNewLeadForm(f => ({ ...f, name: e.target.value }))}
                   />
-                  <Input
-                    placeholder="Telefone (WhatsApp) *"
+                  <PhoneInput
                     value={newLeadForm.phone}
-                    onChange={(e) => setNewLeadForm(f => ({ ...f, phone: e.target.value }))}
+                    onChange={(digits) => setNewLeadForm(f => ({ ...f, phone: digits }))}
                   />
                   <Input
                     placeholder="Email (opcional)"
