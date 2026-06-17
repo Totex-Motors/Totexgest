@@ -206,7 +206,7 @@ Deno.serve(async (req: Request) => {
         .update({ is_active })
         .eq("id", member_id)
         .eq("tenant_id", callerTenantId)
-        .select("id");
+        .select("id, auth_user_id");
 
       if (error) {
         return jsonResponse({ error: `Toggle error: ${error.message}` }, 400);
@@ -214,6 +214,18 @@ Deno.serve(async (req: Request) => {
 
       if (!updated || updated.length === 0) {
         return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
+      }
+
+      // Bloqueia/libera a conta de autenticação: desativado = banido (não loga
+      // nem renova token); reativado = desbanido.
+      const authUserId = updated[0].auth_user_id as string | null;
+      if (authUserId) {
+        const { error: banErr } = await supabase.auth.admin.updateUserById(authUserId, {
+          ban_duration: is_active ? "none" : "876000h", // ~100 anos = banido indefinidamente
+        });
+        if (banErr) {
+          console.error("[manage-team-member] Falha ao (des)banir conta:", banErr.message);
+        }
       }
 
       return jsonResponse({ success: true });
