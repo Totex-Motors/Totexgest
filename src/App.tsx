@@ -208,7 +208,7 @@ const AppRoutes = () => {
       <Route path="/agentes/sessoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentSessionsPage /></React.Suspense></ProtectedRoute>} />
       <Route path="/agentes/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
       <Route path="/agentes/playground" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentPlaygroundPage /></React.Suspense></ProtectedRoute>} />
-      <Route path="/agentes/:slug" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentConfigPage /></React.Suspense></ProtectedRoute>} />
+      <Route path="/agentes/:slug" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentChatPage /></React.Suspense></ProtectedRoute>} />
       <Route path="/agentes/:slug/config" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentConfigPage /></React.Suspense></ProtectedRoute>} />
       <Route path="/agentes/:slug/chat" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentChatPage /></React.Suspense></ProtectedRoute>} />
       <Route path="/agentes/:slug/playground" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentPlaygroundPage /></React.Suspense></ProtectedRoute>} />
