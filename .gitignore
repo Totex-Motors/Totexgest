@@ -35,3 +35,17 @@ dist-ssr
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# Testes e relatórios (não devem ir pro GitHub)
+# OBS: vitest.config.ts e src/test/setup.ts ficam de fora de propósito —
+# são config necessária pra rodar os testes, não testes em si.
+e2e/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+RELATORIO-TESTES.md
+playwright-report/
+test-results/
+playwright.config.ts
+
