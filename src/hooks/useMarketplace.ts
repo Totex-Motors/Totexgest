@@ -60,9 +60,15 @@ export interface MarketplaceLead {
 
 // ─── Leads vindos do marketplace ─────────────────────────────────────────────
 
-export const useMarketplaceLeads = (search?: string) => {
+export interface MarketplaceLeadFilters {
+  search?: string;
+  storeId?: string; // marketplace_store_id
+}
+
+export const useMarketplaceLeads = (filters: MarketplaceLeadFilters = {}) => {
+  const { search, storeId } = filters;
   return useQuery({
-    queryKey: ["marketplace-leads", search],
+    queryKey: ["marketplace-leads", search, storeId],
     queryFn: async () => {
       let query = supabase
         .from("leads")
@@ -75,6 +81,10 @@ export const useMarketplaceLeads = (search?: string) => {
         query = query.or(
           `name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
         );
+      }
+
+      if (storeId) {
+        query = query.eq("metadata->>marketplace_store_id", storeId);
       }
 
       const { data, error } = await query;
