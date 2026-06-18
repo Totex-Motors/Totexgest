@@ -3708,15 +3708,7 @@ async function processLeadMessage(
   // 2.5 Auto-move baseado em histórico de conversa
   // NOTA: movido para DEPOIS da seção 3 (agent matching) para filtrar por instance_id
   const shouldCheckAutoMove = (lead.pipeline_stage_name === 'Não atendeu' || lead.pipeline_stage_name === 'Novo');
-  if (false) { // Desativado aqui — executado na seção 3.2
-    const { count: inboundCount } = { count: 0 } as any;
-
-    if (inboundCount && inboundCount > 0) {
-      console.log(`📍 Lead em "${lead.pipeline_stage_name}" já tem ${inboundCount} msg(s) inbound → movendo para "Em Contato"`);
-      await moveLeadAndDealToStage(supabase, lead.id, lead.pipeline_stage_id, 'Em Contato');
-      lead.pipeline_stage_name = 'Em Contato';
-    }
-  }
+  // (bloco de auto-move removido daqui — executado de fato na seção 3.2, ver `if (shouldCheckAutoMove ...)` abaixo)
 
   // 3. Buscar agente — prioridade: agent_id da fila > instance_id > stage
   const stageName = lead.pipeline_stage_name || 'Novo';

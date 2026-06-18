@@ -48,18 +48,17 @@ export function DemoModeProvider({ children }: { children: React.ReactNode }) {
     return localStorage.getItem("crm-demo-mode") === "true";
   });
 
-  let queryClient: any = null;
-  try { queryClient = useQueryClient(); } catch {}
+  // DemoModeProvider agora fica DENTRO do QueryClientProvider (ver App.tsx),
+  // então o hook pode ser chamado direto, sem try/catch.
+  const queryClient = useQueryClient();
 
   const toggleDemoMode = () => {
     setIsDemoMode((prev) => {
       const next = !prev;
       localStorage.setItem("crm-demo-mode", String(next));
       // Invalidar todo cache do dashboard pra recalcular com novo multiplicador
-      if (queryClient) {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-v2'] });
-        queryClient.invalidateQueries({ predicate: (q: any) => q.queryKey[0]?.toString().startsWith('dashboard-v2') });
-      }
+      queryClient.invalidateQueries({ queryKey: ['dashboard-v2'] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0] ?? '').startsWith('dashboard-v2') });
       return next;
     });
   };

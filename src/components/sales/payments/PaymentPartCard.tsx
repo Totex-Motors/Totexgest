@@ -447,7 +447,6 @@ export function PaymentPartCard({
               <PaymentLinkButton payment={payment} variant="compact" />
 
               {/* Actions dropdown - always show (NFSe available for all statuses) */}
-              {(true) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -507,7 +506,6 @@ export function PaymentPartCard({
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              )}
             </div>
           </div>
         </div>

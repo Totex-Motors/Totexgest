@@ -30,8 +30,9 @@ CRM comercial AI-first, limpo, pronto pra ser entregue aos alunos do programa
 IA na Pratica. So funcionalidades de vendas: pipeline, inbox WhatsApp, agente
 de IA, coach em tempo real, treinamento e gestao basica de time.
 
-**Numeros (pos-limpeza):** 28 paginas | ~16 pastas de componentes | ~79 hooks |
-52 Edge Functions | 23 migrations.
+**Numeros (atualizado 2026-06-17):** ~29 paginas | ~16 pastas de componentes | ~81 hooks |
+64 Edge Functions | 47 migrations. (O sistema cresceu alem do template original:
+inclui credere, marketplace, integracao OS, agents-platform, telegram, etc.)
 
 ## Stack
 

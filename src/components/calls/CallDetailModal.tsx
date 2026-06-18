@@ -743,9 +743,6 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
     }
   }, [call?.id, call?.is_meeting, call?.lead_id, call?.peer_name, editTranscriptionText, parseTranscriptionText, queryClient, toast, analyze, resetAnalysis]);
 
-  // Early return AFTER all hooks
-  if (!call) return null;
-
   // Handler para aprofundar análise
   const handleDeepAnalyze = useCallback(async () => {
     if (!call || finalTranscriptions.length === 0) return;
@@ -771,20 +768,6 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
       queryClient.invalidateQueries({ queryKey: ['call-record', call.id] });
     }
   }, [call, finalTranscriptions, analyze, resetAnalysis, queryClient, toast]);
-
-  const getDirectionConfig = () => {
-    if (isMissed) return { icon: PhoneMissed, color: "text-red-500", bg: "bg-red-100 dark:bg-red-900/40", label: "Perdida" };
-    if (isIncoming) return { icon: PhoneIncoming, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-900/40", label: "Recebida" };
-    return { icon: PhoneOutgoing, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/40", label: "Realizada" };
-  };
-
-  const directionConfig = getDirectionConfig();
-  const DirectionIcon = directionConfig.icon;
-  const createdTaskCount = tasks.filter(t => t.created).length;
-  const pendingTaskCount = tasks.filter(t => !t.created).length;
-
-  const sentimentLabel = currentAnalysis?.sentimento === 'positive' ? 'Positivo' :
-                         currentAnalysis?.sentimento === 'negative' ? 'Negativo' : 'Neutro';
 
   // Gerar PDF da reunião
   const handleGeneratePDF = useCallback(async () => {
@@ -834,6 +817,23 @@ export function CallDetailModal({ open, onOpenChange, call, hideLeadLink = false
       setIsGeneratingPDF(false);
     }
   }, [currentAnalysis, call, toast]);
+
+  // Early return AFTER all hooks
+  if (!call) return null;
+
+  const getDirectionConfig = () => {
+    if (isMissed) return { icon: PhoneMissed, color: "text-red-500", bg: "bg-red-100 dark:bg-red-900/40", label: "Perdida" };
+    if (isIncoming) return { icon: PhoneIncoming, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-900/40", label: "Recebida" };
+    return { icon: PhoneOutgoing, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/40", label: "Realizada" };
+  };
+
+  const directionConfig = getDirectionConfig();
+  const DirectionIcon = directionConfig.icon;
+  const createdTaskCount = tasks.filter(t => t.created).length;
+  const pendingTaskCount = tasks.filter(t => !t.created).length;
+
+  const sentimentLabel = currentAnalysis?.sentimento === 'positive' ? 'Positivo' :
+                         currentAnalysis?.sentimento === 'negative' ? 'Negativo' : 'Neutro';
 
   return (
     <>

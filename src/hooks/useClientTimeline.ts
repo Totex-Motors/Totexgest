@@ -1323,56 +1323,8 @@ export const useClientTimeline = (leadId: string | undefined, organizationId: st
         }
       }
 
-      // 11. Tarefas (company_activities) por org — DESATIVADO: já coberto pela seção 6.1
-      // A seção 6.1 busca activities por organization_id ou lead_id, cobrindo todos os casos
-      if (false && organizationId) {
-        const { data: tasks } = await (supabase as any)
-          .from('company_activities')
-          .select('*')
-          .eq('organization_id', organizationId)
-          .order('created_at', { ascending: false });
-
-        const taskTypeLabels: Record<string, string> = {
-          'internal': '🗓️ internal',
-          'follow_up': '📞 Follow-up',
-          'onboarding_call': '🎓 Onboarding',
-          'support': '🎧 Suporte',
-          'review': '📊 Review',
-          'renewal': '🔄 Renovação',
-          'training': '📚 Treinamento',
-          'checkin': '✅ Check-in',
-        };
-
-        (tasks || []).forEach((task: any) => {
-          const typeLabel = taskTypeLabels[task.task_type] || task.task_type || 'Tarefa';
-          
-          events.push({
-            id: `task-${task.id}`,
-            date: task.due_datetime || task.created_at,
-            time: task.due_datetime 
-              ? new Date(task.due_datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-              : new Date(task.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            type: 'support', // Usando support como tipo genérico para tarefas
-            team: task.team === 'sales' ? 'sales' : 'cs',
-            title: task.status === 'no_show'
-              ? `❌ ${typeLabel} No-show`
-              : `${typeLabel} ${task.completed ? '✓' : ''}`,
-            description: task.status === 'no_show'
-              ? (task.notes || 'Cliente não compareceu')
-              : (task.name || 'Tarefa'),
-            details: task.description || '',
-            tags: task.status === 'no_show' ? ['No-show'] : task.completed ? ['Concluída'] : task.priority === 'high' ? ['Urgente'] : ['Agendado'],
-            metadata: {
-              task: task,
-              taskType: task.task_type,
-              priority: task.priority,
-              completed: task.completed,
-              dueDate: task.due_datetime,
-              notes: task.notes,
-            }
-          });
-        });
-      }
+      // 11. Tarefas (company_activities) por org — removido: já coberto pela seção 6.1
+      // (a seção 6.1 busca activities por organization_id ou lead_id, cobrindo todos os casos)
 
       // 12. CS Touchpoints
       if (organizationId) {

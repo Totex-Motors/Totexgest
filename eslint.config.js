@@ -21,6 +21,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // `any` é dívida de tipagem, não bug de runtime. Mantém como aviso pra não
+      // afogar os erros que importam (hooks condicionais, etc). Ver AUDITORIA-SISTEMA.md.
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 );

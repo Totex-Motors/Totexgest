@@ -249,8 +249,8 @@ const AppRoutes = () => {
 
 const App = () => (
   <ThemeProvider>
-  <DemoModeProvider>
   <QueryClientProvider client={queryClient}>
+  <DemoModeProvider>
     <AuthProvider>
       <CallProvider>
         <MeetingProvider>
@@ -272,8 +272,8 @@ const App = () => (
         </MeetingProvider>
       </CallProvider>
     </AuthProvider>
-  </QueryClientProvider>
   </DemoModeProvider>
+  </QueryClientProvider>
   </ThemeProvider>
 );
 

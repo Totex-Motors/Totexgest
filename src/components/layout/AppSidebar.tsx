@@ -61,6 +61,18 @@ interface NavSection {
   moduleId?: string;
 }
 
+/**
+ * URLs que são prefixo de outra rota da navegação. Esses itens só devem ser
+ * marcados como ativos em match exato (ex: "/comercial" não pode ficar ativo
+ * quando estamos em "/comercial/cockpit").
+ */
+const buildExactOnlyPaths = (secs: NavSection[]) => {
+  const urls = secs.flatMap((s) => s.items.map((i) => i.url));
+  return new Set(
+    urls.filter((url) => urls.some((other) => other !== url && other.startsWith(url + "/")))
+  );
+};
+
 const sections: NavSection[] = [
   {
     id: "comercial",
@@ -108,6 +120,8 @@ const bottomItems: NavItem[] = [
   { title: "Configurações", url: "/configuracoes", icon: Settings },
 ];
 
+const exactOnlyPaths = buildExactOnlyPaths(sections);
+
 /* ---------------------------------------------------------------
  * AppSidebar
  * --------------------------------------------------------------- */
@@ -130,6 +144,10 @@ export function AppSidebar() {
 
   const isActive = (path: string) => {
     if (path === "/") return currentPath === "/";
+    // URLs que são prefixo de outra rota (ex: "/comercial" é prefixo de
+    // "/comercial/cockpit") só ficam ativas em match exato, senão o item raiz
+    // (Dashboard) ficaria sempre destacado ao navegar nas rotas filhas.
+    if (exactOnlyPaths.has(path)) return currentPath === path;
     return currentPath === path || currentPath.startsWith(path + "/");
   };
 
