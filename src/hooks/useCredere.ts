@@ -59,9 +59,15 @@ export interface CredereLead {
 
 // ─── Leads vindos da Credere ─────────────────────────────────────────────────
 
-export const useCredereLeads = (search?: string) => {
+export interface CredereLeadFilters {
+  search?: string;
+  storeId?: string; // credere_store_id
+}
+
+export const useCredereLeads = (filters: CredereLeadFilters = {}) => {
+  const { search, storeId } = filters;
   return useQuery({
-    queryKey: ["credere-leads", search],
+    queryKey: ["credere-leads", search, storeId],
     queryFn: async () => {
       let query = supabase
         .from("leads")
@@ -74,6 +80,10 @@ export const useCredereLeads = (search?: string) => {
         query = query.or(
           `name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
         );
+      }
+
+      if (storeId) {
+        query = query.eq("metadata->>credere_store_id", storeId);
       }
 
       const { data, error } = await query;
