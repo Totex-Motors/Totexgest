@@ -16,7 +16,7 @@ export interface ActivitySummaryRow {
   leads_contacted: number;
 }
 
-export function useDailyActivitySummary(date: Date, teamMemberId?: string) {
+export function useDailyActivitySummary(date: Date, teamMemberId?: string, enabled = true) {
   return useQuery({
     queryKey: ['daily-activity-summary', format(date, 'yyyy-MM-dd'), teamMemberId],
     queryFn: async (): Promise<ActivitySummaryRow[]> => {
@@ -27,6 +27,7 @@ export function useDailyActivitySummary(date: Date, teamMemberId?: string) {
       if (error) throw error;
       return (data ?? []) as ActivitySummaryRow[];
     },
+    enabled,
     staleTime: 30_000,
   });
 }

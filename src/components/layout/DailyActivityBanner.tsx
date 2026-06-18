@@ -59,19 +59,17 @@ export function DailyActivityBanner() {
     } catch {}
   }, [expanded]);
 
-  // Only show for comercial roles
-  if (!isComercial || !teamMember?.id) return null;
+  // Hooks rodam SEMPRE (antes de qualquer early return) — regra dos Hooks do React.
+  // O guard fica na flag `enabled` pra não buscar dados quando o banner não aparece.
+  const memberId = teamMember?.id;
+  const canShow = isComercial && !!memberId;
 
-  const role = teamMember.role;
-  const isSDR = role === "sdr";
-
-  const { data: rows } = useDailyActivitySummary(new Date(), teamMember.id);
-  const stats = rows?.[0];
+  const { data: rows } = useDailyActivitySummary(new Date(), memberId, canShow);
 
   // Pending tasks for today
   const today = format(new Date(), "yyyy-MM-dd");
   const { data: pendingTasks } = useQuery({
-    queryKey: ["daily-pending-tasks", teamMember.id, today],
+    queryKey: ["daily-pending-tasks", memberId, today],
     queryFn: async () => {
       const startOfDay = `${today}T00:00:00`;
       const endOfDay = `${today}T23:59:59`;
@@ -84,7 +82,7 @@ export function DailyActivityBanner() {
           organization:organizations!company_activities_organization_id_fkey(name)
         `)
         .eq("completed", false)
-        .eq("responsavel_id", teamMember.id)
+        .eq("responsavel_id", memberId!)
         .gte("scheduled_at", startOfDay)
         .lte("scheduled_at", endOfDay)
         .order("is_critical", { ascending: false })
@@ -94,8 +92,16 @@ export function DailyActivityBanner() {
       if (error) throw error;
       return (data || []) as PendingTask[];
     },
+    enabled: canShow,
     staleTime: 30_000,
   });
+
+  // Only show for comercial roles (DEPOIS de todos os hooks!)
+  if (!canShow || !teamMember) return null;
+
+  const role = teamMember.role;
+  const isSDR = role === "sdr";
+  const stats = rows?.[0];
 
   const totalPending = pendingTasks?.length || 0;
   const criticalCount = pendingTasks?.filter((t) => t.is_critical).length || 0;

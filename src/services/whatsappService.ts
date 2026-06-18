@@ -22,20 +22,26 @@ export interface SendWhatsAppResult {
 async function getActiveInstance(): Promise<{ instanceName: string; apiKey: string; apiUrl: string } | null> {
   const { data, error } = await (supabase as any)
     .from('whatsapp_instances')
-    .select('name, api_key, webhook_url')
+    .select('name, api_key, api_url')
     .eq('status', 'connected')
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) {
     console.error('Nenhuma instância WhatsApp conectada:', error);
     return null;
   }
 
+  // Sem URL hardcoded: a instância PRECISA ter api_url configurada (regra do projeto).
+  if (!data.api_url) {
+    console.error('Instância WhatsApp sem api_url configurada:', data.name);
+    return null;
+  }
+
   return {
     instanceName: data.name,
     apiKey: data.api_key,
-    apiUrl: data.webhook_url || 'https://api.uazapi.com',
+    apiUrl: data.api_url,
   };
 }
 

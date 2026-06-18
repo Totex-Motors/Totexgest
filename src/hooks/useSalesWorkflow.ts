@@ -149,7 +149,7 @@ export const useResumoFunil = () => {
       };
 
       (data || []).forEach((lead: any) => {
-        if (lead.etapa_funil && resumo.hasOwnProperty(lead.etapa_funil)) {
+        if (lead.etapa_funil && Object.prototype.hasOwnProperty.call(resumo, lead.etapa_funil)) {
           resumo[lead.etapa_funil as keyof ResumoFunil]++;
         }
       });
