@@ -40,6 +40,7 @@ import { IntegrationsSection } from "@/components/settings/sections/Integrations
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
+import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
 import { NotificationRulesBuilder } from "@/components/settings/NotificationRulesBuilder";
 import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConfig";
 
@@ -239,6 +240,14 @@ const navigationSections: NavSection[] = [
         hint: "Criar / ativar / desativar lojas",
         superAdminOnly: true,
       },
+      {
+        id: "superadmin-destinos",
+        label: "Destinos de Lead",
+        icon: Building2,
+        description: "Configure o WhatsApp de cada loja onde o agente do stand repassa os leads qualificados. Visível apenas para o tenant super-admin.",
+        hint: "WhatsApp de repasse por loja",
+        superAdminOnly: true,
+      },
     ],
   },
 ];
@@ -271,7 +280,7 @@ export default function SettingsUnified() {
           (item) => (!item.adminOnly || isAdmin) && (!item.superAdminOnly || isSuperAdmin),
         ),
       }))
-      .filter((section) => section.items.length > 0);
+      .filter((section) => section.items.length > 0); 
   }, [isAdmin, isSuperAdmin]);
 
   // Find active item info
@@ -451,6 +460,8 @@ function SettingsContent({ section }: { section: string }) {
     // Super Admin
     case "superadmin-lojas":
       return <SuperAdminTenantsSection />;
+    case "superadmin-destinos":
+      return <StandHandoffSection />;
 
     default:
       return <ModulesSection />;

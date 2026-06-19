@@ -2,7 +2,8 @@ export async function getOrCreateGroup(
   supabase: any,
   instanceId: string,
   whatsappGroupId: string,
-  data: any
+  data: any,
+  tenantId: string | null = null
 ): Promise<string | null> {
   // Check if group exists - usar group_jid (coluna correta no banco)
   const { data: existingGroup } = await supabase
@@ -25,6 +26,7 @@ export async function getOrCreateGroup(
       name: data.groupName || data.subject || 'Grupo WhatsApp',
       group_type: 'customer',
       is_active: true,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
     .select()
     .single();

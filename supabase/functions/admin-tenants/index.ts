@@ -275,7 +275,74 @@ Deno.serve(async (req: Request) => {
       return json({ user_id: userId, invite_url: inviteUrl });
     }
 
-    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status, set_module, invite_admin` }, 400);
+    // ── LIST_DESTINATIONS: destinos de repasse de lead por loja ───────────────
+    if (action === "list_destinations") {
+      const { data: dests, error } = await supabase
+        .from("tenant_lead_destinations")
+        .select("id, tenant_id, destination_type, whatsapp_target, label, active, updated_at");
+      if (error) return json({ error: error.message }, 400);
+
+      const { data: tenants } = await supabase
+        .from("tenants")
+        .select("id, name, is_super_admin")
+        .order("name", { ascending: true });
+
+      const byTenant: Record<string, typeof dests[number]> = {};
+      for (const d of dests ?? []) byTenant[d.tenant_id] = d;
+
+      // Lista todas as lojas (exceto super-admin) com o destino, se houver.
+      const result = (tenants ?? [])
+        .filter((t) => !t.is_super_admin)
+        .map((t) => ({
+          tenant_id: t.id,
+          tenant_name: t.name,
+          destination: byTenant[t.id] ?? null,
+        }));
+      return json({ destinations: result });
+    }
+
+    // ── SET_DESTINATION: upsert do destino de uma loja (1 por loja) ───────────
+    if (action === "set_destination") {
+      const { tenant_id, whatsapp_target, label, destination_type } = data ?? {};
+      if (!tenant_id || !whatsapp_target) {
+        return json({ error: "Campos obrigatórios: tenant_id, whatsapp_target" }, 400);
+      }
+      const type = destination_type === "group" ? "group" : "number";
+      // Normaliza número (só dígitos) quando for 'number'; grupo mantém o JID.
+      const target = type === "number"
+        ? String(whatsapp_target).replace(/\D/g, "")
+        : String(whatsapp_target).trim();
+      if (type === "number" && target.length < 10) {
+        return json({ error: "Número de WhatsApp inválido (use DDI+DDD+número, ex: 5511999999999)" }, 400);
+      }
+
+      const { data: tenant } = await supabase
+        .from("tenants").select("id").eq("id", tenant_id).maybeSingle();
+      if (!tenant) return json({ error: "Tenant não encontrado" }, 404);
+
+      const { data: row, error } = await supabase
+        .from("tenant_lead_destinations")
+        .upsert(
+          { tenant_id, destination_type: type, whatsapp_target: target, label: label ?? null, active: true },
+          { onConflict: "tenant_id" },
+        )
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true, destination: row });
+    }
+
+    // ── DELETE_DESTINATION: remove o destino de uma loja ──────────────────────
+    if (action === "delete_destination") {
+      const { tenant_id } = data ?? {};
+      if (!tenant_id) return json({ error: "Campo obrigatório: tenant_id" }, 400);
+      const { error } = await supabase
+        .from("tenant_lead_destinations").delete().eq("tenant_id", tenant_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true });
+    }
+
+    return json({ error: `Ação desconhecida: ${action}. Válidas: list, provision, set_status, set_module, invite_admin, list_destinations, set_destination, delete_destination` }, 400);
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }

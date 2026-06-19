@@ -1,0 +1,113 @@
+/**
+ * consultar-estoque — consulta o estoque conjunto do Totex Motors marketplace.
+ *
+ * Tool do agente do stand (action_type=edge_function, name=consultar-estoque).
+ * Chamada pelo agent-runner com body { arguments, user_id, session_id }.
+ *
+ * Usa a API PÚBLICA do marketplace (GET /api/vehicles) — sem auth. Cada veículo já
+ * traz a loja dona aninhada (dealership.name), então o agente consegue desambiguar
+ * "tive interesse no Palio" mostrando as opções reais (loja, ano, preço, cidade) e
+ * depois repassar o lead pra loja certa pelo NOME (matchLojaByName no stand-handoff).
+ *
+ * Base URL configurável via config.TOTEX_MARKETPLACE_API_URL (fallback p/ totexmotors.com).
+ */
+
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getIntegrationKey } from "../_shared/config.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const DEFAULT_BASE = "https://totexmotors.com";
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function brl(v: unknown): string | null {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  try {
+    const body = await req.json();
+    const args = (body.arguments || {}) as Record<string, unknown>;
+
+    const busca = String(args.busca ?? args.search ?? "").trim();
+    const marca = String(args.marca ?? "").trim();
+    const modelo = String(args.modelo ?? "").trim();
+    const cidade = String(args.cidade ?? "").trim();
+    const estado = String(args.estado ?? "").trim();
+    const precoMax = Number(args.preco_max ?? args.precoMax ?? 0);
+    const limite = Math.min(Math.max(Number(args.limite ?? 6) || 6, 1), 12);
+
+    if (!busca && !marca && !modelo) {
+      return json({ error: "Informe ao menos 'busca', 'marca' ou 'modelo'." }, 400);
+    }
+
+    // Base URL do marketplace (configurável — sem hardcode rígido)
+    const cfgUrl = await getIntegrationKey(supabase, "TOTEX_MARKETPLACE_API_URL");
+    const base = (cfgUrl || DEFAULT_BASE).replace(/\/$/, "");
+
+    const qs = new URLSearchParams();
+    if (busca) qs.set("search", busca);
+    if (marca) qs.set("brand", marca);
+    if (modelo) qs.set("model", modelo);
+    if (cidade) qs.set("city", cidade);
+    if (estado) qs.set("state", estado);
+    if (precoMax > 0) qs.set("maxPrice", String(precoMax));
+    qs.set("limit", String(limite));
+    qs.set("sort", "price_asc");
+
+    const url = `${base}/api/vehicles?${qs.toString()}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) {
+      console.error(`[consultar-estoque] ${res.status} em ${url}`);
+      return json({ error: `Estoque indisponível (${res.status}).`, veiculos: [], total: 0 }, 200);
+    }
+    const data = await res.json();
+    const list: any[] = Array.isArray(data?.data) ? data.data : [];
+
+    const veiculos = list.map((v) => ({
+      vehicle_id: v.id,
+      titulo: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+      ano: v.year ?? null,
+      preco: brl(v.price),
+      km: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null,
+      cor: v.color ?? null,
+      cambio: v.transmission ?? null,
+      combustivel: v.fuel ?? null,
+      cidade: v.city ?? null,
+      estado: v.state ?? null,
+      loja: v.dealership?.name ?? null,
+      loja_telefone: v.dealership?.phone ?? null,
+    }));
+
+    return json({
+      total: data?.total ?? veiculos.length,
+      mostrando: veiculos.length,
+      veiculos,
+      // dica pro agente: se total > mostrando, peça mais filtros (ano, preço, cidade)
+      observacao: (data?.total ?? 0) > veiculos.length
+        ? "Há mais resultados; refine por ano, faixa de preço ou cidade."
+        : null,
+    });
+  } catch (err) {
+    console.error("[consultar-estoque] error:", (err as Error).message);
+    return json({ error: (err as Error).message, veiculos: [], total: 0 }, 200);
+  }
+});

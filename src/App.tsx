@@ -109,6 +109,7 @@ import SalesMaterialsConfig from "./pages/SalesMaterialsConfig";
 import CockpitShell from "./pages/CockpitShell";
 import CredereLeads from "./pages/CredereLeads";
 import MarketplaceLeads from "./pages/MarketplaceLeads";
+import TotemLeads from "./pages/TotemLeads";
 
 // Gestão básica
 import TaskManagement from "./pages/TaskManagement";
@@ -233,6 +234,7 @@ const AppRoutes = () => {
       <Route path="/comercial/materiais" element={<ProtectedRoute><SalesMaterialsConfig /></ProtectedRoute>} />
       <Route path="/comercial/credere" element={<ProtectedRoute><CredereLeads /></ProtectedRoute>} />
       <Route path="/comercial/marketplace" element={<ProtectedRoute><MarketplaceLeads /></ProtectedRoute>} />
+      <Route path="/comercial/totem" element={<ProtectedRoute><TotemLeads /></ProtectedRoute>} />
       <Route path="/comercial/agente-ia" element={<Navigate to="/configuracoes?s=agente-ia" replace />} />
 
       {/* Gestão básica (tarefas, calendário, reuniões) */}
