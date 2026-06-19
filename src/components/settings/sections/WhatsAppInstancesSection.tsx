@@ -230,6 +230,7 @@ export function WhatsAppInstancesSection() {
           method: "POST",
           headers: { "Content-Type": "application/json", token: instanceToken },
           body: JSON.stringify({
+            enabled: true,
             url: WEBHOOK_URL,
             events: ["messages", "messages_update", "connection", "groups", "contacts", "call", "chats"],
             excludeMessages: ["wasSentByApi"],

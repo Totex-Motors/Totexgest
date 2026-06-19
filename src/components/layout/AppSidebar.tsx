@@ -15,6 +15,7 @@ import {
   User2,
   Car,
   ShoppingBag,
+  MonitorSmartphone,
   Bot,
   Library,
   KeyRound,
@@ -51,6 +52,8 @@ interface NavItem {
   icon: React.ElementType;
   /** opcional: id do módulo necessário pra exibir */
   moduleId?: string;
+  /** opcional: só aparece para super-admin (tenant Totex) */
+  superAdminOnly?: boolean;
 }
 
 interface NavSection {
@@ -85,6 +88,7 @@ const sections: NavSection[] = [
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
+      { title: "Totem Físico", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
     ],
   },
   {
@@ -130,7 +134,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const { unreadWhatsAppCount, markWhatsAppAsRead } = useNotificationContext();
-  const { teamMember, signOut } = useAuth();
+  const { teamMember, signOut, isSuperAdmin } = useAuth();
   const { isModuleEnabled } = useEnabledModules();
 
   // Sidebar do shadcn expõe o estado (expanded/collapsed)
@@ -157,10 +161,12 @@ export function AppSidebar() {
       .filter((s) => !s.moduleId || isModuleEnabled(s.moduleId))
       .map((s) => ({
         ...s,
-        items: s.items.filter((i) => !i.moduleId || isModuleEnabled(i.moduleId)),
+        items: s.items.filter(
+          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin),
+        ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [isModuleEnabled]);
+  }, [isModuleEnabled, isSuperAdmin]);
 
   const userInitials =
     teamMember?.name

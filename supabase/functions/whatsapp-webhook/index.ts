@@ -344,7 +344,7 @@ async function handleIncomingMessage(
 
   let groupDbId: string | null = null;
   if (isGroup && remoteJid) {
-    groupDbId = await getOrCreateGroup(supabase, instanceId, remoteJid, payload);
+    groupDbId = await getOrCreateGroup(supabase, instanceId, remoteJid, payload, tenantId);
   }
 
   let groupTeam: string | null = null;
@@ -367,7 +367,7 @@ async function handleIncomingMessage(
 
   // Buscar ou criar lead (usa tabela leads, não contacts)
   let leadId: string | null = null;
-  leadId = await getOrCreateContactWithProfilePic(supabase, actualContactPhone, pushName, instanceApiKey, instanceApiUrl);
+  leadId = await getOrCreateContactWithProfilePic(supabase, actualContactPhone, pushName, instanceApiKey, instanceApiUrl, tenantId);
 
   // Dedup: skip if a message with the same message_id already exists (catches edit echoes and duplicate events)
   if (messageId) {
@@ -417,6 +417,7 @@ async function handleIncomingMessage(
   const { data: savedMessage, error: msgError } = await supabase
     .from('whatsapp_messages')
     .insert({
+      ...(tenantId ? { tenant_id: tenantId } : {}),
       instance_id: instanceId,
       group_id: groupDbId,
       lead_id: leadId,
@@ -684,6 +685,32 @@ async function handleIncomingMessage(
     const mentionedJIDs = payload.content?.contextInfo?.mentionedJID || [];
     if (mentionedJIDs.length > 0) {
       console.log('[Webhook] Menções detectadas no grupo:', mentionedJIDs);
+
+      // Stand intake: dispara em paralelo. A própria função se auto-verifica
+      // (só age se o grupo estiver em config.stand_agent_config); caso contrário no-opa.
+      try {
+        fetch(`${SUPABASE_URL}/functions/v1/stand-intake`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            data: {
+              ...payload,
+              id: savedMessage.id,
+              remote_jid: remoteJid,
+              content: content,
+              sender_name: pushName,
+              sender_phone: senderPhone,
+              metadata: payload,
+            },
+          }),
+        }).catch(err => console.error('[Webhook] stand-intake error:', err));
+      } catch (standError) {
+        console.error('[Webhook] Erro ao chamar stand-intake:', standError);
+      }
+
       // Chamar a função de task assistant de forma assíncrona (não bloqueia)
       try {
         const taskAssistantUrl = `${SUPABASE_URL}/functions/v1/whatsapp-task-assistant`;

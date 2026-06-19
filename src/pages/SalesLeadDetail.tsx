@@ -16,7 +16,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 // Sales components
 import {
   LeadScoreBadge,
-  QualificationCard,
   LeadWebinarsCard,
   DealCard,
   CreateDealModal,
@@ -60,6 +59,7 @@ import { SidebarDeals } from "@/components/sales/SidebarDeals";
 import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard";
 import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
+import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
 import { CancelRefundModal } from "@/components/sales/CancelRefundModal";
 import { ScheduleMessageModal } from "@/components/sales/ScheduleMessageModal";
@@ -67,7 +67,7 @@ import { LeadTagsInput } from "@/components/sales/LeadTagsInput";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Hooks
-import { useSalesLead, useUpdateLeadStage, useUpdateLeadPipelineStage, useUpdateBANT, useUpdateLeadInfo, useUpdateLeadTemperature, useUpdateLeadSales, useDeleteLead } from "@/hooks/useSalesLeads";
+import { useSalesLead, useUpdateLeadStage, useUpdateLeadPipelineStage, useUpdateBANT, useUpdateLeadInfo, useUpdateLeadSales, useDeleteLead } from "@/hooks/useSalesLeads";
 import { useLeadDuplicates, useLeadConversions, useLinkedOrganizations } from "@/hooks/useMergeLeads";
 import { usePipelineStages } from "@/hooks/useSalesPipeline";
 import { usePipelines } from "@/hooks/usePipelineConfig";
@@ -244,7 +244,6 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   const updatePipelineStage = useUpdateLeadPipelineStage();
   const updateBANT = useUpdateBANT();
   const updateLeadSales = useUpdateLeadSales();
-  const updateTemperature = useUpdateLeadTemperature();
   const calculateScore = useCalculateLeadScore();
 
   // Transactions & LTV
@@ -1137,21 +1136,12 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               />
             )}
 
-            {/* Qualification Card — temperatura do lead (frio / morno / quente) */}
-            {effectiveLead && (
-              <div className="space-y-1">
-                <QualificationCard
-                  temperature={(effectiveLead as any)?.metadata?.temperature ?? null}
-                  onChange={(value) => {
-                    if (!id) return;
-                    updateTemperature.mutate({
-                      leadId: id,
-                      temperature: value,
-                      currentMetadata: (effectiveLead as any)?.metadata ?? {},
-                    });
-                  }}
-                />
-              </div>
+            {/* Qualificação por intenção de compra (preenchida pela IA, editável) */}
+            {id && effectiveLead && (
+              <LeadQualificationCard
+                leadId={id}
+                qualificacao={(effectiveLead as any)?.metadata?.qualificacao}
+              />
             )}
 
             {/* Webinarios — historico de inscricoes e atendencia */}

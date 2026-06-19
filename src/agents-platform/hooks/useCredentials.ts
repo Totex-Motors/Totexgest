@@ -26,7 +26,8 @@ export type ProviderType =
   | 'uazapi'
   | 'jina_reader'
   | 'tavily'
-  | 'meta_ads';
+  | 'meta_ads'
+  | 'whatsapp_cloud';
 
 export type CredentialCategory = 'llm' | 'tool';
 
@@ -153,6 +154,22 @@ export const PROVIDER_LABELS: Record<ProviderType, ProviderInfo> = {
     description: 'Pesquisa na web em tempo real, otimizada pra IA. Free 1000 buscas/mês.',
     fields: [{ name: 'api_key', label: 'Tavily API key', type: 'password', required: true, help: 'pega grátis em tavily.com — começa com tvly-' }],
     setup_url: 'https://app.tavily.com/',
+  },
+  whatsapp_cloud: {
+    name: 'WhatsApp Cloud API (Meta)', emoji: '🟢', category: 'tool',
+    description: 'API oficial do WhatsApp Business (Meta). Sem risco de ban; abertura fria exige template aprovado.',
+    fields: [
+      { name: 'token', label: 'Token de acesso (System User)', type: 'password', required: true, placeholder: 'EAAx...', help: 'Use o token PERMANENTE (System User), não o temporário de 24h.' },
+      { name: 'phone_number_id', label: 'Phone Number ID', required: true, placeholder: '663196283535436', help: 'Meta Dashboard → WhatsApp → API Setup.' },
+      { name: 'verify_token', label: 'Verify token (webhook)', placeholder: 'invente uma senha', help: 'Você inventa. Use o MESMO valor na config do webhook no painel da Meta.' },
+    ],
+    setup_url: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
+    setup_steps: [
+      'Meta for Developers → seu App → WhatsApp → API Setup',
+      'Pegue o Phone Number ID e gere um token permanente (System User)',
+      'Crie um template de abertura e aguarde aprovação',
+      'Configure o webhook com o verify token e marque o campo "messages"',
+    ],
   },
   meta_ads: {
     name: 'Meta Ads (FB + IG)', emoji: '📊', category: 'tool',

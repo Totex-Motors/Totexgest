@@ -1,59 +1,51 @@
 /**
- * agent-platform.ts — roteia mensagens UAZAPI pra Plataforma de Agentes V2.
+ * agent-platform.ts (Cloud API) — roteia mensagens da WhatsApp Cloud API pra
+ * Plataforma de Agentes V2.
  *
- * Espelha o telegram-webhook: lookup deployment (instância + palavra-chave) → autorização
- * (access_mode + whitelist) → chama agent-runner (lê o SSE) → envia resposta via UAZAPI.
+ * Espelha o `whatsapp-webhook/agent-platform.ts` (UAZAPI), com UMA diferença:
+ * o ENVIO da resposta é feito via edge fn `send-whatsapp-cloud` (action send_text),
+ * não pelo /send/text da UAZAPI. Receber/rotear/autorizar/sessão são idênticos.
  *
- * Retorna true se a mensagem FOI tratada pela V2 (o caller NÃO segue o fluxo legado).
- * Retorna false se não tratou (segue legado ai-sales-agent intacto).
+ * Retorna true se a mensagem FOI tratada pela V2 (caller NÃO segue o fluxo legado).
+ * Retorna false se não tratou (segue legado ai_sales_agents intacto).
  *
- * GATED pela flag config.agent_platform_v2_enabled — off = sempre false = legado.
- * Instâncias SEM deployment V2 ativo nunca casam → legado intacto.
+ * GATED por config.agent_platform_v2_enabled — off = sempre false = legado.
  */
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-interface InstanceLike {
-  id: string;
-  api_url?: string | null;
-  api_key?: string | null;
-}
-
-export async function tryHandleViaAgentPlatform(args: {
+export async function tryHandleViaAgentPlatformCloud(args: {
   supabase: any;
-  instance: InstanceLike;
+  instanceId: string;
   senderPhone: string;
   text: string;
   messageId: string | null;
   leadId?: string | null;
-  /** Loja dona da instância (whatsapp_instances.tenant_id). Escopa o roteamento + o runner. */
+  /** Tenant dono da instância oficial (whatsapp_instances.tenant_id). */
   tenantId?: string | null;
 }): Promise<boolean> {
-  const { supabase, instance, senderPhone, text, messageId, leadId, tenantId } = args;
+  const { supabase, instanceId, senderPhone, text, messageId, leadId, tenantId } = args;
   if (!text || !text.trim()) return false;
-  // Ignora placeholders de mídia que não viraram texto/transcrição
-  if (text === "[Mídia]") return false;
 
-  // Multi-tenant: sem o tenant da instância não roteamos (senão casaria deployment
-  // de outra loja na mesma instância / agente errado).
-  if (!tenantId) { console.error("[wpp-v2] sem tenantId da instância — pula V2"); return false; }
+  // Multi-tenant: sem o tenant da instância não roteamos.
+  if (!tenantId) { console.error("[cloud-v2] sem tenantId da instância — pula V2"); return false; }
 
-  // 1. Flag global — off = legado (config.value é TEXT, precisa parse)
+  // 1. Flag global — off = legado
   const { data: cfgRow } = await supabase
     .from("config").select("value").eq("key", "agent_platform_v2_enabled").maybeSingle();
   let v2Enabled = false;
   try { v2Enabled = JSON.parse(cfgRow?.value ?? "{}").enabled === true; } catch { /* off */ }
   if (!v2Enabled) return false;
 
-  // 2. Lookup deployment (instância + palavra-chave via agent_route_lookup), escopado ao tenant
+  // 2. Lookup deployment (instância + palavra-chave), escopado ao tenant
   const { data: routeRows, error: routeErr } = await supabase.rpc("agent_route_lookup", {
     p_channel: "whatsapp",
-    p_instance_id: instance.id,
+    p_instance_id: instanceId,
     p_ctx: { text },
     p_tenant_id: tenantId,
   });
-  if (routeErr) { console.error("[wpp-v2] route err:", routeErr.message); return false; }
+  if (routeErr) { console.error("[cloud-v2] route err:", routeErr.message); return false; }
   const match = Array.isArray(routeRows) ? routeRows[0] : routeRows;
   if (!match || !match.agent_slug) return false; // nenhum agente V2 nessa instância → legado
 
@@ -64,27 +56,17 @@ export async function tryHandleViaAgentPlatform(args: {
   const accessMode: string = cfg.access_mode || "open";
   const senderDigits = onlyDigits(senderPhone);
 
-  // Marca a origem do lead (ex: deployment do stand → source='stand') já na 1ª mensagem,
-  // pra ele aparecer na aba dedicada. Genérico: qualquer deployment pode definir lead_source.
+  // Marca a origem do lead (ex: stand → source='stand') já na 1ª mensagem.
   if (cfg.lead_source && leadId) {
     await supabase.from("leads").update({ source: String(cfg.lead_source) }).eq("id", leadId);
-  }
-
-  // Resolve host (api_url) + token da instância pra enviar via UAZAPI (genérico: qualquer host)
-  let inst = instance;
-  if (!inst.api_url || !inst.api_key) {
-    const { data: row } = await supabase
-      .from("whatsapp_instances").select("api_url, api_key").eq("id", instance.id).maybeSingle();
-    inst = { id: instance.id, api_url: instance.api_url || row?.api_url, api_key: instance.api_key || row?.api_key };
   }
 
   if (accessMode === "private") {
     const authorized: string[] = (cfg.authorized_numbers || []).map((n: string) => onlyDigits(String(n))).filter(Boolean);
     const ok = authorized.some((a) => a && (senderDigits.endsWith(a) || a.endsWith(senderDigits)));
     if (!ok) {
-      // Não autorizado: manda msg padrão (se configurada) e marca como TRATADO (não cai no legado)
-      if (cfg.unauthorized_message) await sendUazapi(inst, senderDigits, String(cfg.unauthorized_message));
-      console.log(`[wpp-v2] número ${senderDigits} não autorizado (agente ${match.agent_slug}, modo private)`);
+      if (cfg.unauthorized_message) await sendCloud(senderDigits, String(cfg.unauthorized_message), tenantId, leadId);
+      console.log(`[cloud-v2] número ${senderDigits} não autorizado (agente ${match.agent_slug}, modo private)`);
       return true;
     }
   }
@@ -104,26 +86,25 @@ export async function tryHandleViaAgentPlatform(args: {
         tenant_id: tenantId,
         agent_id: match.agent_id, channel: "whatsapp",
         title: `WhatsApp ${senderDigits}`,
-        provider_state: { external_session_key: sessionKey, whatsapp_phone: senderDigits, whatsapp_instance_id: instance.id },
+        provider_state: { external_session_key: sessionKey, whatsapp_phone: senderDigits },
       }).select("id").single();
     sessionId = ns?.id;
   }
 
   // 4.5 Debounce via banco (latest-wins): agrupa as mensagens rápidas do cliente numa
-  //     resposta só. Sem isso, cada mensagem chega como uma invocação SEPARADA do webhook
-  //     (isolates diferentes) → 3 msgs = 3 respostas robotizadas. O debounce in-memory do
-  //     runner não resolve (não compartilha estado entre isolates) — daí ser via banco.
+  //     resposta só. Cada msg chega como uma invocação SEPARADA do webhook (isolates
+  //     diferentes) → 3 msgs = 3 respostas robotizadas. Por isso o debounce é via banco.
   let messageToSend = text;
   if (leadId) {
     const deb = await debounceInbound(supabase, leadId, messageId, sessionId);
     if (!deb) {
-      console.log("[wpp-v2] follower (debounce DB) — msg mais nova assumiu, sem resposta");
+      console.log("[cloud-v2] follower (debounce DB) — msg mais nova assumiu, sem resposta");
       return true; // não sou o líder → a última mensagem da janela responde por todas
     }
     if (deb.combinedText) messageToSend = deb.combinedText;
   }
 
-  // 5. Chama agent-runner e lê o SSE (igual telegram-webhook)
+  // 5. Chama agent-runner e lê o SSE
   let fullText = "";
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-runner`, {
@@ -137,18 +118,17 @@ export async function tryHandleViaAgentPlatform(args: {
         user_id: null,
         tenant_id: tenantId,
         context: {
-          instance_id: instance.id,
+          instance_id: instanceId,
           whatsapp_phone: senderDigits,
           recipient: senderDigits,
           message_id: messageId,
-          lead_id: leadId || null,  // lead já criado pelo webhook — agente usa pra agendar/qualificar
+          lead_id: leadId || null,
         },
       }),
     });
-    // Follower do debounce: outra invocação (leader) vai responder por todas as msgs
-    // da janela. Aqui não enviamos NADA (senão o lead recebe resposta duplicada).
+    // Follower do debounce: o leader responde por todas as msgs da janela → aqui não envia nada.
     if (res.status === 204) {
-      console.log("[wpp-v2] follower (debounce) — sem resposta nesta msg");
+      console.log("[cloud-v2] follower (debounce) — sem resposta nesta msg");
       return true;
     }
     if (!res.ok || !res.body) throw new Error(`agent-runner ${res.status}`);
@@ -169,25 +149,24 @@ export async function tryHandleViaAgentPlatform(args: {
       }
     }
   } catch (e) {
-    console.error("[wpp-v2] agent-runner err:", (e as Error).message);
-    await sendUazapi(inst, senderDigits, "⚠️ Tive um problema técnico. Tenta de novo daqui a pouco?");
+    console.error("[cloud-v2] agent-runner err:", (e as Error).message);
+    await sendCloud(senderDigits, "⚠️ Tive um problema técnico. Tenta de novo daqui a pouco?", tenantId, leadId);
     return true;
   }
 
   // 5.5 A geração pode demorar (tool calls). Se nesse meio tempo chegou mensagem mais nova,
   //     ABORTA o envio — a invocação dela responde por todas. Evita duas respostas saindo
-  //     ao mesmo tempo e intercalando as bolhas (o sintoma que o cliente via).
+  //     ao mesmo tempo e intercalando as bolhas.
   if (leadId && await hasNewerInbound(supabase, leadId, messageId)) {
-    console.log("[wpp-v2] msg mais nova durante a geração — aborta envio (evita intercalar)");
+    console.log("[cloud-v2] msg mais nova durante a geração — aborta envio (evita intercalar)");
     return true;
   }
 
-  // 6. Envia resposta via UAZAPI quebrada em bolhas curtas (mais natural no WhatsApp),
-  //    com um pequeno delay entre elas.
+  // 6. Envia resposta via Cloud API em bolhas curtas, com delay (mais natural).
   const finalText = fullText.trim() || "Desculpa, não consegui processar agora.";
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
-    await sendUazapi(inst, senderDigits, parts[i]);
+    await sendCloud(senderDigits, parts[i], tenantId, leadId);
     if (i < parts.length - 1) await sleep(700 + Math.floor(Math.random() * 900));
   }
   // Marca o piso do próximo debounce — só as msgs DEPOIS desta resposta serão reagrupadas.
@@ -259,39 +238,41 @@ async function markReplied(supabase: any, sessionId: string | undefined): Promis
   await supabase.from("agents_sessions").update({ provider_state: ps }).eq("id", sessionId);
 }
 
-function onlyDigits(s: string): string { return String(s).replace(/\D/g, ""); }
-
-async function sendUazapi(instance: InstanceLike, number: string, text: string): Promise<void> {
-  // api_url vem da tabela de instâncias — NUNCA hardcode de URL UAZAPI (regra do projeto)
-  const base = (instance.api_url || "").replace(/\/$/, "");
-  if (!base) {
-    console.error("[wpp-v2] sendUazapi: instance.api_url vazio — configure a URL da instância");
-    return;
-  }
-  try {
-    await fetch(`${base}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "token": instance.api_key || "" },
-      body: JSON.stringify({ number: onlyDigits(number), text }),
-    });
-  } catch (e) { console.error("[wpp-v2] sendUazapi err:", (e as Error).message); }
-}
-
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
+function onlyDigits(s: string): string { return String(s).replace(/\D/g, ""); }
+
+/** Envia texto livre via edge fn send-whatsapp-cloud (action send_text). */
+async function sendCloud(phone: string, text: string, tenantId: string | null, leadId?: string | null): Promise<void> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
+      body: JSON.stringify({
+        action: "send_text",
+        phone: onlyDigits(phone),
+        text,
+        tenant_id: tenantId,
+        lead_id: leadId || null,
+        sent_by: "ai_agent_v2",
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[cloud-v2] send-whatsapp-cloud ${res.status}: ${body.slice(0, 200)}`);
+    }
+  } catch (e) { console.error("[cloud-v2] sendCloud err:", (e as Error).message); }
+}
+
 /**
- * Quebra a resposta em bolhas curtas pra parecer conversa natural no WhatsApp.
- * Cada parágrafo vira uma bolha; parágrafos longos são divididos por frase até `max`.
- * Listas numeradas/bullets são mantidas juntas (não quebra item a item).
+ * Quebra a resposta em bolhas curtas (parágrafo → frase até `max`); listas ficam juntas.
  */
 function splitForWhatsApp(text: string, max: number): string[] {
   const out: string[] = [];
   const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   for (const para of paras) {
-    // Mantém listas inteiras numa bolha só
     const isList = /(^|\n)\s*(\d+[.)]|[-*•])\s+/.test(para);
     if (isList || para.length <= max) { out.push(para); continue; }
-    // Parágrafo longo → quebra por frase, agrupando até `max`
     let cur = "";
     for (const sentence of para.split(/(?<=[.!?])\s+/)) {
       if (cur && (cur + " " + sentence).length > max) { out.push(cur.trim()); cur = sentence; }

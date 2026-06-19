@@ -79,22 +79,26 @@ export async function getOrCreateContactWithProfilePic(
   phone: string,
   pushName: string,
   apiKey: string | null,
-  apiUrl: string | null
+  apiUrl: string | null,
+  tenantId: string | null = null
 ): Promise<string | null> {
   const cleanPhone = phone.replace(/\D/g, '').replace(/@.*/, '');
-  
+
   if (!cleanPhone) return null;
 
   // Pegar os últimos 8 dígitos para busca
   const last8Digits = cleanPhone.slice(-8);
-  
+
   console.log('[Webhook] Searching lead by last 8 digits:', last8Digits);
 
-  // Buscar lead existente pelos últimos 8 dígitos
-  const { data: existingLead } = await supabase
+  // Buscar lead existente pelos últimos 8 dígitos (escopado ao tenant da instância
+  // pra não reusar lead de outra loja).
+  let lookupQuery = supabase
     .from('leads')
     .select('id, name, phone, photo_url')
-    .ilike('phone', `%${last8Digits}`)
+    .ilike('phone', `%${last8Digits}`);
+  if (tenantId) lookupQuery = lookupQuery.eq('tenant_id', tenantId);
+  const { data: existingLead } = await lookupQuery
     .limit(1)
     .single();
 
@@ -152,6 +156,7 @@ export async function getOrCreateContactWithProfilePic(
     .insert({
       name: leadName,
       phone: cleanPhone,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
     .select()
     .single();

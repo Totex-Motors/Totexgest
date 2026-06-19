@@ -110,6 +110,15 @@ const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api/get-started",
     category: "whatsapp",
   },
+  {
+    key: "WHATSAPP_CLOUD_VERIFY_TOKEN",
+    label: "WhatsApp Cloud API — Verify Token (webhook)",
+    description: "Senha que VOCÊ inventa. Use o mesmo valor aqui e na configuração do webhook no painel da Meta. Usado só no handshake de validação do webhook.",
+    placeholder: "ex: totex-stand-2026",
+    docsUrl: "https://developers.facebook.com/docs/graph-api/webhooks/getting-started",
+    category: "whatsapp",
+    scope: "global",
+  },
   // Telephony
   {
     key: "SONIOX_API_KEY",

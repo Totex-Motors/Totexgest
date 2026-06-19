@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { tryHandleViaAgentPlatformCloud } from "./agent-platform.ts";
 
 /**
  * WhatsApp Cloud API Webhook
@@ -37,7 +38,15 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    // Verify token vem da config global (tela API Keys) com fallback pro secret.
+    let expected = VERIFY_TOKEN;
+    try {
+      const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data } = await sb.from("config").select("value").eq("key", "WHATSAPP_CLOUD_VERIFY_TOKEN").maybeSingle();
+      if (data?.value && String(data.value).trim()) expected = String(data.value).trim();
+    } catch (_e) { /* usa o env */ }
+
+    if (mode === "subscribe" && token === expected && expected) {
       console.log("[Cloud Webhook] Verification successful");
       return new Response(challenge, { status: 200 });
     }
@@ -67,17 +76,19 @@ Deno.serve(async (req) => {
         // Buscar instância oficial pelo phone_number_id
         const { data: instance } = await supabase
           .from("whatsapp_instances")
-          .select("id, name")
+          .select("id, name, tenant_id")
           .eq("metadata->>phone_number_id", phoneNumberId)
           .maybeSingle();
 
         // Fallback: buscar por nome
-        const instanceId = instance?.id || await getOfficialInstanceId(supabase);
+        const fallback = instance ? null : await getOfficialInstance(supabase);
+        const instanceId = instance?.id || fallback?.id || null;
+        const instanceTenantId = instance?.tenant_id || fallback?.tenant_id || null;
 
         // ===== MENSAGENS RECEBIDAS =====
         if (value.messages) {
           for (const msg of value.messages) {
-            await handleIncomingMessage(supabase, msg, value.contacts, instanceId);
+            await handleIncomingMessage(supabase, msg, value.contacts, instanceId, instanceTenantId);
           }
         }
 
@@ -105,7 +116,7 @@ Deno.serve(async (req) => {
 
 // ==================== HANDLE INCOMING MESSAGE ====================
 
-async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], instanceId: string | null) {
+async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], instanceId: string | null, tenantId: string | null) {
   const from = msg.from; // número do lead (ex: 5531999999999)
   const msgId = msg.id; // wamid.xxxxx
   const timestamp = msg.timestamp; // unix timestamp
@@ -191,18 +202,18 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     return;
   }
 
-  // Buscar lead pelo telefone (últimos 8 dígitos)
+  // Buscar lead pelo telefone (últimos 8 dígitos), escopado ao tenant da instância
   const last8 = cleanPhone.slice(-8);
-  const { data: lead } = await supabase
+  let leadQuery = supabase
     .from("leads")
     .select("id, name")
-    .ilike("phone", `%${last8}`)
-    .limit(1)
-    .maybeSingle();
+    .ilike("phone", `%${last8}`);
+  if (tenantId) leadQuery = leadQuery.eq("tenant_id", tenantId);
+  const { data: lead } = await leadQuery.limit(1).maybeSingle();
 
   const leadId = lead?.id || null;
 
-  // Se não encontrou lead, criar um novo
+  // Se não encontrou lead, criar um novo (tenant_id explícito — senão FK falha no default)
   let finalLeadId = leadId;
   if (!finalLeadId) {
     const { data: newLead } = await supabase
@@ -210,6 +221,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       .insert({
         name: contactName !== cleanPhone ? contactName : cleanPhone,
         phone: cleanPhone,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
       })
       .select("id")
       .single();
@@ -232,12 +244,33 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     sender_phone: cleanPhone,
     lead_id: finalLeadId,
     media_url: storedMediaUrl || null,
+    ...(tenantId ? { tenant_id: tenantId } : {}),
     metadata: { source: "cloud_api", original_type: msgType, cloud_media_id: mediaUrl || null },
   });
 
   if (error) {
     console.error(`[Cloud Webhook] Error saving message:`, error.message);
     return;
+  }
+
+  // === ROTEADOR V2 (Plataforma de Agentes) — PORTEIRO ===
+  // Gated por config.agent_platform_v2_enabled (off = legado intacto).
+  // Se um agente V2 casar nesta instância, ele responde via Cloud API e o legado é pulado.
+  if (content && content.trim()) {
+    try {
+      const handledByV2 = await tryHandleViaAgentPlatformCloud({
+        supabase,
+        instanceId: instanceId || "",
+        senderPhone: cleanPhone,
+        text: content,
+        messageId: msgId,
+        leadId: finalLeadId,
+        tenantId,
+      });
+      if (handledByV2) return; // agente V2 respondeu — não cai no legado
+    } catch (e) {
+      console.error("[Cloud Webhook] V2 router error (caindo pro legado):", (e as Error).message);
+    }
   }
 
   // Enqueue pra AI agent (mesmo mecanismo do webhook UAZAPI)
@@ -400,12 +433,12 @@ async function downloadAndStoreMedia(supabase: any, mediaId: string, msgType: st
   }
 }
 
-async function getOfficialInstanceId(supabase: any): Promise<string | null> {
+async function getOfficialInstance(supabase: any): Promise<{ id: string; tenant_id: string | null } | null> {
   const { data } = await supabase
     .from("whatsapp_instances")
-    .select("id")
+    .select("id, tenant_id")
     .eq("name", "IAP - OFICIAL")
     .limit(1)
     .maybeSingle();
-  return data?.id || null;
+  return data ? { id: data.id, tenant_id: data.tenant_id ?? null } : null;
 }
