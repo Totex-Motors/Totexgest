@@ -34,6 +34,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
+import {
   useMarketplaceLeads,
   useMarketplaceMappings,
   useCreateMarketplaceMapping,
@@ -187,10 +195,23 @@ function MappingForm({ open, onClose, initial }: MappingFormProps) {
 
 // ─── Aba de Leads ─────────────────────────────────────────────────────────────
 
+const STORE_ALL = "__all__";
+
 function LeadsTab() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
-  const { data: leads = [], isLoading } = useMarketplaceLeads(search);
+  const [storeId, setStoreId] = useState<string>(STORE_ALL);
+
+  // Lojas para o filtro (só admin precisa). Vem dos mapeamentos cadastrados.
+  const { data: mappings = [] } = useMarketplaceMappings();
+
+  const { data: leads = [], isLoading } = useMarketplaceLeads({
+    search,
+    storeId: storeId !== STORE_ALL ? storeId : undefined,
+  });
+
+  const hasFilters = !!search || storeId !== STORE_ALL;
 
   return (
     <div className="space-y-4">
@@ -204,6 +225,23 @@ function LeadsTab() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
+        {isAdmin && (
+          <Select value={storeId} onValueChange={setStoreId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Todas as lojas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={STORE_ALL}>Todas as lojas</SelectItem>
+              {mappings.map((m) => (
+                <SelectItem key={m.id} value={m.marketplace_store_id}>
+                  {m.store_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Badge variant="secondary">{leads.length} lead{leads.length !== 1 ? "s" : ""}</Badge>
       </div>
 
@@ -213,8 +251,8 @@ function LeadsTab() {
           <p className="text-center py-10 text-sm text-muted-foreground">Carregando...</p>
         ) : leads.length === 0 ? (
           <p className="text-center py-10 text-sm text-muted-foreground">
-            {search
-              ? "Nenhum lead encontrado para essa busca."
+            {hasFilters
+              ? "Nenhum lead encontrado para esses filtros."
               : "Nenhum lead recebido ainda via marketplace."}
           </p>
         ) : (
@@ -288,9 +326,9 @@ function LeadsTab() {
             ) : leads.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
-                  {search
-                    ? "Nenhum lead encontrado para essa busca."
-                    : "Nenhum lead recebido ainda via marketplace."}
+                  {hasFilters
+              ? "Nenhum lead encontrado para esses filtros."
+              : "Nenhum lead recebido ainda via marketplace."}
                 </TableCell>
               </TableRow>
             ) : (
