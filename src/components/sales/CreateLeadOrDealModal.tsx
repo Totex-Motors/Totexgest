@@ -948,7 +948,7 @@ export function CreateLeadOrDealModal({
             {mode === "deal" ? (
               <>
                 <Briefcase className="h-5 w-5" />
-                Novo Deal
+                Nova Negociação
               </>
             ) : (
               <>

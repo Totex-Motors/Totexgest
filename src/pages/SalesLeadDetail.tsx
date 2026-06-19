@@ -67,7 +67,7 @@ import { LeadTagsInput } from "@/components/sales/LeadTagsInput";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Hooks
-import { useSalesLead, useUpdateLeadStage, useUpdateLeadPipelineStage, useUpdateBANT, useUpdateLeadInfo, useUpdateLeadQualification, useUpdateLeadSales, useDeleteLead } from "@/hooks/useSalesLeads";
+import { useSalesLead, useUpdateLeadStage, useUpdateLeadPipelineStage, useUpdateBANT, useUpdateLeadInfo, useUpdateLeadTemperature, useUpdateLeadSales, useDeleteLead } from "@/hooks/useSalesLeads";
 import { useLeadDuplicates, useLeadConversions, useLinkedOrganizations } from "@/hooks/useMergeLeads";
 import { usePipelineStages } from "@/hooks/useSalesPipeline";
 import { usePipelines } from "@/hooks/usePipelineConfig";
@@ -244,7 +244,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   const updatePipelineStage = useUpdateLeadPipelineStage();
   const updateBANT = useUpdateBANT();
   const updateLeadSales = useUpdateLeadSales();
-  const updateQualification = useUpdateLeadQualification();
+  const updateTemperature = useUpdateLeadTemperature();
   const calculateScore = useCalculateLeadScore();
 
   // Transactions & LTV
@@ -1137,22 +1137,20 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               />
             )}
 
-            {/* Qualification Card (herda dados do lead principal se necessário) */}
+            {/* Qualification Card — temperatura do lead (frio / morno / quente) */}
             {effectiveLead && (
               <div className="space-y-1">
                 <QualificationCard
-                  lead={effectiveLead}
-                  onUpdate={(field, value) => {
+                  temperature={(effectiveLead as any)?.metadata?.temperature ?? null}
+                  onChange={(value) => {
                     if (!id) return;
-                    updateQualification.mutate({ leadId: id, field, value });
+                    updateTemperature.mutate({
+                      leadId: id,
+                      temperature: value,
+                      currentMetadata: (effectiveLead as any)?.metadata ?? {},
+                    });
                   }}
                 />
-                {pl && (
-                  <p className="text-[10px] text-muted-foreground px-1 flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    Dados herdados de <span className="font-medium">{pl.name}</span> quando não preenchidos
-                  </p>
-                )}
               </div>
             )}
 

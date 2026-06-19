@@ -53,7 +53,6 @@ import { WavoipAdminPanel } from "@/components/calls";
 
 import {
   AnalysisTemplatesTab,
-  ProductsTab,
   CommissionsTab,
   TeamTab,
   PlaybooksTab,
@@ -153,12 +152,6 @@ const navigationSections: NavSection[] = [
         label: "Templates de IA",
         icon: Sparkles,
         description: "Crie prompts reutilizáveis para a IA analisar ligações, emails e reuniões. Ex: 'Analise o tom da conversa e sugira próximos passos'.",
-      },
-      {
-        id: "produtos",
-        label: "Produtos",
-        icon: Package,
-        description: "Cadastre os produtos/serviços que sua empresa vende. Eles aparecem ao criar propostas e calcular comissões.",
       },
       {
         id: "materiais",
@@ -430,8 +423,6 @@ function SettingsContent({ section }: { section: string }) {
       return <PipelineConfigTab />;
     case "templates":
       return <AnalysisTemplatesTab />;
-    case "produtos":
-      return <ProductsTab />;
     case "materiais":
       return <MaterialsTabContent />;
     case "playbooks":

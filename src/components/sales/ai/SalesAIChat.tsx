@@ -648,7 +648,8 @@ ${playbookContent}
       );
 
       if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}`);
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}${errBody ? ` — ${errBody.slice(0, 300)}` : ''}`);
       }
 
       const reader = response.body.getReader();
@@ -737,10 +738,11 @@ ${playbookContent}
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, assistantMessage]);
-        } catch {
+        } catch (fallbackErr: any) {
+          const detail = fallbackErr?.message || error?.message || 'erro desconhecido';
           const errorMsg: Message = {
             role: 'assistant',
-            content: 'Erro de conexão. Verifique sua internet e tente novamente.',
+            content: `Não consegui responder agora. Detalhe do erro: ${detail}`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, errorMsg]);

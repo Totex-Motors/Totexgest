@@ -181,15 +181,6 @@ export function CreateDealModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.product_id) {
-      toast({
-        title: "Erro",
-        description: "Selecione um produto",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!formData.negotiated_price || formData.negotiated_price <= 0) {
       toast({
         title: "Erro",
@@ -227,7 +218,7 @@ export function CreateDealModal({
       // Create the deal
       const deal = await createDeal.mutateAsync({
         contact_id: leadId,
-        product_id: formData.product_id,
+        product_id: formData.product_id || null,
         sales_rep_id: formData.sales_rep_id || undefined,
         sdr_id: formData.sdr_id || undefined,
         original_price: formData.original_price || 0,
@@ -303,7 +294,7 @@ export function CreateDealModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-green-600" />
-            Novo Deal
+            Nova Negociação
           </DialogTitle>
           {leadName && (
             <p className="text-sm text-muted-foreground">Lead: {leadName}</p>
@@ -316,7 +307,7 @@ export function CreateDealModal({
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Produto *
+                Produto (opcional)
               </Label>
               <Select
                 value={formData.product_id}

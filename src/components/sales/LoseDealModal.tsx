@@ -365,7 +365,7 @@ export function LoseDealModal({ open, onOpenChange, deal }: LoseDealModalProps) 
               {wantsNewOpportunity && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    O deal atual será perdido, mas um novo deal será criado para este lead.
+                    O deal atual será perdido, mas um Nova Negociação será criado para este lead.
                   </p>
                   <div className="grid gap-1.5 max-h-40 overflow-y-auto">
                     {products.map((p: any) => (
