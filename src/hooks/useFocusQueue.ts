@@ -37,7 +37,7 @@ function formatUrgency(date: string | null, type: 'future' | 'past'): string {
 export const useFocusQueue = (salesRepId: string | undefined) => {
   const queryClient = useQueryClient();
 
-  // Realtime: refetch imediato quando novo deal ou mudança em tarefas
+  // Realtime: refetch imediato quando Nova Negociação ou mudança em tarefas
   useEffect(() => {
     if (!salesRepId) return;
 

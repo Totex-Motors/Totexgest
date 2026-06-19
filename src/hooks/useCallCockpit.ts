@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
-const CLOSER_PIPELINE_ID = '9c21bd06-a898-44a1-88db-ad3c6ec7140c';
-
 export interface CockpitLead {
   deal_id: string;
   lead_id: string;
@@ -45,18 +43,15 @@ export interface CockpitFilters {
   sortBy?: 'recent' | 'revenue' | 'score' | 'stage_priority';
 }
 
-// SDR focuses on stages before the call
-const SDR_STAGE_NAMES = ['Novo', 'Não atendeu', 'Em Contato', 'Qualificado', 'Em Agendamento'];
-// SDR priority: Novo first (most recent leads are always priority), then the rest
-const SDR_PRIORITY_ORDER = ['Novo', 'Em Contato', 'Qualificado', 'Em Agendamento', 'Não atendeu'];
-
-// Closer focuses on stages after the call
-const CLOSER_STAGE_NAMES = ['Call Agendada', 'No-show', 'Call Realizada', 'Em Fechamento'];
-const CLOSER_PRIORITY_ORDER = ['Call Realizada', 'Em Fechamento', 'No-show', 'Call Agendada'];
+// Map stage names to priority (SDR vs Closer)
+const STAGE_CLASSIFICATION = {
+  sdr: ['novo', 'não atendeu', 'em contato', 'qualificado', 'em agendamento', 'lead capturado', 'em qualificação'],
+  closer: ['call agendada', 'no-show', 'call realizada', 'em fechamento', 'ganho', 'perdido'],
+};
 
 export const ALL_COCKPIT_STAGES = {
-  sdr: SDR_STAGE_NAMES,
-  closer: CLOSER_STAGE_NAMES,
+  sdr: STAGE_CLASSIFICATION.sdr,
+  closer: STAGE_CLASSIFICATION.closer,
 };
 
 function parseRevenue(rev: string | null): number {
@@ -74,29 +69,56 @@ export const useCockpitQueue = (
   salesRepId?: string,
   filters?: CockpitFilters,
 ) => {
-  const allowedStageNames = mode === 'sdr' ? SDR_STAGE_NAMES : CLOSER_STAGE_NAMES;
-  const priorityOrder = mode === 'sdr' ? SDR_PRIORITY_ORDER : CLOSER_PRIORITY_ORDER;
-
   return useQuery({
     queryKey: ['cockpit-queue', mode, salesRepId, filters],
     queryFn: async () => {
-      // 1. Fetch stages for the Closer pipeline (where all deals live)
-      const { data: stages } = await supabase
+      // 1. Fetch first available pipeline (dynamic, not hardcoded)
+      const { data: pipelines } = await supabase
+        .from('sales_pipelines')
+        .select('id')
+        .eq('is_active', true)
+        .order('position', { ascending: true })
+        .limit(1);
+
+      if (!pipelines?.length) {
+        console.warn('⚠️ Cockpit: No active pipelines found. Create a pipeline first.');
+        return [];
+      }
+
+      const pipelineId = pipelines[0].id;
+
+      // 2. Fetch all stages for this pipeline
+      const { data: allStages } = await supabase
         .from('sales_pipeline_stages')
         .select('id, name, position')
-        .eq('pipeline_id', CLOSER_PIPELINE_ID)
+        .eq('pipeline_id', pipelineId)
         .eq('is_won', false)
         .eq('is_lost', false)
         .order('position');
 
-      if (!stages?.length) return [];
+      if (!allStages?.length) {
+        console.warn('⚠️ Cockpit: Pipeline has no stages.');
+        return [];
+      }
 
-      // Filter stages by mode (SDR vs Closer)
-      const activeStageNames = filters?.stages?.length ? filters.stages : allowedStageNames;
-      const relevantStages = stages.filter(s => activeStageNames.includes(s.name));
-      if (!relevantStages.length) return [];
+      // 3. Classify stages by mode (case-insensitive match)
+      const classifiedStages = allStages.map(s => ({
+        ...s,
+        isSdrStage: STAGE_CLASSIFICATION.sdr.some(sdrName => s.name.toLowerCase().includes(sdrName)),
+        isCloserStage: STAGE_CLASSIFICATION.closer.some(closerName => s.name.toLowerCase().includes(closerName)),
+      }));
 
-      // 2. Fetch deals with lead data (exclude won/lost, limit for performance)
+      // 4. Filter stages by mode
+      const relevantStages = classifiedStages.filter(s =>
+        mode === 'sdr' ? s.isSdrStage : s.isCloserStage
+      );
+
+      if (!relevantStages.length) {
+        console.warn(`⚠️ Cockpit (${mode}): No matching stages found. Available: ${allStages.map(s => s.name).join(', ')}`);
+        return [];
+      }
+
+      // 5. Fetch deals with lead data (exclude won/lost, limit for performance)
       let dealsQuery = supabase
         .from('deals')
         .select(`
@@ -106,6 +128,7 @@ export const useCockpitQueue = (
           pipeline_stage_id,
           pipeline_id,
           sales_rep_id,
+          sdr_id,
           created_at,
           lead_id,
           lead:leads!deals_lead_id_fkey(
@@ -117,13 +140,12 @@ export const useCockpitQueue = (
           sales_rep:team_members!deals_sales_rep_id_fkey(id, name),
           sdr:team_members!deals_sdr_id_fkey(id, name)
         `)
-        .eq('pipeline_id', CLOSER_PIPELINE_ID)
+        .eq('pipeline_id', pipelineId)
         .in('pipeline_stage_id', relevantStages.map(s => s.id))
         .not('status', 'in', '(won,lost)');
 
       if (salesRepId) {
         if (mode === 'sdr') {
-          // SDR sees deals where they are SDR, or they are sales_rep (closer working SDR stages)
           dealsQuery = dealsQuery.or(
             `sdr_id.eq.${salesRepId},sales_rep_id.eq.${salesRepId}`
           );
@@ -132,7 +154,6 @@ export const useCockpitQueue = (
         }
       }
 
-      // Date filters at query level
       if (filters?.dateFrom) {
         dealsQuery = dealsQuery.gte('created_at', filters.dateFrom);
       }
@@ -201,12 +222,10 @@ export const useCockpitQueue = (
         }
       }
 
-      // 5. Build stage maps
-      const stagePriorityMap = new Map<string, number>();
-      priorityOrder.forEach((name, idx) => stagePriorityMap.set(name, idx));
-      const stageMap = new Map(stages.map(s => [s.id, s]));
+      // 6. Build stage map
+      const stageMap = new Map(allStages.map(s => [s.id, s]));
 
-      // 6. Map deals to CockpitLead
+      // 7. Map deals to CockpitLead
       let items: CockpitLead[] = deals.map((deal: any) => {
         const stage = stageMap.get(deal.pipeline_stage_id);
         const lead = deal.lead;
@@ -241,7 +260,7 @@ export const useCockpitQueue = (
         };
       });
 
-      // 7. Apply client-side filters
+      // 8. Apply client-side filters
       if (filters?.search) {
         const q = normalizeSearch(filters.search);
         items = items.filter(i =>
@@ -271,14 +290,13 @@ export const useCockpitQueue = (
         });
       }
 
-      // 8. Sort
+      // 9. Sort
       const sortBy = filters?.sortBy || 'stage_priority';
 
       items.sort((a, b) => {
         if (sortBy === 'stage_priority') {
-          const aPriority = stagePriorityMap.get(a.stage_name) ?? 99;
-          const bPriority = stagePriorityMap.get(b.stage_name) ?? 99;
-          if (aPriority !== bPriority) return aPriority - bPriority;
+          // Sort by pipeline stage position (natural order)
+          if (a.stage_position !== b.stage_position) return a.stage_position - b.stage_position;
           // Then newest first
           const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
           if (diff !== 0) return diff;

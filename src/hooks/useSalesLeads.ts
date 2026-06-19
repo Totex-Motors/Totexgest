@@ -488,6 +488,39 @@ export const useUpdateLeadQualification = () => {
   });
 };
 
+// Atualiza a temperatura do lead (frio / morno / quente), salva em leads.metadata
+export const useUpdateLeadTemperature = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      leadId,
+      temperature,
+      currentMetadata,
+    }: {
+      leadId: string;
+      temperature: 'frio' | 'morno' | 'quente';
+      currentMetadata?: Record<string, any> | null;
+    }) => {
+      const newMetadata = { ...(currentMetadata ?? {}), temperature };
+
+      const { data, error } = await (supabase as any)
+        .from('leads')
+        .update({ metadata: newMetadata, updated_at: new Date().toISOString() })
+        .eq('id', leadId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as SalesLead;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sales-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-lead', data.id] });
+    },
+  });
+};
+
 // Get leads count by stage
 export const useLeadsCountByStage = () => {
   return useQuery({

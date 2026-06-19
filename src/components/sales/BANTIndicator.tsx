@@ -11,6 +11,9 @@ import {
   Building2,
   Users,
   Pencil,
+  Snowflake,
+  Thermometer,
+  Flame,
 } from "lucide-react";
 import {
   Tooltip,
@@ -272,192 +275,102 @@ export function BANTCard({
 }
 
 // =====================================================
-// QUALIFICATION CARD — Real qualification fields
+// QUALIFICATION CARD — Temperatura do lead (frio / morno / quente)
 // =====================================================
 
-type QualificationField = 'company_name' | 'employee_count' | 'monthly_revenue' | 'challenges';
+export type LeadTemperature = 'frio' | 'morno' | 'quente';
 
-const qualificationFields: Array<{
-  key: QualificationField;
+const temperatureOptions: Array<{
+  value: LeadTemperature;
   label: string;
+  description: string;
   icon: typeof Building2;
-  color: string;
-  type: 'text' | 'number' | 'textarea';
-  placeholder: string;
+  activeClass: string;
+  iconClass: string;
 }> = [
-  { key: 'company_name', label: 'Empresa', icon: Building2, color: 'blue', type: 'text', placeholder: 'Nome da empresa' },
-  { key: 'employee_count', label: 'Funcionários', icon: Users, color: 'purple', type: 'number', placeholder: 'Ex: 50' },
-  { key: 'monthly_revenue', label: 'Faturamento', icon: DollarSign, color: 'emerald', type: 'text', placeholder: 'Ex: 200k/mês' },
-  { key: 'challenges', label: 'Desafios', icon: Target, color: 'amber', type: 'textarea', placeholder: 'Dores e desafios identificados' },
+  {
+    value: 'frio',
+    label: 'Frio',
+    description: 'Pouco interesse ou sem urgência. Precisa de nutrição.',
+    icon: Snowflake,
+    activeClass: 'border-blue-400 bg-blue-50',
+    iconClass: 'text-blue-500',
+  },
+  {
+    value: 'morno',
+    label: 'Morno',
+    description: 'Interesse moderado, ainda avaliando.',
+    icon: Thermometer,
+    activeClass: 'border-amber-400 bg-amber-50',
+    iconClass: 'text-amber-500',
+  },
+  {
+    value: 'quente',
+    label: 'Quente',
+    description: 'Alto interesse, pronto para fechar.',
+    icon: Flame,
+    activeClass: 'border-red-400 bg-red-50',
+    iconClass: 'text-red-500',
+  },
 ];
 
-function InlineEditField({
-  value,
-  fieldConfig,
-  onSave,
-}: {
-  value: string | number | null | undefined;
-  fieldConfig: typeof qualificationFields[number];
-  onSave: (value: string | number | null) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(value ?? ''));
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  // Sync draft with external value changes (e.g. AI updates)
-  useEffect(() => {
-    if (!editing) {
-      setDraft(String(value ?? ''));
-    }
-  }, [value, editing]);
-
-  const handleSave = () => {
-    setEditing(false);
-    const trimmed = draft.trim();
-    if (trimmed === String(value ?? '')) return;
-
-    if (trimmed === '') {
-      onSave(null);
-    } else if (fieldConfig.type === 'number') {
-      const num = parseInt(trimmed, 10);
-      onSave(isNaN(num) ? null : num);
-    } else {
-      onSave(trimmed);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && fieldConfig.type !== 'textarea') {
-      handleSave();
-    }
-    if (e.key === 'Escape') {
-      setDraft(String(value ?? ''));
-      setEditing(false);
-    }
-  };
-
-  const Icon = fieldConfig.icon;
-  const displayValue = value != null && value !== '' ? String(value) : null;
-
-  return (
-    <div
-      className={cn(
-        "flex items-start gap-2.5 p-2.5 rounded-lg border transition-all group",
-        displayValue
-          ? `bg-${fieldConfig.color}-50/50 border-${fieldConfig.color}-200/60`
-          : "bg-muted/30 border-muted-foreground/10"
-      )}
-    >
-      <div className={cn(
-        "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-        displayValue ? `bg-${fieldConfig.color}-100 text-${fieldConfig.color}-600` : "bg-muted text-muted-foreground/50"
-      )}>
-        <Icon className="h-3.5 w-3.5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] font-medium text-muted-foreground mb-0.5">{fieldConfig.label}</p>
-        {editing ? (
-          fieldConfig.type === 'textarea' ? (
-            <textarea
-              ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={handleSave}
-              onKeyDown={handleKeyDown}
-              placeholder={fieldConfig.placeholder}
-              rows={2}
-              className="w-full text-sm bg-background border rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          ) : (
-            <input
-              ref={inputRef as React.RefObject<HTMLInputElement>}
-              type={fieldConfig.type === 'number' ? 'number' : 'text'}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={handleSave}
-              onKeyDown={handleKeyDown}
-              placeholder={fieldConfig.placeholder}
-              className="w-full text-sm bg-background border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          )
-        ) : (
-          <button
-            onClick={() => setEditing(true)}
-            className="w-full text-left group/btn flex items-center gap-1"
-          >
-            <span className={cn(
-              "text-sm truncate",
-              displayValue ? "text-foreground" : "text-muted-foreground/50 italic"
-            )}>
-              {displayValue || "Não informado"}
-            </span>
-            <Pencil className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function QualificationCard({
-  lead,
-  onUpdate,
+  temperature,
+  onChange,
   className,
 }: {
-  lead: Pick<SalesLead, 'company_name' | 'employee_count' | 'monthly_revenue' | 'challenges'>;
-  onUpdate: (field: QualificationField, value: string | number | null) => void;
+  temperature?: string | null;
+  onChange: (value: LeadTemperature) => void;
   className?: string;
 }) {
-  const filledCount = qualificationFields.filter(
-    (f) => lead[f.key] != null && lead[f.key] !== ''
-  ).length;
-  const progressPercent = (filledCount / 4) * 100;
+  const current = (temperature ?? '').toLowerCase();
+  const selected = temperatureOptions.find((o) => o.value === current);
 
   return (
     <div className={cn("rounded-lg border p-4 space-y-3", className)}>
       <div className="flex items-center justify-between">
-        <h4 className="font-medium text-sm">Qualificação</h4>
-        <span className={cn(
-          "text-sm font-bold",
-          progressPercent >= 75 ? "text-emerald-600" :
-          progressPercent >= 50 ? "text-amber-600" :
-          "text-muted-foreground"
-        )}>
-          {filledCount}/4
-        </span>
+        <h4 className="font-medium text-sm">Qualificação do lead</h4>
       </div>
 
-      <div className="space-y-2">
-        {qualificationFields.map((field) => (
-          <InlineEditField
-            key={field.key}
-            value={lead[field.key]}
-            fieldConfig={field}
-            onSave={(val) => onUpdate(field.key, val)}
-          />
-        ))}
+      <div className="grid grid-cols-3 gap-2">
+        {temperatureOptions.map((opt) => {
+          const Icon = opt.icon;
+          const active = current === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              title={opt.description}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all",
+                active
+                  ? opt.activeClass
+                  : "border-muted-foreground/15 bg-muted/20 hover:bg-muted/40"
+              )}
+            >
+              <Icon
+                className={cn(
+                  "h-5 w-5",
+                  active ? opt.iconClass : "text-muted-foreground/50"
+                )}
+              />
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  active ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {opt.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-        <div
-          className={cn(
-            "h-full transition-all duration-300 rounded-full",
-            progressPercent >= 75 ? "bg-emerald-500" :
-            progressPercent >= 50 ? "bg-amber-500" :
-            progressPercent >= 25 ? "bg-blue-500" :
-            "bg-slate-400"
-          )}
-          style={{ width: `${progressPercent}%` }}
-        />
-      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {selected ? selected.description : "Classifique o interesse do lead."}
+      </p>
     </div>
   );
 }

@@ -571,7 +571,7 @@ export function PipelineBoardContent() {
             <div className="flex items-center gap-2 shrink-0">
               <Button onClick={() => handleAddDeal()} className="h-9 px-4 text-sm">
                 <Plus className="h-4 w-4 mr-1.5" />
-                Novo Deal
+                Nova Negociação
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

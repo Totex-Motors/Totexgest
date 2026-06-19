@@ -101,7 +101,6 @@ import SalesDeals from "./pages/SalesDeals";
 import SalesWhatsAppInbox from "./pages/SalesWhatsAppInbox";
 import SalesLeadDetail from "./pages/SalesLeadDetail";
 import SalesDealDetail from "./pages/SalesDealDetail";
-import Products from "./pages/Products";
 import Commissions from "./pages/Commissions";
 import SalesPlaybook from "./pages/SalesPlaybook";
 import SalesWorkspace from "./pages/SalesWorkspace";
@@ -228,7 +227,6 @@ const AppRoutes = () => {
       <Route path="/comercial/deals/:id" element={<ProtectedRoute><SalesDealDetail /></ProtectedRoute>} />
       <Route path="/comercial/inbox" element={<ProtectedRoute><SalesWhatsAppInbox /></ProtectedRoute>} />
       <Route path="/comercial/relatorios" element={<Navigate to="/comercial?tab=gestao" replace />} />
-      <Route path="/comercial/produtos" element={<ProtectedRoute><Products /></ProtectedRoute>} />
       <Route path="/comercial/comissoes" element={<ProtectedRoute><Commissions /></ProtectedRoute>} />
       <Route path="/comercial/playbook" element={<ProtectedRoute><SalesPlaybook /></ProtectedRoute>} />
       <Route path="/comercial/configuracoes" element={<Navigate to="/configuracoes?s=pipeline" replace />} />
