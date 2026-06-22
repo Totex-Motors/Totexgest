@@ -1581,7 +1581,7 @@ export function CreateLeadOrDealModal({
               </Button>
               <Button onClick={handleCreateDealForExisting} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Criar Deal
+                Criar Negociação
               </Button>
             </DialogFooter>
           </>
