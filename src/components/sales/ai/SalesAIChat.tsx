@@ -421,10 +421,43 @@ export function SalesAIChat({
         .select('id')
         .eq('slug', 'sales')
         .maybeSingle();
-      configId = fallbackConfig?.id;
+      configId = fallbackConfig?.id ?? null;
     }
 
     const agentLabel = chatTitle || (agentSlug === 'sales-copilot' ? 'Sales Copilot' : agentSlug);
+
+    // chat_sessions.config_id é NOT NULL. Se não há config para este agente
+    // (banco sem seed), criamos uma agora — assim a sessão pode ser criada.
+    if (!configId) {
+      const { data: createdConfig, error: cfgErr } = await supabase
+        .from('chat_configs')
+        .insert({
+          slug: agentSlug,
+          display_name: agentLabel,
+          provider: 'anthropic',
+          // system_prompt é NOT NULL; o chat-manager sobrescreve o prompt
+          // por slug (ex.: sales-copilot), então um placeholder é suficiente.
+          system_prompt: `Assistente de vendas (${agentLabel}).`,
+        })
+        .select('id')
+        .single();
+      if (createdConfig) {
+        configId = createdConfig.id;
+      } else {
+        // Corrida/duplicidade: alguém criou em paralelo — buscar de novo
+        const { data: reFetched } = await supabase
+          .from('chat_configs')
+          .select('id')
+          .eq('slug', agentSlug)
+          .maybeSingle();
+        configId = reFetched?.id ?? null;
+        if (!configId) {
+          console.error('Failed to create chat config:', cfgErr);
+          return null;
+        }
+      }
+    }
+
     const sessionTitle = isLeadContext
       ? `${agentLabel} - ${leadName || 'Lead'}`
       : `${agentLabel} - Global`;
@@ -440,7 +473,7 @@ export function SalesAIChat({
       .single();
 
     if (error) {
-      console.error('Failed to create session');
+      console.error('Failed to create session:', error);
       return null;
     }
 
