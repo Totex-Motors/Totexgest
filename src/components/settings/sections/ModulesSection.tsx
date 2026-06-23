@@ -51,7 +51,7 @@ const MODULES: ModuleDef[] = [
     label: "Marketing",
     description: "Disparo de campanhas de Email (Resend) e WhatsApp em massa, templates, automações/sequências e métricas de engajamento. Cada loja configura sua própria conta de envio.",
     icon: Megaphone,
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "core",
   },
 
@@ -99,7 +99,7 @@ const CATEGORY_LABELS: Record<string, { label: string; description: string }> = 
 export const MODULE_DEFAULTS: Record<string, boolean> = {
   comercial: true,
   gestao: true,
-  marketing: false,
+  marketing: true,
   telefonia: false,
   analytics: false,
   credere: false,
