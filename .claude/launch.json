@@ -5,8 +5,8 @@
       "name": "totexgest-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173,
-      "autoPort": true
+      "port": 8080,
+      "autoPort": false
     },
     {
       "name": "totexgest-preview",

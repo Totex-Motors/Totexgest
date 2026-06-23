@@ -163,7 +163,8 @@ export async function tryHandleViaAgentPlatformCloud(args: {
   }
 
   // 6. Envia resposta via Cloud API em bolhas curtas, com delay (mais natural).
-  const finalText = fullText.trim() || "Desculpa, não consegui processar agora.";
+  //    Remove antes o raciocínio interno (<thinking>) que vaza no texto antes de uma tool.
+  const finalText = stripThinking(fullText) || "Desculpa, não consegui processar agora.";
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendCloud(senderDigits, parts[i], tenantId, leadId);
@@ -239,6 +240,19 @@ async function markReplied(supabase: any, sessionId: string | undefined): Promis
 }
 
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+
+/**
+ * Remove o raciocínio interno do modelo (<thinking>...</thinking> e variações) que às vezes
+ * vaza no texto antes de uma tool call — NUNCA deve ir pro cliente. Trata bloco fechado,
+ * bloco aberto sem fechar e tags soltas.
+ */
+function stripThinking(text: string): string {
+  return String(text || "")
+    .replace(/<(thinking|thought|reasoning)>[\s\S]*?<\/\1>/gi, "")
+    .replace(/<(thinking|thought|reasoning)>[\s\S]*$/gi, "")
+    .replace(/<\/?(thinking|thought|reasoning)>/gi, "")
+    .trim();
+}
 
 function onlyDigits(s: string): string { return String(s).replace(/\D/g, ""); }
 

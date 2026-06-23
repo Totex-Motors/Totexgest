@@ -116,8 +116,25 @@ import TaskManagement from "./pages/TaskManagement";
 import TeamCalendar from "./pages/TeamCalendar";
 import TeamMeetings from "./pages/TeamMeetings";
 
+// Marketing (Email + WhatsApp + Automações) — disparo de campanhas multi-tenant
+import MarketingDashboard from "./pages/MarketingDashboard";
+import EmailMarketingHub from "./pages/EmailMarketingHub";
+import EmailCampaignNew from "./pages/EmailCampaignNew";
+import EmailCampaignDetail from "./pages/EmailCampaignDetail";
+import EmailTemplates from "./pages/EmailTemplates";
+import EmailTemplateEditor from "./pages/EmailTemplateEditor";
+import MarketingAutomations from "./pages/marketing/MarketingAutomations";
+import MarketingAutomationEditor from "./pages/marketing/MarketingAutomationEditor";
+import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import WhatsAppTemplateNew from "./pages/WhatsAppTemplateNew";
+import SalesCampaigns from "./pages/SalesCampaigns";
+import SalesCampaignNew from "./pages/SalesCampaignNew";
+import SalesCampaignDetail from "./pages/SalesCampaignDetail";
+
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
+// Unsubscribe público (LGPD) — sem auth
+const Unsubscribe = React.lazy(() => import("./pages/public/Unsubscribe"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -226,6 +243,25 @@ const AppRoutes = () => {
       <Route path="/comercial/pipeline" element={<ProtectedRoute><SalesPipeline /></ProtectedRoute>} />
       <Route path="/comercial/deals" element={<ProtectedRoute><SalesDeals /></ProtectedRoute>} />
       <Route path="/comercial/deals/:id" element={<ProtectedRoute><SalesDealDetail /></ProtectedRoute>} />
+
+      {/* Marketing — Email + WhatsApp + Automações (disparo de campanhas, multi-tenant) */}
+      <Route path="/marketing" element={<ProtectedRoute><MarketingDashboard /></ProtectedRoute>} />
+      <Route path="/marketing/campanhas" element={<ProtectedRoute><EmailMarketingHub /></ProtectedRoute>} />
+      <Route path="/marketing/campanhas/nova" element={<ProtectedRoute><EmailCampaignNew /></ProtectedRoute>} />
+      <Route path="/marketing/campanhas/:id" element={<ProtectedRoute><EmailCampaignDetail /></ProtectedRoute>} />
+      <Route path="/marketing/templates" element={<ProtectedRoute><EmailTemplates /></ProtectedRoute>} />
+      <Route path="/marketing/templates/:id" element={<ProtectedRoute><EmailTemplateEditor /></ProtectedRoute>} />
+      <Route path="/marketing/automacoes" element={<ProtectedRoute><MarketingAutomations /></ProtectedRoute>} />
+      <Route path="/marketing/automacoes/nova" element={<ProtectedRoute><MarketingAutomationEditor /></ProtectedRoute>} />
+      <Route path="/marketing/automacoes/:id" element={<ProtectedRoute><MarketingAutomationEditor /></ProtectedRoute>} />
+      <Route path="/marketing/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplates /></ProtectedRoute>} />
+      <Route path="/marketing/whatsapp-templates/novo" element={<ProtectedRoute><WhatsAppTemplateNew /></ProtectedRoute>} />
+      <Route path="/comercial/campanhas" element={<ProtectedRoute><SalesCampaigns /></ProtectedRoute>} />
+      <Route path="/comercial/campanhas/nova" element={<ProtectedRoute><SalesCampaignNew /></ProtectedRoute>} />
+      <Route path="/comercial/campanhas/:id" element={<ProtectedRoute><SalesCampaignDetail /></ProtectedRoute>} />
+
+      {/* Unsubscribe público (LGPD) — sem auth */}
+      <Route path="/unsubscribe" element={<React.Suspense fallback={null}><Unsubscribe /></React.Suspense>} />
       <Route path="/comercial/inbox" element={<ProtectedRoute><SalesWhatsAppInbox /></ProtectedRoute>} />
       <Route path="/comercial/relatorios" element={<Navigate to="/comercial?tab=gestao" replace />} />
       <Route path="/comercial/comissoes" element={<ProtectedRoute><Commissions /></ProtectedRoute>} />

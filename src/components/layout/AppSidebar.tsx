@@ -20,6 +20,11 @@ import {
   Library,
   KeyRound,
   Network,
+  Megaphone,
+  Mail,
+  FileText,
+  Workflow,
+  Send,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -89,6 +94,19 @@ const sections: NavSection[] = [
       { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
       { title: "Totem Físico", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
+    ],
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    moduleId: "marketing",
+    items: [
+      { title: "Dashboard", url: "/marketing", icon: Megaphone },
+      { title: "Campanhas Email", url: "/marketing/campanhas", icon: Mail },
+      { title: "Templates Email", url: "/marketing/templates", icon: FileText },
+      { title: "Automações", url: "/marketing/automacoes", icon: Workflow },
+      { title: "Campanhas WhatsApp", url: "/comercial/campanhas", icon: Send },
+      { title: "Templates WhatsApp", url: "/marketing/whatsapp-templates", icon: FileText },
     ],
   },
   {

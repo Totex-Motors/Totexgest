@@ -183,8 +183,9 @@ export async function tryHandleViaAgentPlatform(args: {
   }
 
   // 6. Envia resposta via UAZAPI quebrada em bolhas curtas (mais natural no WhatsApp),
-  //    com um pequeno delay entre elas.
-  const finalText = fullText.trim() || "Desculpa, não consegui processar agora.";
+  //    com um pequeno delay entre elas. Remove antes o raciocínio interno (<thinking>)
+  //    que o modelo às vezes emite no texto antes de chamar uma tool.
+  const finalText = stripThinking(fullText) || "Desculpa, não consegui processar agora.";
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendUazapi(inst, senderDigits, parts[i]);
@@ -278,6 +279,19 @@ async function sendUazapi(instance: InstanceLike, number: string, text: string):
 }
 
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+
+/**
+ * Remove o raciocínio interno do modelo (<thinking>...</thinking> e variações) que às vezes
+ * vaza no texto antes de uma tool call — NUNCA deve ir pro cliente. Trata bloco fechado,
+ * bloco aberto sem fechar (stream que termina dentro do raciocínio) e tags soltas.
+ */
+function stripThinking(text: string): string {
+  return String(text || "")
+    .replace(/<(thinking|thought|reasoning)>[\s\S]*?<\/\1>/gi, "") // bloco fechado
+    .replace(/<(thinking|thought|reasoning)>[\s\S]*$/gi, "")        // aberto e não fechado
+    .replace(/<\/?(thinking|thought|reasoning)>/gi, "")             // tag solta residual
+    .trim();
+}
 
 /**
  * Quebra a resposta em bolhas curtas pra parecer conversa natural no WhatsApp.

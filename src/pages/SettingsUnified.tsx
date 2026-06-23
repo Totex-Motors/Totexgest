@@ -29,6 +29,7 @@ import {
   LayoutGrid,
   Building2,
   ChevronLeft,
+  Mail,
   type LucideIcon,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ import { GoogleCalendarSection } from "@/components/settings/sections/GoogleCale
 import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
+import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
@@ -135,6 +137,12 @@ const navigationSections: NavSection[] = [
         label: "Telefonia (VoIP)",
         icon: Phone,
         description: "Configure dispositivos WaVoIP para fazer e receber ligações pelo CRM. As ligações são gravadas e transcritas pela IA.",
+      },
+      {
+        id: "email-config",
+        label: "Email (Resend)",
+        icon: Mail,
+        description: "Configure a conta de envio de email (Resend) da sua loja. Necessário para disparar campanhas e automações de email.",
       },
     ],
   },
@@ -426,6 +434,8 @@ function SettingsContent({ section }: { section: string }) {
       return <WhatsAppInstancesSection />;
     case "wavoip":
       return <WavoipAdminPanel />;
+    case "email-config":
+      return <EmailConfigSection />;
 
     // Comercial
     case "pipeline":
