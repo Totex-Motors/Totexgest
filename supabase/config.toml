@@ -21,6 +21,11 @@ project_id = "seu-projeto-aqui"
 [functions.asaas-webhook]
 verify_jwt = false
 
+# Webhook do Resend (eventos de email: delivered/opened/clicked/bounced).
+# Assinatura validada via Svix (resend_webhook_secret por tenant) dentro da função.
+[functions.process-email-event]
+verify_jwt = false
+
 [functions.wavoip-webhook]
 verify_jwt = false
 
@@ -59,6 +64,11 @@ verify_jwt = false
 [functions.quiz-api]
 verify_jwt = false
 
+# Link de descadastro de email (clicado direto do email pelo lead, sem login).
+# Auth via unsubscribe_token único na URL.
+[functions.unsubscribe]
+verify_jwt = false
+
 # PWA do participante de evento (auth próprio via session token)
 [functions.event-app-auth]
 verify_jwt = false
@@ -95,6 +105,14 @@ verify_jwt = false
 
 # Agentes IA automáticos
 [functions.ai-sales-agent]
+verify_jwt = false
+
+# Disparo de campanhas: processa campanhas WhatsApp em 'sending' (cron 1min)
+[functions.campaign-processor]
+verify_jwt = false
+
+# Motor de automações de email: avança runs agendados (cron 1min)
+[functions.email-automation-tick]
 verify_jwt = false
 
 [functions.ceo-whatsapp-bot]

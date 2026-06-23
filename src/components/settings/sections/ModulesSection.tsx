@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Phone,
   BarChart3,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +43,15 @@ const MODULES: ModuleDef[] = [
     description: "Tarefas da equipe, calendário compartilhado e reuniões com IA (gravação + resumo automático).",
     icon: ClipboardList,
     defaultEnabled: true,
+    category: "core",
+  },
+
+  {
+    id: "marketing",
+    label: "Marketing",
+    description: "Disparo de campanhas de Email (Resend) e WhatsApp em massa, templates, automações/sequências e métricas de engajamento. Cada loja configura sua própria conta de envio.",
+    icon: Megaphone,
+    defaultEnabled: false,
     category: "core",
   },
 
@@ -89,6 +99,7 @@ const CATEGORY_LABELS: Record<string, { label: string; description: string }> = 
 export const MODULE_DEFAULTS: Record<string, boolean> = {
   comercial: true,
   gestao: true,
+  marketing: false,
   telefonia: false,
   analytics: false,
   credere: false,
