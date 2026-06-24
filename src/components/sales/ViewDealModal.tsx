@@ -446,7 +446,7 @@ export function ViewDealModal({ open, onOpenChange, deal }: ViewDealModalProps) 
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 text-muted-foreground mb-1">
                       <Package className="h-4 w-4" />
-                      <span className="text-xs">Produto</span>
+                      <span className="text-xs">Veículo</span>
                     </div>
                     <p className="font-semibold">{productName}</p>
                   </CardContent>

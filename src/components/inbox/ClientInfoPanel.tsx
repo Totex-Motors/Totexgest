@@ -1074,7 +1074,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
             <div>
               <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5 uppercase tracking-wide">
                 <Package className="h-3.5 w-3.5" />
-                Produtos
+                Veículos
               </h4>
               {conversation.lead_products && conversation.lead_products.length > 0 ? (
                 <div className="space-y-1.5">
@@ -1086,7 +1086,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground italic">Nenhum produto</p>
+                <p className="text-sm text-muted-foreground italic">Nenhum veículo</p>
               )}
             </div>
 

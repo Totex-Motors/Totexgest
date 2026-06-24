@@ -2496,7 +2496,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
 
               {selectedTimelineEvent.metadata?.produto && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Produto</span>
+                  <span className="text-muted-foreground">Veículo</span>
                   <span className="font-medium">{selectedTimelineEvent.metadata.produto}</span>
                 </div>
               )}

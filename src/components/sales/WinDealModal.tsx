@@ -207,7 +207,7 @@ export function WinDealModal({ open, onOpenChange, deal }: WinDealModalProps) {
             Fechar como Ganho
           </DialogTitle>
           <DialogDescription>
-            Passo {step} de 3 — {step === 1 ? 'Produto e Valor' : step === 2 ? 'Pagamento' : 'Detalhes para CS'}
+            Passo {step} de 3 — {step === 1 ? 'Veículo e Valor' : step === 2 ? 'Pagamento' : 'Detalhes para CS'}
           </DialogDescription>
         </DialogHeader>
 
@@ -242,7 +242,7 @@ export function WinDealModal({ open, onOpenChange, deal }: WinDealModalProps) {
                   <span className="font-semibold">{leadOrContact?.name || "N/A"}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Produto</span>
+                  <span className="text-sm text-muted-foreground">Veículo</span>
                   {deal?.product?.name && selectedProductId === deal.product.id ? (
                     <span className="font-medium flex items-center gap-1.5">
                       <Package className="h-3.5 w-3.5" />
@@ -256,11 +256,11 @@ export function WinDealModal({ open, onOpenChange, deal }: WinDealModalProps) {
                 </div>
               </div>
 
-              {/* Produto — seletor se não tem */}
+              {/* Veículo — seletor se não tem */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
                   <Package className="h-3.5 w-3.5" />
-                  Produto
+                  Veículo
                 </Label>
                 <Select
                   value={selectedProductId || ""}
