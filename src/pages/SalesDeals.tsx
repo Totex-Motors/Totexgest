@@ -131,10 +131,10 @@ const SalesDeals = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-3">
               <Briefcase className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
-              Deals / Oportunidades
+              Negociações
             </h1>
             <p className="text-sm text-muted-foreground">
-              {filteredDeals.length} deals encontrados
+              {filteredDeals.length} negociações encontradas
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

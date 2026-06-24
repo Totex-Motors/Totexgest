@@ -49,10 +49,39 @@ export const useCreatePipeline = () => {
         .single();
 
       if (error) throw error;
+
+      // Semeia as etapas padrão — sem isso o pipeline nasce vazio (0 etapas) e
+      // fica inutilizável (Kanban vazio, seletores de etapa sem opções).
+      // Espelha as etapas usadas no provisionamento de tenant (provision-tenant).
+      const pipelineId = (data as SalesPipeline).id;
+      const defaultStages = [
+        { name: 'Novo Lead', position: 0, color: 'slate' },
+        { name: 'Em Qualificação', position: 1, color: 'blue' },
+        { name: 'Test Drive', position: 2, color: 'cyan' },
+        { name: 'Avaliação / Proposta', position: 3, color: 'amber' },
+        { name: 'Financiamento (Credere)', position: 4, color: 'indigo' },
+        { name: 'Ganho', position: 5, color: 'green', is_won: true },
+        { name: 'Perdido', position: 6, color: 'red', is_lost: true },
+      ];
+      const { error: stagesError } = await supabase
+        .from('sales_pipeline_stages')
+        .insert(
+          defaultStages.map((s) => ({
+            pipeline_id: pipelineId,
+            name: s.name,
+            position: s.position,
+            color: s.color,
+            is_won: s.is_won ?? false,
+            is_lost: s.is_lost ?? false,
+          }))
+        );
+      if (stagesError) throw stagesError;
+
       return data as SalesPipeline;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pipelines'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stages'] });
     },
   });
 };

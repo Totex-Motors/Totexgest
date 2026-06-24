@@ -816,8 +816,8 @@ export function CreateLeadOrDealModal({
       if (mode === "deal") {
         const deal = await createDealMutation.mutateAsync(lead.id);
         toast({
-          title: "Deal criado!",
-          description: `Deal para ${lead.name} foi criado com sucesso.`,
+          title: "Negociação criada!",
+          description: `Negociação para ${lead.name} foi criada com sucesso.`,
         });
         // Disparar notificação de deal criado
         if (deal?.id) {
@@ -869,8 +869,8 @@ export function CreateLeadOrDealModal({
       const deal = await createDealMutation.mutateAsync(selectedLead.id);
 
       toast({
-        title: "Deal criado!",
-        description: `Deal para ${selectedLead.name} foi criado.`,
+        title: "Negociação criada!",
+        description: `Negociação para ${selectedLead.name} foi criada.`,
       });
 
       // Disparar notificação de deal criado
@@ -960,7 +960,7 @@ export function CreateLeadOrDealModal({
           <DialogDescription>
             {step === "search" && "Busque por email/telefone ou cole um print para extrair com IA"}
             {step === "create-lead" && "Preencha os dados do novo lead"}
-            {step === "create-deal" && `Configurar deal para ${selectedLead?.name}`}
+            {step === "create-deal" && `Configurar negociação para ${selectedLead?.name}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -1423,7 +1423,7 @@ export function CreateLeadOrDealModal({
               </Button>
               <Button onClick={handleCreateLeadAndDeal} disabled={isLoading || checkDuplicate.isPending}>
                 {(isLoading || checkDuplicate.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {mode === "deal" ? "Criar Lead e Deal" : "Criar Lead"}
+                {mode === "deal" ? "Criar Lead e Negociação" : "Criar Lead"}
               </Button>
             </DialogFooter>
           </>

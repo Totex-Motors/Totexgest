@@ -26,12 +26,17 @@ serve(async (req)=>{
     console.log("[chat-manager] Agent:", agent, "Session:", session_id, "HistoryLen:", conversation_history?.length || 0);
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    // Client read-only — repassa o Authorization do usuário para que o RLS
+    // por tenant (get_tenant_id() lê o JWT) funcione. Sem isso, toda query
+    // de leads/deals volta vazia (assistente "não acha os leads").
+    const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
       auth: {
         autoRefreshToken: false,
         persistSession: false
       }
-    }); // Client read-only
+    });
 
     // Client ADMIN para operações de escrita (bypass RLS)
     const supabaseAdmin = createClient(
@@ -102,22 +107,19 @@ Responda sempre em Markdown (PT-BR), sem HTML, usando títulos, subtítulos e ta
     const SALES_COPILOT_PROMPT = `Você é o GESTOR DE VENDAS virtual, exigente e direto. Você EXECUTA ações e COBRA resultados.
 
 TABELAS PRINCIPAIS (schema public):
-1) leads: id, name, email, phone, sales_score, sales_stage, created_at, sales_rep_id
+1) leads: id, name, email, phone, sales_score, sales_stage, source, pipeline_stage_id, metadata (jsonb), created_at, sales_rep_id
+   - source identifica o canal de origem: 'credere' (financiamento), 'marketplace' (loja online), 'stand' (totem físico), além de leads manuais.
+   - metadata->'vehicle' guarda o veículo de interesse (brand, model, year/assets_value).
 2) deals: id, lead_id, negotiated_price, status (open/won/lost), pipeline_stage_id, created_at, won_at, lost_at
 3) transactions: id, lead_id, amount (centavos), status, created_at - VENDAS FECHADAS (status='approved')
 4) company_activities: id, lead_id, type, title, scheduled_at, completed, completed_at - TAREFAS
 5) whatsapp_messages: id, lead_id, content, is_from_me, created_at - CONVERSAS
-6) sales_pipeline_stages: id, name, position - ESTÁGIOS DO PIPELINE
+6) sales_pipeline_stages: id, name, position, is_won, is_lost, pipeline_id - ESTÁGIOS DO PIPELINE
 
-ESTÁGIOS DO PIPELINE (por position):
-1. Novo (position=1)
-2. Em Contato (position=2)
-3. Qualificado (position=3)
-4. Call Agendada (position=4)
-5. Call Realizada (position=5)
-6. Em Fechamento (position=6)
-7. Ganho (position=7)
-8. Perdido (position=8)
+ESTÁGIOS DO PIPELINE: variam por cliente/tenant. NUNCA presuma nomes ou IDs.
+Quando precisar de estágios, busque os reais:
+SELECT id, name, position, is_won, is_lost FROM sales_pipeline_stages ORDER BY position
+O RLS já filtra pelo tenant do usuário — você só enxerga os dados da empresa logada.
 
 ORDEM DE PRIORIDADE PARA BRIEFING (SEMPRE NESTA ORDEM EXATA):
 1. **LEADS NOVOS** - Primeiro contato é prioridade MÁXIMA! Velocidade de resposta é tudo.
