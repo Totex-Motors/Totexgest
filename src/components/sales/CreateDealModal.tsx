@@ -302,12 +302,12 @@ export function CreateDealModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Produto e Responsável */}
+          {/* Veículo e Responsável */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Produto (opcional)
+                Veículo (opcional)
               </Label>
               <Select
                 value={formData.product_id}
@@ -315,7 +315,7 @@ export function CreateDealModal({
                 disabled={productsLoading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione o produto..." />
+                  <SelectValue placeholder="Selecione o veículo..." />
                 </SelectTrigger>
                 <SelectContent>
                   {products?.map((product) => (

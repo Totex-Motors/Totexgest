@@ -86,9 +86,9 @@ serve(async (req) => {
     console.log(`📦 Tamanho base64 limpo: ${base64Data.length} caracteres`);
 
     // Chamar Gemini Vision API
-    console.log("🤖 Chamando Gemini 2.5 Pro API...");
+    console.log("🤖 Chamando Gemini 2.0 Flash API...");
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

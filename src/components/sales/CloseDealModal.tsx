@@ -309,7 +309,7 @@ export function RegisterNegotiationModal({
             {/* Deal Summary */}
             <div className="bg-muted/50 rounded-lg p-4 space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Produto</span>
+                <span className="text-sm text-muted-foreground">Veículo</span>
                 <span className="font-medium">{deal?.product?.name || "N/A"}</span>
               </div>
               <div className="space-y-2">

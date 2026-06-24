@@ -1055,11 +1055,11 @@ export function PipelineBoardContent() {
             </div>
             <h3 className="text-lg font-medium text-slate-800 mb-1">Pipeline vazio</h3>
             <p className="text-slate-500 mb-6 text-sm">
-              Crie seu primeiro deal para visualizá-lo aqui
+              Crie sua primeira negociação para visualizá-la aqui
             </p>
             <Button onClick={() => handleAddDeal()} className="h-9 px-4">
               <Plus className="h-4 w-4 mr-1.5" />
-              Criar deal
+              Criar negociação
             </Button>
           </div>
         )}

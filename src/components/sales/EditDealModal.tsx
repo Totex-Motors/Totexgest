@@ -181,11 +181,11 @@ export function EditDealModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Produto */}
+          {/* Veículo */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Package className="h-4 w-4" />
-              Produto
+              Veículo
             </Label>
             <Select
               value={formData.product_id}
@@ -193,7 +193,7 @@ export function EditDealModal({
               disabled={productsLoading}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecione o produto..." />
+                <SelectValue placeholder="Selecione o veículo..." />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Nenhum produto</SelectItem>

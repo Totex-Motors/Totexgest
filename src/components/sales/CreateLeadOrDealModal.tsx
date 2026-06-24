@@ -1165,20 +1165,6 @@ export function CreateLeadOrDealModal({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="company_name">Empresa</Label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="company_name"
-                      placeholder="Nome da empresa"
-                      value={newLeadForm.company_name}
-                      onChange={(e) => setNewLeadForm({ ...newLeadForm, company_name: e.target.value })}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
                   <Label htmlFor="instagram">Instagram</Label>
                   <div className="relative">
                     <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1344,7 +1330,7 @@ export function CreateLeadOrDealModal({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Produto</Label>
+                    <Label className="text-xs">Veículo</Label>
                     <Select
                       value={dealForm.productId}
                       onValueChange={(v) => setDealForm({ ...dealForm, productId: v })}
@@ -1497,7 +1483,7 @@ export function CreateLeadOrDealModal({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Produto</Label>
+                  <Label className="text-xs">Veículo</Label>
                   <Select
                     value={dealForm.productId}
                     onValueChange={(v) => setDealForm({ ...dealForm, productId: v })}

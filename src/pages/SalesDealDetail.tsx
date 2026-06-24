@@ -271,7 +271,7 @@ const SalesDealDetail = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Produto</span>
+                <span className="text-sm text-muted-foreground">Veículo</span>
                 <span className="font-medium">{deal.product?.name || "N/A"}</span>
               </div>
               <Separator />
