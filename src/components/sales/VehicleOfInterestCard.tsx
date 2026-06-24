@@ -26,6 +26,21 @@ interface VehicleMeta {
   mileage?: number;
   price?: number;
   price_formatted?: string;
+  // Campos do shape da Credere (financiamento) — normalizados abaixo.
+  assets_value?: number;
+  manufacture_year?: number;
+  model_year?: number;
+}
+
+// A Credere grava o veículo com nomes diferentes do Marketplace.
+// Normaliza pra um shape único antes de renderizar.
+function normalizeVehicle(v?: VehicleMeta | null): VehicleMeta | null {
+  if (!v) return v ?? null;
+  return {
+    ...v,
+    price: v.price ?? v.assets_value,
+    year: v.year ?? v.model_year ?? v.manufacture_year,
+  };
 }
 
 function formatCurrency(v?: number) {
@@ -141,7 +156,7 @@ function LinkVehicleModal({
 }
 
 export function VehicleOfInterestCard({
-  vehicle,
+  vehicle: rawVehicle,
   storeName,
   leadId,
 }: {
@@ -150,6 +165,7 @@ export function VehicleOfInterestCard({
   leadId?: string;
 }) {
   const [showLink, setShowLink] = useState(false);
+  const vehicle = normalizeVehicle(rawVehicle);
 
   if (!vehicle || (!vehicle.brand && !vehicle.model && !vehicle.description && !vehicle.id)) {
     if (!leadId) return null;

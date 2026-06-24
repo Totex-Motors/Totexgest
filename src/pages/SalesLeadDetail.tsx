@@ -1114,7 +1114,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
             {effectiveLead && id && (
               <VehicleOfInterestCard
                 vehicle={(effectiveLead as any).metadata?.vehicle}
-                storeName={(effectiveLead as any).metadata?.marketplace_store_name}
+                storeName={
+                  (effectiveLead as any).metadata?.marketplace_store_name ??
+                  (effectiveLead as any).metadata?.credere_store_name ??
+                  (effectiveLead as any).metadata?.store?.name
+                }
                 leadId={id}
               />
             )}

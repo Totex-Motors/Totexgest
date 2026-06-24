@@ -497,14 +497,14 @@ export function PipelineBoardContent() {
             transferredByName: teamMember?.name || 'Sistema (auto-transfer)',
           });
           toast({
-            title: "Deal transferido para Closer",
-            description: "Movido automaticamente para Closer → Call Agendada",
+            title: "Negociação transferida para Closer",
+            description: "Movida automaticamente para Closer → Call Agendada",
           });
           return;
         } catch {
           toast({
-            title: "Deal movido, mas erro na transferência",
-            description: "O deal foi movido para Call Agendada mas não foi transferido para o Closer.",
+            title: "Negociação movida, mas erro na transferência",
+            description: "A negociação foi movida para Call Agendada mas não foi transferida para o Closer.",
             variant: "destructive",
           });
           return;
@@ -512,12 +512,12 @@ export function PipelineBoardContent() {
       }
 
       toast({
-        title: "Deal movido",
-        description: "O deal foi movido para o novo estágio.",
+        title: "Negociação movida",
+        description: "A negociação foi movida para o novo estágio.",
       });
     } catch (_e) {
       toast({
-        title: "Erro ao mover deal",
+        title: "Erro ao mover negociação",
         description: "Tente novamente.",
         variant: "destructive",
       });
@@ -530,13 +530,13 @@ export function PipelineBoardContent() {
   };
 
   const handleDeleteDeal = useCallback((dealId: string) => {
-    if (!confirm("Tem certeza que deseja excluir este deal? Esta ação não pode ser desfeita.")) return;
+    if (!confirm("Tem certeza que deseja excluir esta negociação? Esta ação não pode ser desfeita.")) return;
     deleteDealMutation.mutate(dealId, {
       onSuccess: () => {
-        toast({ title: "Deal excluído com sucesso" });
+        toast({ title: "Negociação excluída com sucesso" });
       },
       onError: (err: any) => {
-        toast({ title: "Erro ao excluir deal", description: err?.message, variant: "destructive" });
+        toast({ title: "Erro ao excluir negociação", description: err?.message, variant: "destructive" });
       },
     });
   }, [deleteDealMutation, toast]);
@@ -651,7 +651,7 @@ export function PipelineBoardContent() {
               <SelectContent>
                 <SelectItem value="urgency">Urgencia</SelectItem>
                 <SelectItem value="recent">Mais recentes</SelectItem>
-                <SelectItem value="value">Maior valor deal</SelectItem>
+                <SelectItem value="value">Maior valor negociação</SelectItem>
                 <SelectItem value="revenue">Maior faturamento</SelectItem>
                 <SelectItem value="score">Score do lead</SelectItem>
                 <SelectItem value="time_in_stage">Tempo na etapa</SelectItem>

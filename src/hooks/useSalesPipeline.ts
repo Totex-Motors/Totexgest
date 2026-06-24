@@ -72,9 +72,9 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         .select(`
           *,
           lead:leads!deals_lead_id_fkey(
-            id, name, phone, sales_score, star_type, acao_de_hoje,
-            utm_source, utm_campaign, status_de_resposta, etapa_funil, sales_rep_id,
-            instagram_profile_id, stage_changed_at, monthly_revenue, company_name, webinar_config_id
+            id, name, phone, email, sales_score,
+            utm_source, utm_campaign, utm_content, sales_rep_id,
+            company_name, webinar_config_id
           ),
           product:products!deals_product_id_fkey(id, name),
           sales_rep:team_members!deals_sales_rep_id_fkey(id, name)
@@ -425,8 +425,9 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         const refMidnight = new Date(referenceDate); refMidnight.setHours(0, 0, 0, 0);
         const daysSinceInteraction = Math.floor((todayMidnight.getTime() - refMidnight.getTime()) / 86400000);
 
-        // Calcular dias nesta etapa
-        const stageChangeRef = deal.lead?.stage_changed_at || deal.created_at;
+        // Calcular dias nesta etapa (deal.stage_changed_at existe na tabela deals;
+        // lead.stage_changed_at não existe neste schema)
+        const stageChangeRef = deal.stage_changed_at || deal.created_at;
         const stageChangeMidnight = new Date(stageChangeRef); stageChangeMidnight.setHours(0, 0, 0, 0);
         const daysInStage = Math.floor((todayMidnight.getTime() - stageChangeMidnight.getTime()) / 86400000);
 
