@@ -42,6 +42,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   MoreHorizontal,
+  Store,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Deal, PipelineColumn } from "@/types/sales.types";
@@ -181,6 +182,7 @@ export function PipelineBoardContent() {
   const [urgencyFilter, setUrgencyFilter] = useSessionState<string>("pipeline_urgencyFilter", "all");
   const [revenueFilter, setRevenueFilter] = useSessionState<string>("pipeline_revenueFilter", "all");
   const [activityFilter, setActivityFilter] = useSessionState<string>("pipeline_activityFilter", "all");
+  const [portalFilter, setPortalFilter] = useSessionState<string>("pipeline_portalFilter", "all");
   const [utmSourceFilter, setUtmSourceFilter] = useState<string>("all");
   const [utmCampaignFilter, setUtmCampaignFilter] = useState<string>("all");
   const [utmContentFilter, setUtmContentFilter] = useState<string>("all");
@@ -249,6 +251,7 @@ export function PipelineBoardContent() {
 
     const searchNormalized = removeAccents(searchQuery.trim());
     const hasSearch = searchNormalized.length > 0;
+    const hasPortalFilter = portalFilter !== "all";
     const hasUrgencyFilter = urgencyFilter !== "all";
     const hasRevenueFilter = revenueFilter !== "all";
     const hasActivityFilter = activityFilter !== "all";
@@ -258,7 +261,7 @@ export function PipelineBoardContent() {
     const dateRange = getDateRange(periodFilter, customDateFrom, customDateTo);
     const hasPeriodFilter = dateRange !== null;
 
-    if (!hasSearch && !hasUrgencyFilter && !hasActivityFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
+    if (!hasSearch && !hasPortalFilter && !hasUrgencyFilter && !hasActivityFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
 
     return pipeline.map((column): PipelineColumn => {
       const filteredDeals = column.deals.filter((deal) => {
@@ -284,6 +287,14 @@ export function PipelineBoardContent() {
             matchesContactName;
 
           if (!matchesSearch) return false;
+        }
+
+        // Filtro de portal (origem do lead: credere, marketplace, stand/totem)
+        if (hasPortalFilter) {
+          const leadSrc = ((deal.lead as any)?.source || "").toLowerCase();
+          if (portalFilter === "_sem_portal") {
+            if (leadSrc === "credere" || leadSrc === "marketplace" || leadSrc === "stand") return false;
+          } else if (leadSrc !== portalFilter) return false;
         }
 
         // Filtro de urgência
@@ -378,7 +389,7 @@ export function PipelineBoardContent() {
         total_value: filteredDeals.reduce((sum, d) => sum + (Number(d.negotiated_price) || 0), 0),
       };
     });
-  }, [pipeline, searchQuery, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
+  }, [pipeline, searchQuery, portalFilter, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
 
   // Contar totais de urgência para mostrar no filtro
   const urgencyCounts = useMemo(() => {
@@ -439,11 +450,14 @@ export function PipelineBoardContent() {
     };
   }, [pipeline]);
 
-  const hasActiveFilters = searchQuery.trim() !== "" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
+  const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
+
+  const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "Totem Físico", _sem_portal: "Sem portal" };
 
   // Count active advanced filters (excludes search, sort, view - those are always visible)
   const activeAdvancedFilters = useMemo(() => {
     const filters: { key: string; label: string; onRemove: () => void }[] = [];
+    if (portalFilter !== "all") filters.push({ key: "portal", label: `Portal: ${PORTAL_LABELS[portalFilter] || portalFilter}`, onRemove: () => setPortalFilter("all") });
     if (urgencyFilter !== "all") filters.push({ key: "urgency", label: urgencyFilter === "critical" ? "Críticos" : urgencyFilter === "warning" ? "Alertas" : "OK", onRemove: () => setUrgencyFilter("all") });
     if (activityFilter !== "all") filters.push({ key: "activity", label: { call_today: "Calls hoje", meeting_today: "Reuniões hoje", task_today: "Tarefas hoje", no_task_today: "Sem tarefa", any_task: "Com tarefa", overdue: "Atrasadas" }[activityFilter] || activityFilter, onRemove: () => setActivityFilter("all") });
     if (periodFilter !== "all") filters.push({ key: "period", label: { today: "Hoje", this_week: "Semana", this_month: "Este mês", last_month: "Mês passado", last_3_months: "3 meses", custom: "Customizado" }[periodFilter] || "Período", onRemove: () => { setPeriodFilter("all"); setDateField("created_at"); setCustomDateFrom(""); setCustomDateTo(""); } });
@@ -452,7 +466,7 @@ export function PipelineBoardContent() {
     if (utmCampaignFilter !== "all") filters.push({ key: "utm_campaign", label: `Campanha: ${utmCampaignFilter === "_sem_utm" ? "Sem" : utmCampaignFilter}`, onRemove: () => setUtmCampaignFilter("all") });
     if (utmContentFilter !== "all") filters.push({ key: "utm_content", label: `Conteúdo: ${utmContentFilter === "_sem_utm" ? "Sem" : utmContentFilter}`, onRemove: () => setUtmContentFilter("all") });
     return filters;
-  }, [urgencyFilter, activityFilter, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
+  }, [portalFilter, urgencyFilter, activityFilter, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
 
   const handleDealClick = (deal: Deal, e?: React.MouseEvent) => {
     if (deal.lead_id) {
@@ -680,6 +694,39 @@ export function PipelineBoardContent() {
                 </div>
 
                 <div className="border-t border-slate-100 px-4 py-3 grid grid-cols-2 gap-3">
+                  {/* Portal de origem */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">Portal</label>
+                    <Select value={portalFilter} onValueChange={setPortalFilter}>
+                      <SelectTrigger className="h-9 text-sm border-slate-200">
+                        <Store className="h-3.5 w-3.5 mr-2 text-slate-400" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="credere">
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                            Credere
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="marketplace">
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                            Marketplace Digital
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="stand">
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                            Totem Físico
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="_sem_portal">Sem portal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Urgencia */}
                   <div>
                     <label className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">Urgencia</label>
@@ -966,6 +1013,7 @@ export function PipelineBoardContent() {
                   <div className="border-t border-slate-100 px-4 py-3 flex justify-end">
                     <button
                       onClick={() => {
+                        setPortalFilter("all");
                         setUrgencyFilter("all");
                         setActivityFilter("all");
                         setPeriodFilter("all");
