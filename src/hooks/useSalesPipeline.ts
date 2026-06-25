@@ -74,7 +74,7 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
           lead:leads!deals_lead_id_fkey(
             id, name, phone, email, sales_score,
             utm_source, utm_campaign, utm_content, sales_rep_id,
-            company_name, webinar_config_id
+            company_name, webinar_config_id, source
           ),
           product:products!deals_product_id_fkey(id, name),
           sales_rep:team_members!deals_sales_rep_id_fkey(id, name)

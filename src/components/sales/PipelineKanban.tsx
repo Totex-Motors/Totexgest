@@ -950,7 +950,14 @@ function DealCard({
         {(() => {
           const enrollment = (deal as any).webinar_enrollment;
           const utmSource = (deal.lead as any)?.utm_source;
-          if (!enrollment?.webinar_title && !utmSource) return null;
+          const leadSource = ((deal.lead as any)?.source || "").toLowerCase();
+          const PORTAL_MAP: Record<string, { label: string; cls: string }> = {
+            credere: { label: "Credere", cls: "bg-indigo-100 text-indigo-700" },
+            marketplace: { label: "Marketplace Digital", cls: "bg-orange-100 text-orange-700" },
+            stand: { label: "Totem Físico", cls: "bg-teal-100 text-teal-700" },
+          };
+          const portal = PORTAL_MAP[leadSource];
+          if (!enrollment?.webinar_title && !utmSource && !portal) return null;
 
           let attendanceBadge: React.ReactNode = null;
           if (enrollment?.webinar_title) {
@@ -987,6 +994,11 @@ function DealCard({
 
           return (
             <div className="flex items-center gap-1 mb-2 flex-wrap">
+              {portal && (
+                <span className={cn("inline-flex items-center text-[9px] px-1.5 py-0.5 rounded font-semibold", portal.cls)} title={`Portal: ${portal.label}`}>
+                  {portal.label}
+                </span>
+              )}
               {enrollment?.webinar_title && (
                 <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-semibold max-w-[120px] truncate">
                   <Sparkles className="h-2.5 w-2.5 shrink-0" />
