@@ -206,10 +206,13 @@ export function PipelineBoardContent() {
   const { data: webinarConfigs = [] } = useWebinarConfigs();
 
   // Set default pipeline on load (fallback pro primeiro se n\u00e3o houver is_default)
+  // "__all__" \u00e9 uma op\u00e7\u00e3o especial de superadmin que n\u00e3o filtra por pipeline
   const activePipelineId =
-    selectedPipelineId ||
-    pipelines?.find((p) => p.is_default)?.id ||
-    pipelines?.[0]?.id;
+    (selectedPipelineId as any) === "__all__"
+      ? undefined
+      : selectedPipelineId ||
+        pipelines?.find((p) => p.is_default)?.id ||
+        pipelines?.[0]?.id;
   const WEBINAR_PIPELINE_ID = '90b09d81-8282-4503-a869-1787baf8f736';
   const isWebinarPipeline = activePipelineId === WEBINAR_PIPELINE_ID;
 
@@ -561,11 +564,23 @@ export function PipelineBoardContent() {
         {/* Header Fixo */}
         <div className="flex-shrink-0 pb-4 space-y-3">
           {/* Row 1: Title bar */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 overflow-x-auto">
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 shrink-0">Pipeline</h1>
               {pipelines && pipelines.length > 1 && (
-                <div className="flex items-center gap-1 overflow-x-auto">
+                <div className="flex items-center gap-1">
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => setSelectedPipelineId("__all__" as any)}
+                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                        (selectedPipelineId as any) === "__all__"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      Todas
+                    </button>
+                  )}
                   {pipelines.map((p) => (
                     <button
                       key={p.id}

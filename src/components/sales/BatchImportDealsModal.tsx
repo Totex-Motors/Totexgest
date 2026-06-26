@@ -21,6 +21,7 @@ import { usePipelines } from "@/hooks/usePipelineConfig";
 import { usePipelineStages } from "@/hooks/useSalesPipeline";
 import { useCreateDeal } from "@/hooks/useSalesDeals";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -43,7 +44,7 @@ interface LeadOption {
   name: string;
   email: string | null;
   phone: string | null;
-  company: string | null;
+  company_name: string | null;
 }
 
 export function BatchImportDealsModal({
@@ -52,6 +53,7 @@ export function BatchImportDealsModal({
   defaultPipelineId,
 }: BatchImportDealsModalProps) {
   const { toast } = useToast();
+  const { isSuperAdmin } = useAuth();
   const { data: pipelines } = usePipelines();
   const createDeal = useCreateDeal();
 
@@ -84,7 +86,7 @@ export function BatchImportDealsModal({
       const q = searchQuery.trim();
       let query = supabase
         .from("leads")
-        .select("id, name, email, phone, company")
+        .select("id, name, email, phone, company_name")
         .order("name")
         .limit(20);
 
@@ -231,7 +233,9 @@ export function BatchImportDealsModal({
                 <SelectContent>
                   {activePipelines.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.name}
+                      {isSuperAdmin
+                        ? ((p as any).tenants?.name ? `${(p as any).tenants.name} — ${p.name}` : p.name)
+                        : p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
