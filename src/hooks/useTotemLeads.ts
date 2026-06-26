@@ -34,7 +34,9 @@ export const useTotemLeads = (search?: string) => {
       let query = supabase
         .from("leads")
         .select("id, name, email, phone, city_name, state, context, status, sales_score, created_at, metadata")
-        .eq("source", "stand")
+        // Os webhooks do totem podem gravar o canal em `source` ('stand', lado Totex)
+        // ou em `utm_source` ('stand_totex', lado loja via stand-handoff). Cobre os dois.
+        .or("source.eq.stand,utm_source.ilike.stand%")
         .order("created_at", { ascending: false })
         .limit(200);
 

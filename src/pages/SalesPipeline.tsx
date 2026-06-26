@@ -176,7 +176,7 @@ export function PipelineBoardContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { teamMember } = useAuth();
+  const { teamMember, isSuperAdmin } = useAuth();
   const [viewFilter, setViewFilter] = useSessionState<string>("pipeline_viewFilter", "all");
   const [searchQuery, setSearchQuery] = useSessionState<string>("pipeline_searchQuery", "");
   const [urgencyFilter, setUrgencyFilter] = useSessionState<string>("pipeline_urgencyFilter", "all");
@@ -576,7 +576,7 @@ export function PipelineBoardContent() {
                           : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                       }`}
                     >
-                      {p.name}
+                      {isSuperAdmin ? ((p as any).tenants?.name || p.name) : p.name}
                     </button>
                   ))}
                 </div>

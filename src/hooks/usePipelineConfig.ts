@@ -14,12 +14,12 @@ export const usePipelines = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sales_pipelines')
-        .select('*')
+        .select('*, tenants(name)')
         .eq('is_active', true)
         .order('position', { ascending: true });
 
       if (error) throw error;
-      return (data || []) as SalesPipeline[];
+      return (data || []) as (SalesPipeline & { tenants?: { name: string } | null })[];
     },
   });
 };

@@ -38,6 +38,21 @@ function brl(v: unknown): string | null {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
+const norm = (s: string) =>
+  String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * A API do marketplace casa por SUBSTRING (ex: search=gol traz "Golf"). Aqui exigimos que
+ * cada palavra (>=3 letras) do que o cliente pediu apareça como PALAVRA INTEIRA no título —
+ * "gol" casa "Gol" mas não "Golf". Tokens não-alfabéticos (ex: "1.6") são ignorados no filtro.
+ */
+function matchesQuery(titulo: string, termo: string): boolean {
+  const tokens = norm(termo).split(/\s+/).filter((t) => /^[a-z]{3,}$/.test(t));
+  if (tokens.length === 0) return true;
+  const t = norm(titulo);
+  return tokens.every((tok) => new RegExp(`\\b${tok}\\b`).test(t));
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -97,14 +112,23 @@ Deno.serve(async (req: Request) => {
       loja_telefone: v.dealership?.phone ?? null,
     }));
 
+    // Refina pelo termo pedido (palavra inteira) — evita "Golf" quando pediram "Gol".
+    const termo = modelo || busca;
+    const filtrados = termo ? veiculos.filter((v) => matchesQuery(v.titulo, termo)) : veiculos;
+
+    // Se o filtro zerou (a API só trouxe parecidos, não o modelo pedido), retorna vazio
+    // de propósito — o agente avisa que não tem esse modelo agora, sem empurrar outro.
+    const semExato = termo && veiculos.length > 0 && filtrados.length === 0;
+
     return json({
-      total: data?.total ?? veiculos.length,
-      mostrando: veiculos.length,
-      veiculos,
-      // dica pro agente: se total > mostrando, peça mais filtros (ano, preço, cidade)
-      observacao: (data?.total ?? 0) > veiculos.length
-        ? "Há mais resultados; refine por ano, faixa de preço ou cidade."
-        : null,
+      total: filtrados.length,
+      mostrando: filtrados.length,
+      veiculos: filtrados,
+      observacao: semExato
+        ? `Não há "${termo}" no estoque agora (a busca só trouxe modelos de nome parecido). Ofereça buscar outro modelo ou avisar quando chegar.`
+        : (data?.total ?? 0) > veiculos.length
+          ? "Há mais resultados; refine por ano, faixa de preço ou cidade."
+          : null,
     });
   } catch (err) {
     console.error("[consultar-estoque] error:", (err as Error).message);
