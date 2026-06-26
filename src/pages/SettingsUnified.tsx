@@ -289,7 +289,7 @@ export default function SettingsUnified() {
         ),
       }))
       .filter((section) => section.items.length > 0); 
-  }, [isAdmin, isSuperAdmin]);
+  }, [isAdmin, isSuperAdmin]);x
 
   // Find active item info
   const activeItem = useMemo(() => {
