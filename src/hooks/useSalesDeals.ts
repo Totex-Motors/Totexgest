@@ -449,9 +449,10 @@ export const useMoveDealStage = () => {
         .update(updates)
         .eq('id', dealId)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Sem permissão para mover este lead ou deal não encontrado.');
 
       // Sync lead's pipeline_stage_id with deal's stage
       if (data?.lead_id) {
