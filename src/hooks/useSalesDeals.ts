@@ -1294,7 +1294,7 @@ export const useDeleteDeal = () => {
       const { error } = await supabase.from('deals').delete().eq('id', dealId);
       if (error) throw error;
 
-      toast('Deal excluído');
+      toast('Negociação excluída com sucesso');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-deals'] });
