@@ -122,7 +122,7 @@ export function TimelineView({
   return (
     <Card>
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-blue-500" />
@@ -130,7 +130,7 @@ export function TimelineView({
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">Histórico completo de interações</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex bg-muted rounded-lg p-1">
               <button
                 onClick={() => setFilter("all")}

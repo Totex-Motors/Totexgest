@@ -2666,10 +2666,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                 if (!deleteDealConfirm) return;
                 try {
                   await deleteDeal.mutateAsync(deleteDealConfirm.id);
-                  toast({ title: "Deal excluido com sucesso" });
+                  toast({ title: "Negociação excluída com sucesso" });
                   setDeleteDealConfirm(null);
                 } catch {
-                  toast({ title: "Erro ao excluir deal", variant: "destructive" });
+                  toast({ title: "Erro ao excluir negociação", variant: "destructive" });
                 }
               }}
             >
