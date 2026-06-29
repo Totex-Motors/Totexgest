@@ -41,7 +41,26 @@ const routeTitles: Record<string, string> = {
   "/financeiro/dre": "DRE",
   "/financeiro/relatorios": "Relatórios",
   "/financeiro/cobrancas": "Contas a Receber",
+  "/comercial": "Comercial",
+  "/comercial/cockpit": "Cockpit",
+  "/comercial/pipeline": "Pipeline",
+  "/comercial/leads": "Leads",
+  "/comercial/deals": "Negociações",
+  "/comercial/inbox": "Inbox",
+  "/comercial/agenda": "Agenda",
+  "/comercial/workspace": "Workspace",
+  "/comercial/produtos": "Produtos",
+  "/comercial/comissoes": "Comissões",
+  "/comercial/playbook": "Playbook",
+  "/comercial/materiais": "Materiais",
+  "/comercial/treinamento": "Treinamento",
+  "/gestao/tarefas": "Tarefas",
+  "/gestao/calendario": "Calendário",
+  "/gestao/reunioes": "Reuniões",
+  "/meu-whatsapp": "Meu WhatsApp",
 };
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
@@ -88,9 +107,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       breadcrumbs.push({ label: "Cockpit CS", path: "/", isLast: true });
     } else {
       let currentPath = "";
-      pathSegments.forEach((segment, index) => {
+      const filtered = pathSegments.filter(s => !UUID_REGEX.test(s));
+      filtered.forEach((segment, index) => {
         currentPath += `/${segment}`;
-        const isLast = index === pathSegments.length - 1;
+        const isLast = index === filtered.length - 1;
         const label = routeTitles[currentPath] || segment;
         breadcrumbs.push({ label, path: currentPath, isLast });
       });
@@ -113,13 +133,13 @@ export function AppLayout({ children }: AppLayoutProps) {
           <header className="h-14 border-b border-border flex items-center justify-between px-3 sm:px-6 bg-card sticky top-0 z-10">
             <div className="flex items-center min-w-0">
               <SidebarTrigger className="mr-2 sm:mr-4 shrink-0 text-muted-foreground hover:text-foreground" />
-              <Breadcrumb className="min-w-0">
-                <BreadcrumbList className="flex-nowrap">
+              <Breadcrumb className="min-w-0 overflow-hidden">
+                <BreadcrumbList className="flex-nowrap overflow-hidden">
                   {breadcrumbs.map((crumb, index) => (
                     <BreadcrumbItem key={crumb.path + index}>
                       {index > 0 && <BreadcrumbSeparator />}
                       {crumb.isLast ? (
-                        <BreadcrumbPage className="text-foreground font-medium">
+                        <BreadcrumbPage className="text-foreground font-medium truncate max-w-[140px] sm:max-w-none">
                           {crumb.label}
                         </BreadcrumbPage>
                       ) : (
