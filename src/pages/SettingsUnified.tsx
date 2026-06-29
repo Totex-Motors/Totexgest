@@ -288,8 +288,8 @@ export default function SettingsUnified() {
           (item) => (!item.adminOnly || isAdmin) && (!item.superAdminOnly || isSuperAdmin),
         ),
       }))
-      .filter((section) => section.items.length > 0); 
-  }, [isAdmin, isSuperAdmin]);x
+      .filter((section) => section.items.length > 0);
+  }, [isAdmin, isSuperAdmin]);
 
   // Find active item info
   const activeItem = useMemo(() => {
