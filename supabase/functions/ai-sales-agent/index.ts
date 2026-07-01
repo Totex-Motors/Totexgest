@@ -2173,6 +2173,28 @@ async function buildAgentSystemPrompt(supabase: any, agent: AgentConfig, lead: L
 `;
   }
 
+  // === PERFIL DE COMPRA AUTOMOTIVO (o que já sabemos × o que falta descobrir) ===
+  // Mostra o estado atual pro agente perguntar SÓ o que ainda falta e nunca repetir.
+  {
+    const m = lead.metadata || {};
+    const veic = m.vehicle
+      ? `${m.vehicle.brand || ''} ${m.vehicle.model || ''} ${m.vehicle.version || ''} ${m.vehicle.year || ''}`.trim()
+      : (m.veiculo_interesse_texto || null);
+    const fmt = (v: any) => (v == null || v === '' ? '? falta descobrir' : v);
+    const boolFmt = (v: any) => (v == null ? '? falta descobrir' : (v ? 'Sim' : 'Não'));
+    leadContext += `
+## PERFIL DE COMPRA (AUTOMOTIVO) — descubra o que ainda falta, uma pergunta por vez
+- Veículo de interesse: ${veic ? veic : '? falta descobrir'}
+- Orçamento (faixa de preço): ${fmt(m.faixa_preco_min)} a ${fmt(m.faixa_preco_max)}
+- Precisa financiar?: ${boolFmt(m.precisa_financiar)}
+- Entrada disponível: ${fmt(m.entrada_disponivel)}
+- Tem veículo na troca?: ${boolFmt(m.tem_veiculo_troca)}
+- Forma de pagamento: ${fmt(m.forma_pagamento)}
+- Urgência da compra: ${fmt(m.urgencia)}
+> Sempre que o cliente revelar QUALQUER um desses dados, chame qualify_lead IMEDIATAMENTE com o campo correspondente (faixa_preco_min/max, precisa_financiar, entrada_disponivel, tem_veiculo_troca, forma_pagamento, veiculo_interesse, urgencia). Não pergunte o que já está preenchido acima.
+`;
+  }
+
   if (lead.context) {
     leadContext += `
 ## CONTEXTO SALVO
@@ -2457,6 +2479,39 @@ async function executeTool(
         if (args.employee_count) newContext += `\n[QUAL] Funcionários: ${args.employee_count}`;
         if (args.monthly_revenue) newContext += `\n[QUAL] Faturamento: ${args.monthly_revenue}`;
         if (args.challenges) newContext += `\n[QUAL] Desafios: ${args.challenges}`;
+
+        // === AUTOMOTIVO: perfil de compra do veículo (salvo em leads.metadata) ===
+        // Mesmos campos que a BuyerProfileCard lê na tela do lead. Merge no JSONB
+        // preservando o que já existe. Mapeia sinais automotivos pro BANT interno
+        // pra qualificação continuar movendo o lead no funil e alimentando o score.
+        const autoProfile: Record<string, any> = {};
+        if (args.faixa_preco_min != null && args.faixa_preco_min !== '') autoProfile.faixa_preco_min = Number(args.faixa_preco_min) || null;
+        if (args.faixa_preco_max != null && args.faixa_preco_max !== '') autoProfile.faixa_preco_max = Number(args.faixa_preco_max) || null;
+        if (args.precisa_financiar != null) autoProfile.precisa_financiar = Boolean(args.precisa_financiar);
+        if (args.entrada_disponivel != null && args.entrada_disponivel !== '') autoProfile.entrada_disponivel = Number(args.entrada_disponivel) || null;
+        if (args.tem_veiculo_troca != null) autoProfile.tem_veiculo_troca = Boolean(args.tem_veiculo_troca);
+        if (args.forma_pagamento) autoProfile.forma_pagamento = String(args.forma_pagamento);
+        if (args.veiculo_interesse) autoProfile.veiculo_interesse_texto = String(args.veiculo_interesse);
+        if (args.urgencia) autoProfile.urgencia = String(args.urgencia);
+
+        if (Object.keys(autoProfile).length > 0) {
+          updates.metadata = { ...(lead.metadata || {}), ...autoProfile };
+          // Sinais automotivos → BANT
+          if (autoProfile.faixa_preco_min != null || autoProfile.faixa_preco_max != null || autoProfile.entrada_disponivel != null || autoProfile.forma_pagamento) {
+            updates.bant_budget = true;
+          }
+          if (autoProfile.veiculo_interesse_texto) updates.bant_need = true;
+          if (autoProfile.urgencia) updates.bant_timeline = true;
+          // Contexto legível
+          if (autoProfile.veiculo_interesse_texto) newContext += `\n[AUTO] Veículo: ${autoProfile.veiculo_interesse_texto}`;
+          if (autoProfile.faixa_preco_min != null || autoProfile.faixa_preco_max != null) newContext += `\n[AUTO] Orçamento: ${autoProfile.faixa_preco_min ?? '?'}–${autoProfile.faixa_preco_max ?? '?'}`;
+          if (autoProfile.precisa_financiar != null) newContext += `\n[AUTO] Financiar: ${autoProfile.precisa_financiar ? 'sim' : 'não'}`;
+          if (autoProfile.entrada_disponivel != null) newContext += `\n[AUTO] Entrada: ${autoProfile.entrada_disponivel}`;
+          if (autoProfile.tem_veiculo_troca != null) newContext += `\n[AUTO] Troca: ${autoProfile.tem_veiculo_troca ? 'sim' : 'não'}`;
+          if (autoProfile.forma_pagamento) newContext += `\n[AUTO] Pagamento: ${autoProfile.forma_pagamento}`;
+          if (autoProfile.urgencia) newContext += `\n[AUTO] Urgência: ${autoProfile.urgencia}`;
+        }
+
         updates.context = newContext;
 
         // Recalcular score
