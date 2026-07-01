@@ -135,6 +135,8 @@ Deno.serve(async (req) => {
         is_from_me: true,
         sent_at: new Date().toISOString(),
         lead_id,
+        // tenant_id explícito — senão a msg some do inbox (filtrado por tenant via RLS).
+        ...(tenantId ? { tenant_id: tenantId } : {}),
         metadata: { sent_by: sent_by || "ai_agent", sent_by_name: sent_by_name || null, cloud_api: true, ...(result.extraMeta || {}) },
       });
     }
