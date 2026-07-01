@@ -1,0 +1,55 @@
+name: Deploy Supabase (CRM)
+
+# Publica no projeto Supabase do CRM ("CRM Interno Totex", mztfyavuclqzivywkaeu):
+#  1) Deploy da edge function agent-runner  -> precisa de SUPABASE_ACCESS_TOKEN
+#  2) Aplica migrations (supabase db push)   -> precisa TAMBEM de SUPABASE_DB_PASSWORD
+#
+# Segredos (Repo -> Settings -> Secrets and variables -> Actions):
+#  - SUPABASE_ACCESS_TOKEN  (obrigatorio)
+#  - SUPABASE_DB_PASSWORD   (opcional; sem ele, o passo de migrations e' pulado)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-supabase.yml'
+
+concurrency:
+  group: deploy-supabase
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_ID: mztfyavuclqzivywkaeu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # 1) Edge function — precisa apenas do ACCESS_TOKEN
+      - name: Deploy agent-runner
+        run: supabase functions deploy agent-runner --project-ref "$PROJECT_ID"
+
+      # 2) Migrations — só roda se a senha do banco estiver configurada
+      - name: Apply migrations (db push)
+        if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
+        run: |
+          supabase link --project-ref "$PROJECT_ID"
+          supabase db push
+
+      - name: Aviso se migrations foram puladas
+        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        run: |
+          echo "::warning::SUPABASE_DB_PASSWORD nao configurado — passo de migrations foi PULADO."
+          echo "Adicione o segredo SUPABASE_DB_PASSWORD (Project Settings > Database) para aplicar migrations, ou rode a migration manualmente no SQL Editor."
