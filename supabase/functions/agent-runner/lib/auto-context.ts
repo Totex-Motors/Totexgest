@@ -141,7 +141,7 @@ async function buildSessionContextBlock(
   // Tem lead — busca contexto adicional pra enriquecer
   const { db } = await import("../_shared/supabase.ts");
   const { data: lead } = await db.from("leads")
-    .select("id, name, email, company, phone, monthly_revenue_min, monthly_revenue_max, sales_score, lead_temperature")
+    .select("id, name, email, company, phone, monthly_revenue_min, monthly_revenue_max, sales_score, lead_temperature, metadata")
     .eq("id", leadId!)
     .maybeSingle();
 
@@ -166,6 +166,26 @@ async function buildSessionContextBlock(
       lines.push(`- Score atual: ${lead.sales_score}/100`);
     }
     if (lead.lead_temperature) lines.push(`- Temperatura: ${lead.lead_temperature}`);
+
+    // === PERFIL DE COMPRA AUTOMOTIVO (o que já sabemos × o que falta descobrir) ===
+    const m = (lead.metadata ?? {}) as Record<string, any>;
+    const veic = m.vehicle
+      ? `${m.vehicle.brand ?? ""} ${m.vehicle.model ?? ""} ${m.vehicle.version ?? ""} ${m.vehicle.year ?? ""}`.trim()
+      : (m.veiculo_interesse_texto ?? null);
+    const has = (v: unknown) => v !== null && v !== undefined && v !== "";
+    const boolFmt = (v: unknown) => (v === null || v === undefined ? "? falta descobrir" : (v ? "Sim" : "Não"));
+    lines.push(
+      "",
+      "Perfil de compra (automotivo) — descubra o que ainda falta, uma pergunta por vez:",
+      `- Veículo de interesse: ${veic ? veic : "? falta descobrir"}`,
+      `- Orçamento: ${has(m.faixa_preco_min) ? m.faixa_preco_min : "?"} a ${has(m.faixa_preco_max) ? m.faixa_preco_max : "?"} BRL`,
+      `- Precisa financiar?: ${boolFmt(m.precisa_financiar)}`,
+      `- Entrada disponível: ${has(m.entrada_disponivel) ? m.entrada_disponivel : "? falta descobrir"}`,
+      `- Tem veículo na troca?: ${boolFmt(m.tem_veiculo_troca)}`,
+      `- Forma de pagamento: ${has(m.forma_pagamento) ? m.forma_pagamento : "? falta descobrir"}`,
+      `- Urgência da compra: ${has(m.urgencia) ? m.urgencia : "? falta descobrir"}`,
+      "Quando o cliente revelar qualquer um desses dados, chame a tool capturar_perfil_compra com o campo correspondente. Não pergunte o que já está preenchido.",
+    );
   }
 
   lines.push("", "Use estes UUIDs SEMPRE que chamar tools que pedem `lead_id` ou `deal_id`.");
