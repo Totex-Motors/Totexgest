@@ -351,6 +351,16 @@ Deno.serve(async (req: Request) => {
     // 6. Cria lead no CRM da loja dona — SÓ se o lead estiver Quente/Muito Quente.
     let ownerLeadId: string | null = null;
     if (shouldForward && ownerTenantId && customerPhone) {
+      // O perfil de compra capturado no lead do stand (via capturar_perfil_compra:
+      // faixa_preco, precisa_financiar, entrada, troca, forma_pagamento, urgencia)
+      // viaja JUNTO pro lead da loja — senão o card "Perfil de Compra" chega vazio lá.
+      let standMeta: Record<string, unknown> = {};
+      if (standLeadId) {
+        const { data: sm } = await supabase
+          .from("leads").select("metadata").eq("id", standLeadId).maybeSingle();
+        if (sm?.metadata && typeof sm.metadata === "object") standMeta = sm.metadata as Record<string, unknown>;
+      }
+      const ownerMeta = { ...standMeta, ...metaPatch };
       // dedup por telefone dentro do tenant da loja
       const { data: dup } = await supabase
         .from("leads").select("id, metadata")
@@ -358,7 +368,7 @@ Deno.serve(async (req: Request) => {
         .limit(1).maybeSingle();
       if (dup) {
         ownerLeadId = dup.id;
-        await saveLeadMeta(supabase, ownerLeadId, metaPatch, score);
+        await saveLeadMeta(supabase, ownerLeadId, ownerMeta, score);
       } else {
         const { data: newLead, error: leadErr } = await supabase
           .from("leads")
@@ -370,7 +380,7 @@ Deno.serve(async (req: Request) => {
             sales_score: score ?? 0,
             utm_source: "stand_totex",
             context: `Lead do stand Totex. ${carInterest ? `Interesse: ${carInterest}. ` : ""}${resumo}`,
-            metadata: metaPatch,
+            metadata: ownerMeta,
           })
           .select("id")
           .single();
