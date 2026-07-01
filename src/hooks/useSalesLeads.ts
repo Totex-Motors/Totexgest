@@ -234,7 +234,6 @@ export const useUpdateLeadPipelineStage = () => {
         .from('leads')
         .update({
           pipeline_stage_id: stageId,
-          stage_changed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', leadId)
