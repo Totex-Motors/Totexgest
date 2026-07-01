@@ -158,7 +158,8 @@ const MessageBubble: React.FC<{
   onRetry?: (msg: WhatsAppMessage & { _optimistic?: string }) => void;
 }> = ({ message, onReact, onEdit, onDelete, onRetry }) => {
   const isFromMe = message.is_from_me;
-  const isAIMessage = isFromMe && message.metadata?.sent_by === 'ai_agent';
+  // Aceita 'ai_agent' (legado) e 'ai_agent_v2' (Plataforma de Agentes) — ambos são IA.
+  const isAIMessage = isFromMe && typeof message.metadata?.sent_by === 'string' && message.metadata.sent_by.startsWith('ai_agent');
   const isOptimistic = !!message._optimistic;
   const isFailed = message._optimistic === 'failed';
   const isToolCall = message.message_type === 'ai_tool_call';
