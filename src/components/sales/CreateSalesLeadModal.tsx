@@ -66,6 +66,7 @@ interface NewLeadForm {
   phone: string;
   instagram: string;
   origin: string;
+  vehicle: string;
   utm_source: string;
   utm_medium: string;
   utm_campaign: string;
@@ -103,6 +104,7 @@ export function CreateSalesLeadModal({
     phone: "",
     instagram: "",
     origin: "whatsapp",
+    vehicle: "",
     utm_source: "",
     utm_medium: "",
     utm_campaign: "",
@@ -152,6 +154,7 @@ export function CreateSalesLeadModal({
           utm_campaign: form.utm_campaign || null,
           utm_term: form.utm_term || null,
           utm_content: form.utm_content || null,
+          metadata: form.vehicle ? { vehicle: { description: form.vehicle } } : {},
           sales_stage: "new",
           status: "new",
         })
@@ -193,6 +196,7 @@ export function CreateSalesLeadModal({
       phone: "",
       instagram: "",
       origin: "whatsapp",
+      vehicle: "",
       utm_source: "",
       utm_medium: "",
       utm_campaign: "",
@@ -406,7 +410,7 @@ export function CreateSalesLeadModal({
                     size="sm"
                     onClick={() => {
                       setActiveTab("new");
-                      setNewLeadForm({ ...newLeadForm, name: searchQuery });
+                      setNewLeadForm({ ...newLeadForm, name: searchQuery, vehicle: "" });
                     }}
                   >
                     Criar novo lead "{searchQuery}"
@@ -516,6 +520,19 @@ export function CreateSalesLeadModal({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Veículo de interesse */}
+              <div className="space-y-2">
+                <Label htmlFor="vehicle">Veículo de interesse</Label>
+                <Input
+                  id="vehicle"
+                  placeholder="Ex: Honda Civic 2023, Toyota Corolla..."
+                  value={newLeadForm.vehicle}
+                  onChange={(e) =>
+                    setNewLeadForm({ ...newLeadForm, vehicle: e.target.value })
+                  }
+                />
               </div>
 
               {/* UTMs (Collapsible) */}
