@@ -250,6 +250,16 @@ Deno.serve(async (req: Request) => {
           status: "completed",
           raw: attachments.length ? { attachments } : null,
         });
+
+        // Cliente respondeu → cancela follow-ups ÚNICOS pendentes desta sessão.
+        // Sem isso, o lembrete "retomar se o cliente sumir" dispararia mesmo com a
+        // conversa já retomada (follow-up requentado). Lembretes RECORRENTES
+        // (repeat_every_minutes) são de outra natureza e ficam intactos.
+        await db.from("agent_reminders")
+          .update({ status: "cancelled" })
+          .eq("session_id", sessionId)
+          .eq("status", "pending")
+          .is("repeat_every_minutes", null);
       }
 
       // Ferramentas nativas do provider ligadas no agente (web_search, etc)
