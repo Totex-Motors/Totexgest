@@ -94,7 +94,7 @@ const sections: NavSection[] = [
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
-      { title: "Totem Físico", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
+      { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
       { title: "Inteligência de Demanda", url: "/comercial/inteligencia", icon: BrainCircuit },
     ],
   },

@@ -74,9 +74,9 @@ export default function TotemLeads() {
             <MonitorSmartphone className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">Totem Físico</h1>
+            <h1 className="text-xl font-semibold">IA de Qualificação</h1>
             <p className="text-sm text-muted-foreground">
-              Clientes que conversaram com a IA do stand, qualificados por intenção de compra.
+              Clientes qualificados pela IA por intenção de compra — vindos do totem físico ou do marketplace.
             </p>
           </div>
         </div>
@@ -117,7 +117,7 @@ export default function TotemLeads() {
                 <TableRow>
                   <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
                     <Flame className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                    Nenhum cliente do totem ainda.
+                    Nenhum cliente qualificado pela IA ainda.
                   </TableCell>
                 </TableRow>
               )}
