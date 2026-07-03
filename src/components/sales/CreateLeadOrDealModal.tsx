@@ -38,7 +38,6 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePipelineStages } from "@/hooks/useSalesPipeline";
-import { useProducts } from "@/hooks/useProducts";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Search,
@@ -480,6 +479,7 @@ export function CreateLeadOrDealModal({
   const [dealForm, setDealForm] = useState({
     stageId: defaultStageId || "",
     productId: "",
+    vehicle: "",
     notes: "",
     expectedValue: "",
     salesRepId: teamMember?.id || "", // Responsável pelo deal
@@ -504,7 +504,6 @@ export function CreateLeadOrDealModal({
 
   // Carregar etapas do pipeline (filtradas pelo pipeline selecionado)
   const { data: pipelineStages } = usePipelineStages(pipelineId);
-  const { data: products } = useProducts();
 
   // Filtrar etapas (excluir ganho/perdido para criação)
   const availableStages = useMemo(() =>
@@ -654,10 +653,9 @@ export function CreateLeadOrDealModal({
   // Mutation: Criar deal
   const createDealMutation = useMutation({
     mutationFn: async (leadId: string) => {
-      const product = products?.find(p => p.id === dealForm.productId);
       const expectedValue = dealForm.expectedValue
         ? parseFloat(dealForm.expectedValue)
-        : product?.price || 0;
+        : 0;
 
       const salesRepId = dealForm.salesRepId || teamMember?.id || null;
 
@@ -688,10 +686,11 @@ export function CreateLeadOrDealModal({
           pipeline_stage_id: dealForm.stageId,
           product_id: dealForm.productId || null,
           sales_rep_id: salesRepId,
-          original_price: product?.price || expectedValue,
+          original_price: expectedValue,
           negotiated_price: expectedValue,
           status: "open",
           notes: dealForm.notes || null,
+          metadata: dealForm.vehicle ? { vehicle: { description: dealForm.vehicle } } : undefined,
           // UTMs do deal (origem desta venda específica)
           utm_source: dealForm.utm_source || null,
           utm_campaign: dealForm.utm_campaign || null,
@@ -924,6 +923,7 @@ export function CreateLeadOrDealModal({
     setDealForm({
       stageId: defaultStageId || availableStages[0]?.id || "",
       productId: "",
+      vehicle: "",
       notes: "",
       expectedValue: "",
       utm_source: "instagram",
@@ -1331,21 +1331,12 @@ export function CreateLeadOrDealModal({
 
                   <div className="space-y-1.5">
                     <Label className="text-xs">Veículo</Label>
-                    <Select
-                      value={dealForm.productId}
-                      onValueChange={(v) => setDealForm({ ...dealForm, productId: v })}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Opcional" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(products || []).map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} - R$ {product.price?.toLocaleString('pt-BR')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      className="h-9"
+                      placeholder="Ex: HB20 1.0, Civic 2023..."
+                      value={dealForm.vehicle}
+                      onChange={(e) => setDealForm({ ...dealForm, vehicle: e.target.value })}
+                    />
                   </div>
 
                   <div className="space-y-1.5">
@@ -1484,21 +1475,12 @@ export function CreateLeadOrDealModal({
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">Veículo</Label>
-                  <Select
-                    value={dealForm.productId}
-                    onValueChange={(v) => setDealForm({ ...dealForm, productId: v })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Opcional" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(products || []).map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} - R$ {product.price?.toLocaleString('pt-BR')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    className="h-9"
+                    placeholder="Ex: HB20 1.0, Civic 2023..."
+                    value={dealForm.vehicle}
+                    onChange={(e) => setDealForm({ ...dealForm, vehicle: e.target.value })}
+                  />
                 </div>
 
                 <div className="space-y-1.5">
