@@ -61,6 +61,8 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Bot,
   UserCheck,
   ArrowLeft,
@@ -156,6 +158,8 @@ const SalesWhatsAppInbox = () => {
   }, [setSelectedConvId]);
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  // Painel de info do lead (desktop) — fechado por padrão pra não comer espaço
+  const [showLeadPanel, setShowLeadPanel] = useSessionState("sales-inbox-lead-panel-open", false);
 
   // Capturar lead_id da URL para abrir conversa automaticamente
   useEffect(() => {
@@ -663,7 +667,7 @@ const SalesWhatsAppInbox = () => {
         </DialogContent>
       </Dialog>
 
-      <div className="h-[calc(100dvh-4rem)] flex flex-col bg-background">
+      <div className="-m-4 sm:-m-6 h-[calc(100dvh-4rem)] flex flex-col bg-background">
         {/* ============================================================
          *  HEADER — slim, alinhado ao design system (sem azul gritante)
          * ============================================================ */}
@@ -1315,11 +1319,42 @@ const SalesWhatsAppInbox = () => {
           </main>
           )}
 
-          {/* Side Panel - Lead Info (desktop only) */}
+          {/* Side Panel - Lead Info (desktop only) — recolhível */}
           {!isMobile && (
-            <aside className="w-72 border-l hidden xl:block">
-              <ClientInfoPanel conversation={selectedConversation} instanceId={instanceId || undefined} />
-            </aside>
+            showLeadPanel ? (
+              <aside className="w-72 border-l hidden xl:flex flex-col relative">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowLeadPanel(false)}
+                      className="absolute -left-3 top-4 z-10 h-6 w-6 rounded-full bg-background border border-border/60 shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Fechar painel"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Fechar painel</TooltipContent>
+                </Tooltip>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <ClientInfoPanel conversation={selectedConversation} instanceId={instanceId || undefined} />
+                </div>
+              </aside>
+            ) : (
+              <div className="hidden xl:flex shrink-0 border-l border-border/60 items-start pt-4 justify-center w-9">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowLeadPanel(true)}
+                      className="h-6 w-6 rounded-full bg-background border border-border/60 shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Abrir painel do lead"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Abrir painel do lead</TooltipContent>
+                </Tooltip>
+              </div>
+            )
           )}
 
           {/* Side Panel - Sheet (mobile) */}

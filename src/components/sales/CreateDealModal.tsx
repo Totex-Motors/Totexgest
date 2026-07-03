@@ -24,7 +24,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useCreateDeal } from "@/hooks/useSalesDeals";
-import { useProducts } from "@/hooks/useProducts";
 import { useCreateDealPaymentsBatch } from "@/hooks/useDealPayments";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
@@ -36,7 +35,7 @@ import type { CreateDealInput } from "@/types/sales.types";
 import {
   Loader2,
   DollarSign,
-  Package,
+  Car,
   CreditCard,
   Calendar,
   ChevronDown,
@@ -83,7 +82,6 @@ export function CreateDealModal({
   const { teamMember } = useAuth();
   const createDeal = useCreateDeal();
   const createPaymentsBatch = useCreateDealPaymentsBatch();
-  const { data: products, isLoading: productsLoading } = useProducts();
 
   // Buscar todos os membros do time (mesma query do LeadDetail)
   const { data: teamMembers = [] } = useQuery({
@@ -102,6 +100,7 @@ export function CreateDealModal({
   const [useFlexiblePayments, setUseFlexiblePayments] = useState(false);
   const [flexiblePayments, setFlexiblePayments] = useState<PaymentPart[]>([]);
   const [isPaymentsOpen, setIsPaymentsOpen] = useState(true);
+  const [vehicleDescription, setVehicleDescription] = useState("");
 
   const [formData, setFormData] = useState<Partial<CreateDealInput>>({
     contact_id: leadId,
@@ -152,20 +151,6 @@ export function CreateDealModal({
     }
   }, [formData.negotiated_price, useFlexiblePayments]);
 
-  const handleProductChange = (productId: string) => {
-    const product = products?.find((p) => p.id === productId);
-    if (product) {
-      setFormData({
-        ...formData,
-        product_id: productId,
-        original_price: Number(product.price) || 0,
-        negotiated_price: Number(product.price) || 0,
-        discount_percent: 0,
-      });
-      setFlexiblePayments([]); // Reset payments when product changes
-    }
-  };
-
   const handlePriceChange = (negotiatedPrice: number) => {
     const original = formData.original_price || 0;
     const discount =
@@ -180,6 +165,15 @@ export function CreateDealModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!vehicleDescription.trim()) {
+      toast({
+        title: "Erro",
+        description: "Informe o veículo de interesse",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (!formData.negotiated_price || formData.negotiated_price <= 0) {
       toast({
@@ -233,6 +227,7 @@ export function CreateDealModal({
           : formData.installments,
         expected_close_date: formData.expected_close_date || undefined,
         notes: formData.notes,
+        metadata: { vehicle: { description: vehicleDescription.trim() } },
       });
 
       // Create deal payments if using flexible payments
@@ -269,6 +264,7 @@ export function CreateDealModal({
       });
       setFlexiblePayments([]);
       setUseFlexiblePayments(false);
+      setVehicleDescription("");
     } catch (error) {
       console.error("Erro ao criar deal:", error);
       toast({
@@ -306,30 +302,14 @@ export function CreateDealModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Veículo (opcional)
+                <Car className="h-4 w-4" />
+                Veículo *
               </Label>
-              <Select
-                value={formData.product_id}
-                onValueChange={handleProductChange}
-                disabled={productsLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o veículo..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products?.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      <div className="flex justify-between items-center w-full gap-4">
-                        <span>{product.name}</span>
-                        <span className="text-muted-foreground text-sm">
-                          {formatCurrency(Number(product.price) || 0)}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                placeholder="Ex: Honda Civic 2023, HB20 1.0..."
+                value={vehicleDescription}
+                onChange={(e) => setVehicleDescription(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
