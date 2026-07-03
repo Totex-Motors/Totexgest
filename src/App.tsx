@@ -131,6 +131,9 @@ import SalesCampaigns from "./pages/SalesCampaigns";
 import SalesCampaignNew from "./pages/SalesCampaignNew";
 import SalesCampaignDetail from "./pages/SalesCampaignDetail";
 
+// Inteligência de Demanda (dashboards de comportamento do consumidor)
+const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence"));
+
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
 // Unsubscribe público (LGPD) — sem auth
@@ -271,6 +274,7 @@ const AppRoutes = () => {
       <Route path="/comercial/credere" element={<ProtectedRoute><CredereLeads /></ProtectedRoute>} />
       <Route path="/comercial/marketplace" element={<ProtectedRoute><MarketplaceLeads /></ProtectedRoute>} />
       <Route path="/comercial/totem" element={<ProtectedRoute><TotemLeads /></ProtectedRoute>} />
+      <Route path="/comercial/inteligencia" element={<ProtectedRoute><React.Suspense fallback={<div />}><DemandIntelligence /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/agente-ia" element={<Navigate to="/configuracoes?s=agente-ia" replace />} />
 
       {/* Gestão básica (tarefas, calendário, reuniões) */}

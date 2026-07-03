@@ -25,6 +25,7 @@ import {
   FileText,
   Workflow,
   Send,
+  BrainCircuit,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -94,6 +95,7 @@ const sections: NavSection[] = [
       { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
       { title: "Totem Físico", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
+      { title: "Inteligência de Demanda", url: "/comercial/inteligencia", icon: BrainCircuit },
     ],
   },
   {
