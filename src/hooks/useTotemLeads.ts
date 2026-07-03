@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import type { LeadQualificacao } from "@/components/sales/LeadQualificationCard";
 
 /**
- * Leads do Totem Físico — clientes que conversaram com a IA do stand.
+ * Leads da IA de Qualificação — clientes qualificados pela IA (totem físico ou marketplace).
  * Identificados por `source = 'stand'` (marcado no agent-platform na 1ª mensagem).
  * Escopo de tenant via RLS: o super-admin (tenant Totex) vê os seus.
  */

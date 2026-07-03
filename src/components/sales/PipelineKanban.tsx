@@ -954,7 +954,7 @@ function DealCard({
           const PORTAL_MAP: Record<string, { label: string; cls: string }> = {
             credere: { label: "Credere", cls: "bg-indigo-100 text-indigo-700" },
             marketplace: { label: "Marketplace Digital", cls: "bg-orange-100 text-orange-700" },
-            stand: { label: "Totem Físico", cls: "bg-teal-100 text-teal-700" },
+            stand: { label: "IA de Qualificação", cls: "bg-teal-100 text-teal-700" },
           };
           const portal = PORTAL_MAP[leadSource];
           if (!enrollment?.webinar_title && !utmSource && !portal) return null;

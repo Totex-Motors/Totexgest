@@ -455,7 +455,7 @@ export function PipelineBoardContent() {
 
   const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
 
-  const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "Totem Físico", _sem_portal: "Sem portal" };
+  const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "IA de Qualificação", _sem_portal: "Sem portal" };
 
   // Count active advanced filters (excludes search, sort, view - those are always visible)
   const activeAdvancedFilters = useMemo(() => {
@@ -734,7 +734,7 @@ export function PipelineBoardContent() {
                         <SelectItem value="stand">
                           <span className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-teal-500"></span>
-                            Totem Físico
+                            IA de Qualificação
                           </span>
                         </SelectItem>
                         <SelectItem value="_sem_portal">Sem portal</SelectItem>
