@@ -41,6 +41,16 @@ serve(async (req: Request) => {
       return json({ ok: true, skipped: "simulation_not_successful" });
     }
 
+    // Filtra por origem: só aceita leads gerados pela aplicação Totex (id=463).
+    // web (id=7) e public_simulator (id=116) são leads de outros canais que
+    // não devem entrar no CRM Totex.
+    const appId = simulation.application?.id ?? null;
+    const TOTEX_APP_ID = 463;
+    if (appId !== TOTEX_APP_ID) {
+      console.log(`[credere-webhook] Origem ignorada: application.id=${appId ?? "ausente"} (${simulation.application?.name ?? "desconhecida"})`);
+      return json({ ok: true, skipped: `application_not_totex:${appId ?? "null"}` });
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const credereStoreId = String(simulation.store?.id ?? "");
