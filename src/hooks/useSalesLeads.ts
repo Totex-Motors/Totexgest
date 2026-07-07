@@ -248,6 +248,16 @@ export const useUpdateLeadPipelineStage = () => {
       const isWon = pipelineStage?.is_won === true;
       const isLost = pipelineStage?.is_lost === true;
 
+      // Sincronizar campos texto (sales_stage, etapa_funil) para evitar dessincronização
+      // entre telas que leem pipeline_stage_id e telas que leem os campos texto.
+      const derivedSalesStage = isWon ? 'fechado' : isLost ? 'perdido' : undefined;
+      if (derivedSalesStage || pipelineStage?.name) {
+        const textUpdate: Record<string, any> = {};
+        if (derivedSalesStage) textUpdate.sales_stage = derivedSalesStage;
+        if (pipelineStage?.name) textUpdate.etapa_funil = pipelineStage.name;
+        await supabase.from('leads').update(textUpdate).eq('id', leadId);
+      }
+
       // Helper para sincronizar deals de um lead
       const syncDealsForLead = async (targetLeadId: string) => {
         if (!pipelineId) return;
