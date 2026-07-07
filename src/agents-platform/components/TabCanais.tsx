@@ -186,7 +186,14 @@ function DeploymentCard({
       {/* WhatsApp tem form próprio (organizado por finalidade: interno vs leads). */}
       {/* Outros canais: form genérico + regras de roteamento como antes. */}
       {deployment.channel === 'whatsapp' ? (
-        <WhatsAppDeploymentForm config={config} setField={setField} />
+        <WhatsAppDeploymentForm
+          config={config}
+          setField={setField}
+          setFields={(updates) => {
+            setConfig((prev) => ({ ...prev, ...updates }));
+            setDirty(true);
+          }}
+        />
       ) : (
         <>
           <ConfigFields

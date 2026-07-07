@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 interface Props {
   config: Record<string, any>;
   setField: (k: string, v: any) => void;
+  setFields?: (updates: Record<string, any>) => void;
 }
 
 type Instance = { id: string; name: string; phone_number: string | null; status: string | null };
@@ -36,7 +37,7 @@ function derivePurpose(config: Record<string, any>): Purpose {
   return 'leads';
 }
 
-export function WhatsAppDeploymentForm({ config, setField }: Props) {
+export function WhatsAppDeploymentForm({ config, setField, setFields }: Props) {
   const purpose: Purpose = derivePurpose(config);
   const match: Record<string, any> = config.match || {};
   const priority: number = typeof config.priority === 'number' ? config.priority : 100;
@@ -63,18 +64,22 @@ export function WhatsAppDeploymentForm({ config, setField }: Props) {
   };
 
   const setPurpose = (p: Purpose) => {
-    setField('purpose', p);
-    if (p === 'internal') {
-      // ao virar interno, força access_mode privado por segurança
-      setField('access_mode', 'private');
-      // limpa filtros de lead (deixa só keywords se tiver)
-      const cleaned: Record<string, any> = {};
-      if (match.keywords) cleaned.keywords = match.keywords;
-      if (match.keywords_mode) cleaned.keywords_mode = match.keywords_mode;
-      setField('match', Object.keys(cleaned).length > 0 ? cleaned : undefined);
+    if (setFields) {
+      // Batch: todos os campos mudam atomicamente, evitando stale closure
+      const updates: Record<string, any> = { purpose: p };
+      if (p === 'internal') {
+        updates.access_mode = 'private';
+        const cleaned: Record<string, any> = {};
+        if (match.keywords) cleaned.keywords = match.keywords;
+        if (match.keywords_mode) cleaned.keywords_mode = match.keywords_mode;
+        updates.match = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+      } else {
+        updates.access_mode = config.access_mode || 'open';
+      }
+      setFields(updates);
     } else {
-      // ao virar atende leads, libera (mas mantém whitelist caso queira)
-      setField('access_mode', config.access_mode || 'open');
+      // fallback (não deve acontecer)
+      setField('purpose', p);
     }
   };
 

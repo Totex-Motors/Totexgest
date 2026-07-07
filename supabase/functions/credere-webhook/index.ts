@@ -150,6 +150,19 @@ serve(async (req: Request) => {
             ? { name: simulation.seller.name, id: simulation.seller.id }
             : null,
           simulation_created_at: simulation.created_at ?? null,
+          // Qualificação automática: lead do Credere já demonstrou intenção forte de compra
+          qualificacao: {
+            origem: "credere",
+            interesse_financiamento: true,
+            interesse_veiculo: !!vehicleDesc,
+            veiculo_interesse: vehicleDesc || null,
+            temperatura: "quente",
+            probabilidade: 70,
+            observacoes: bestCondition
+              ? `Simulou financiamento em ${bestCondition.bank?.name ?? "banco"} — ${bestCondition.installments ?? "?"} parcelas`
+              : "Realizou simulação de financiamento no Credere",
+            qualificado_em: new Date().toISOString(),
+          },
         },
       })
       .select("id")

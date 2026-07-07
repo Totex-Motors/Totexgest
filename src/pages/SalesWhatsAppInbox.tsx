@@ -110,7 +110,7 @@ function useSessionState<T>(key: string, defaultValue: T): [T, (value: T | ((pre
 }
 
 const SalesWhatsAppInbox = () => {
-  const { teamMember } = useAuth();
+  const { teamMember, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -137,8 +137,13 @@ const SalesWhatsAppInbox = () => {
   const [pipelineStages, setPipelineStages] = useState<{ id: string; name: string; pipeline_id: string }[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useSessionState<string | null>("sales-inbox-pipeline", null);
   useEffect(() => {
-    supabase.from('sales_pipelines').select('id, name').order('name').then(({ data }) => {
-      setPipelines(data || []);
+    supabase.from('sales_pipelines').select('id, name, tenants(name)').order('name').then(({ data }) => {
+      // Para superadmin, mostra nome da loja (tenant) em vez do nome genérico do pipeline
+      const mapped = (data || []).map((p: any) => ({
+        ...p,
+        name: isSuperAdmin ? (p.tenants?.name || p.name) : p.name,
+      }));
+      setPipelines(mapped);
     });
     supabase.from('sales_pipeline_stages').select('id, name, pipeline_id').eq('is_won', false).eq('is_lost', false).order('position').then(({ data }) => {
       setPipelineStages(data || []);
