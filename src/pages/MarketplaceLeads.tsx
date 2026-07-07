@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ShoppingBag, Store, Search, Plus, Pencil, Trash2, ExternalLink, CircleDot, CheckCircle2, MessageCircle, FileText } from "lucide-react";
+import { ShoppingBag, Store, Search, Plus, Pencil, Trash2, ExternalLink, CircleDot, CheckCircle2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,6 @@ import {
   useUpdateMarketplaceMapping,
   useDeleteMarketplaceMapping,
   type MarketplaceStoreMapping,
-  type MarketplaceOrigin,
 } from "@/hooks/useMarketplace";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -65,22 +64,6 @@ function formatDate(iso?: string) {
     month: "2-digit",
     year: "numeric",
   });
-}
-
-function OriginBadge({ origin }: { origin?: MarketplaceOrigin }) {
-  if (origin === "WHATSAPP_CLICK") {
-    return (
-      <Badge variant="secondary" className="gap-1 bg-emerald-500/15 text-emerald-700 border-emerald-200">
-        <MessageCircle className="h-3 w-3" /> WhatsApp
-      </Badge>
-    );
-  }
-  // Default: FORM_INTERESSE (também cobre leads antigos sem o campo)
-  return (
-    <Badge variant="secondary" className="gap-1">
-      <FileText className="h-3 w-3" /> Formulário
-    </Badge>
-  );
 }
 
 // ─── Formulário de mapeamento ─────────────────────────────────────────────────
@@ -271,7 +254,6 @@ function LeadsTab() {
                       <div className="text-xs text-muted-foreground">{lead.phone}</div>
                     )}
                   </div>
-                  <OriginBadge origin={lead.metadata?.marketplace_origin} />
                 </div>
                 {v?.brand && v?.model && (
                   <div className="mt-2 text-sm">
@@ -306,7 +288,6 @@ function LeadsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>Origem</TableHead>
               <TableHead>Veículo</TableHead>
               <TableHead>Preço</TableHead>
               <TableHead>Loja</TableHead>
@@ -319,13 +300,13 @@ function LeadsTab() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                   Carregando...
                 </TableCell>
               </TableRow>
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                   {hasFilters
               ? "Nenhum lead encontrado para esses filtros."
               : "Nenhum lead recebido ainda via marketplace."}
@@ -345,9 +326,6 @@ function LeadsTab() {
                       {lead.phone && (
                         <div className="text-xs text-muted-foreground">{lead.phone}</div>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <OriginBadge origin={lead.metadata?.marketplace_origin} />
                     </TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">
