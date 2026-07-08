@@ -216,7 +216,7 @@ export const useEmailCampaigns = (statusFilter?: EmailCampaignStatus, sourceType
     queryFn: async () => {
       let query = supabase
         .from('email_campaigns' as any)
-        .select('*, created_by_member:team_members!email_campaigns_created_by_fkey(id, name)')
+        .select('*')
         // MULTI-TENANT: filtro por tenant
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
@@ -239,7 +239,7 @@ export const useEmailCampaign = (id: string | undefined) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('email_campaigns' as any)
-        .select('*, created_by_member:team_members!email_campaigns_created_by_fkey(id, name), template:email_templates(id, name, subject)')
+        .select('*, template:email_templates(id, name, subject)')
         .eq('id', id)
         // MULTI-TENANT: filtro defensivo
         .eq('tenant_id', tenantId)
