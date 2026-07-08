@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 
 export interface TeamMember {
   id: string;
+  tenant_id: string;
   email: string;
   name: string;
   role: 'admin' | 'cs' | 'comercial' | 'closer' | 'sdr' | 'geral' | 'user';
@@ -54,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('team_members')
-        .select('id, email, name, role, team, phone, avatar_url, is_active, auth_user_id, whatsapp_instance_id, google_calendar_connected, google_calendar_watch_channel_id, google_calendar_watch_expiration, focus_mode_enabled, created_at')
+        .select('id, tenant_id, email, name, role, team, phone, avatar_url, is_active, auth_user_id, whatsapp_instance_id, google_calendar_connected, google_calendar_watch_channel_id, google_calendar_watch_expiration, focus_mode_enabled, created_at')
         .eq('email', email)
         .limit(1)
         .single();
