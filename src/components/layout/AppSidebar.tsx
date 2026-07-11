@@ -114,6 +114,7 @@ const sections: NavSection[] = [
       { title: "Lead Ads (Meta)", url: "/marketing/lead-ads", icon: Megaphone },
       { title: "Canais de Entrada", url: "/marketing/canais", icon: Share2 },
       { title: "Importar Leads", url: "/marketing/importar", icon: Upload },
+      { title: "Formulários", url: "/marketing/formularios", icon: FileText },
     ],
   },
   {
