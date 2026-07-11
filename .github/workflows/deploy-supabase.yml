@@ -38,9 +38,16 @@ jobs:
           version: latest
 
       # 1) Edge functions — deploy de TODAS (verify_jwt por função vem do
-      #    supabase/config.toml; webhooks já estão marcados lá com verify_jwt=false)
+      #    supabase/config.toml). Retry: imports remotos (esm.sh) falham
+      #    transitoriamente (5xx do CDN) e derrubariam o job inteiro.
       - name: Deploy edge functions (todas)
-        run: supabase functions deploy --project-ref "$PROJECT_ID"
+        run: |
+          for i in 1 2 3; do
+            supabase functions deploy --project-ref "$PROJECT_ID" && exit 0
+            echo "Deploy falhou (tentativa $i/3) — aguardando 30s antes de tentar de novo"
+            sleep 30
+          done
+          exit 1
 
       # 2) Migrations — só roda se a senha do banco estiver configurada
       - name: Apply migrations (db push)
