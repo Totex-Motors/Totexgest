@@ -226,3 +226,19 @@ verify_jwt = false
 #
 # ⚠️ IMPORTANTE: Ao criar função nova, SEMPRE deixar com default (true)
 # a não ser que ela seja webhook, público ou cron.
+
+# ─── Lead Ads Meta + Canais de Entrada (portados do template v3) ───
+[functions.receive-lead]
+verify_jwt = false
+
+[functions.meta-lead-webhook]
+verify_jwt = false
+
+[functions.connect-meta]
+verify_jwt = false
+
+[functions.validate-meta-token]
+verify_jwt = false
+
+[functions.fetch-meta-creative]
+verify_jwt = false
