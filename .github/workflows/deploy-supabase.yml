@@ -37,12 +37,10 @@ jobs:
         with:
           version: latest
 
-      # 1) Edge functions — precisam apenas do ACCESS_TOKEN
-      - name: Deploy agent-runner
-        run: supabase functions deploy agent-runner --project-ref "$PROJECT_ID"
-
-      - name: Deploy stand-handoff
-        run: supabase functions deploy stand-handoff --project-ref "$PROJECT_ID"
+      # 1) Edge functions — deploy de TODAS (verify_jwt por função vem do
+      #    supabase/config.toml; webhooks já estão marcados lá com verify_jwt=false)
+      - name: Deploy edge functions (todas)
+        run: supabase functions deploy --project-ref "$PROJECT_ID"
 
       # 2) Migrations — só roda se a senha do banco estiver configurada
       - name: Apply migrations (db push)

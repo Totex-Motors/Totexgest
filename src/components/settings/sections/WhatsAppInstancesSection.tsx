@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { callUazapi } from "@/lib/uazapiProxy";
 import {
   Smartphone,
   RefreshCw,
@@ -43,7 +44,6 @@ interface WhatsAppInstance {
   phone_number: string;
   teams: string[];
   status: string;
-  api_key: string;
   api_url: string;
   webhook_url: string;
   metadata: any;
@@ -54,9 +54,9 @@ interface InstanceStatus {
   instance?: { profileName: string; qrcode?: string };
 }
 
+// Só a URL é exposta ao browser — tokens ficam no servidor (uazapi-proxy).
 interface UazapiConfig {
   url: string;
-  token: string;
 }
 
 interface TeamMemberBasic {
@@ -92,8 +92,6 @@ export function WhatsAppInstancesSection() {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrModalData, setQrModalData] = useState<{ name: string; qrcode: string } | null>(null);
 
-  // Webhook URL
-  const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   // === LOAD ===
   useEffect(() => {
@@ -102,23 +100,19 @@ export function WhatsAppInstancesSection() {
   }, []);
 
   const loadUazapiConfig = async () => {
+    // SEGURANÇA: o token NUNCA vem pro browser. Aqui só checamos se a URL está
+    // configurada (tenant ou global) pra habilitar a UI — as chamadas reais à
+    // UAZAPI passam pela edge function uazapi-proxy, que lê as credenciais no
+    // servidor e valida o acesso via RLS.
     try {
-      const map: Record<string, string> = {};
-
-      // 1. Chaves UAZAPI DO tenant (lojista paga a própria) — via RPC tenant-scoped.
+      let url = "";
       const { data: tenantData } = await supabase.rpc("get_my_tenant_integration_keys");
-      (tenantData || []).forEach((r: any) => { if (r?.key) map[r.key] = r.value; });
-
-      // 2. Fallback p/ a config global (central da Totex) no que o tenant não definiu.
-      const missing = ["UAZAPI_ADMIN_URL", "UAZAPI_ADMIN_TOKEN"].filter((k) => !map[k]);
-      if (missing.length > 0) {
-        const { data } = await supabase.from("config").select("key, value").in("key", missing);
-        (data || []).forEach((r: any) => { if (!map[r.key]) map[r.key] = r.value; });
+      (tenantData || []).forEach((r: any) => { if (r?.key === "UAZAPI_ADMIN_URL" && r.value) url = r.value; });
+      if (!url) {
+        const { data } = await supabase.from("config").select("key, value").eq("key", "UAZAPI_ADMIN_URL").maybeSingle();
+        if (data?.value) url = data.value;
       }
-
-      if (map.UAZAPI_ADMIN_URL && map.UAZAPI_ADMIN_TOKEN) {
-        setUazapi({ url: map.UAZAPI_ADMIN_URL.replace(/\/$/, ""), token: map.UAZAPI_ADMIN_TOKEN });
-      }
+      if (url) setUazapi({ url: url.replace(/\/$/, "") });
     } catch { /* ignore */ }
     finally { setLoadingConfig(false); }
   };
@@ -126,7 +120,8 @@ export function WhatsAppInstancesSection() {
   const fetchData = async () => {
     setLoading(true);
     const [instRes, membersRes] = await Promise.all([
-      supabase.from("whatsapp_instances").select("*").order("created_at", { ascending: false }),
+      // api_key fica fora do select — o browser não precisa (e não deve) vê-la
+      supabase.from("whatsapp_instances").select("id, name, phone_number, teams, status, api_url, webhook_url, metadata").order("created_at", { ascending: false }),
       supabase.from("team_members").select("id, name, email, team, role, whatsapp_instance_id, is_active").eq("is_active", true).order("name"),
     ]);
     setInstances(instRes.data || []);
@@ -134,14 +129,12 @@ export function WhatsAppInstancesSection() {
     setLoading(false);
   };
 
-  // === STATUS ===
+  // === STATUS === (via uazapi-proxy — credenciais só no servidor)
   const fetchStatus = async (inst: WhatsAppInstance) => {
-    const url = inst.api_url || inst.webhook_url;
-    if (!url || !inst.api_key) return;
     setRefreshingId(inst.id);
     try {
-      const res = await fetch(`${url}/instance/status`, { headers: { token: inst.api_key } });
-      const data = await res.json();
+      const res = await callUazapi("instance_status", inst.id);
+      const data = res.data as InstanceStatus;
       setStatusMap((prev) => ({ ...prev, [inst.id]: data }));
       const newStatus = data.status?.connected ? "connected" : "disconnected";
       if (inst.status !== newStatus) {
@@ -155,20 +148,12 @@ export function WhatsAppInstancesSection() {
     }
   };
 
-  // === CONNECT + QR ===
+  // === CONNECT + QR === (via uazapi-proxy)
   const genQR = async (inst: WhatsAppInstance) => {
-    const url = inst.api_url || inst.webhook_url;
-    if (!url || !inst.api_key) {
-      toast({ title: "Instância sem URL ou token", variant: "destructive" });
-      return;
-    }
     setRefreshingId(inst.id);
     try {
-      const res = await fetch(`${url}/instance/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", token: inst.api_key },
-      });
-      const data = await res.json();
+      const res = await callUazapi("instance_connect", inst.id);
+      const data = res.data as any;
       const qrcode = data.instance?.qrcode || data.qrcode;
       if (qrcode) {
         setStatusMap((prev) => ({
@@ -213,42 +198,12 @@ export function WhatsAppInstancesSection() {
     }
     setIsCreating(true);
     try {
-      // UAZAPI usa /instance/init como endpoint oficial (o /instance/create \u00e9 legado).
-      const createRes = await fetch(`${uazapi.url}/instance/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", admintoken: uazapi.token },
-        body: JSON.stringify({ name: newName.trim() }),
+      // Criação inteira no servidor (uazapi-proxy) — o admin token NUNCA passa pelo browser.
+      const createRes = await callUazapi("admin_create_instance", null, {
+        name: newName.trim(),
+        team: newTeam,
       });
-      if (!createRes.ok) throw new Error(`UAZAPI: ${createRes.status}`);
-      const createData = await createRes.json();
-      const instanceToken = createData.token || createData.apikey;
-      if (!instanceToken) throw new Error("Token não retornado");
-
-      // Configure webhook
-      try {
-        await fetch(`${uazapi.url}/webhook`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", token: instanceToken },
-          body: JSON.stringify({
-            enabled: true,
-            url: WEBHOOK_URL,
-            events: ["messages", "messages_update", "connection", "groups", "contacts", "call", "chats"],
-            excludeMessages: ["wasSentByApi"],
-            addUrlEvents: true,
-          }),
-        });
-      } catch { /* webhook can be configured later */ }
-
-      // Save
-      await supabase.from("whatsapp_instances").insert({
-        name: createData.name || newName.trim(),
-        api_url: uazapi.url,
-        webhook_url: uazapi.url,
-        api_key: instanceToken,
-        teams: [newTeam],
-        status: "disconnected",
-        metadata: { uazapi_instance_id: createData.instance?.id || null, webhook_url: WEBHOOK_URL },
-      });
+      if (!createRes.ok) throw new Error((createRes.data as any)?.error || "Erro ao criar instância");
 
       toast({ title: "Instância criada! 🎉", description: "Gere o QR Code para conectar." });
       setIsCreateOpen(false);
@@ -261,16 +216,16 @@ export function WhatsAppInstancesSection() {
     }
   };
 
-  // === DELETE ===
+  // === DELETE === (via uazapi-proxy — exige admin)
   const handleDelete = async (inst: WhatsAppInstance) => {
     if (!confirm(`Excluir "${inst.name}"?`)) return;
     try {
-      await supabase.from("team_members").update({ whatsapp_instance_id: null }).eq("whatsapp_instance_id", inst.id);
-      await supabase.from("whatsapp_instances").delete().eq("id", inst.id);
+      const res = await callUazapi("admin_delete_instance", inst.id);
+      if (!res.ok) throw new Error((res.data as any)?.error || "Erro ao excluir");
       toast({ title: "Instância excluída" });
       fetchData();
-    } catch {
-      toast({ title: "Erro ao excluir", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Erro ao excluir", description: error?.message, variant: "destructive" });
     }
   };
 
