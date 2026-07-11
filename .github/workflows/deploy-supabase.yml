@@ -15,6 +15,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/functions/**'
+      - 'supabase/config.toml'
       - '.github/workflows/deploy-supabase.yml'
 
 concurrency:
