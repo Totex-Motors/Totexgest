@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -71,6 +71,29 @@ const installmentOptions = [
   { value: 12, label: "12x" },
 ];
 
+// Veículo vindo da busca no estoque conjunto (consultar-estoque)
+interface StockVehicle {
+  vehicle_id: string;
+  titulo: string;
+  ano?: number;
+  preco?: string;
+  km?: number;
+  cor?: string;
+  cidade?: string;
+  loja?: string;
+}
+
+// "R$ 78.980" -> 78980 | "R$ 78.980,50" -> 78980.5
+function parsePrecoBRL(preco?: string): number {
+  if (!preco) return 0;
+  const clean = preco.replace(/[^\d.,]/g, "");
+  const normalized = clean.includes(",")
+    ? clean.replace(/\./g, "").replace(",", ".")
+    : clean.replace(/\./g, "");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function CreateDealModal({
   open,
   onOpenChange,
@@ -100,7 +123,53 @@ export function CreateDealModal({
   const [useFlexiblePayments, setUseFlexiblePayments] = useState(false);
   const [flexiblePayments, setFlexiblePayments] = useState<PaymentPart[]>([]);
   const [isPaymentsOpen, setIsPaymentsOpen] = useState(true);
+
+  // Veículo da negociação: busca no estoque conjunto (preço vem do carro).
+  // Texto livre continua valendo pra carro fora do estoque (ex: car hunting).
   const [vehicleDescription, setVehicleDescription] = useState("");
+  const [vehicleSel, setVehicleSel] = useState<StockVehicle | null>(null);
+  const [vehicleResults, setVehicleResults] = useState<StockVehicle[]>([]);
+  const [searchingVehicle, setSearchingVehicle] = useState(false);
+  const vehicleDebounce = useRef<ReturnType<typeof setTimeout>>();
+
+  // Busca no estoque conforme digita (só quando ainda não selecionou)
+  useEffect(() => {
+    if (vehicleDebounce.current) clearTimeout(vehicleDebounce.current);
+    const q = vehicleDescription.trim();
+    if (!open || vehicleSel || q.length < 2) {
+      setVehicleResults([]);
+      setSearchingVehicle(false);
+      return;
+    }
+    setSearchingVehicle(true);
+    vehicleDebounce.current = setTimeout(async () => {
+      try {
+        const { data } = await supabase.functions.invoke("consultar-estoque", {
+          body: { arguments: { busca: q, limite: 6 } },
+        });
+        setVehicleResults((data?.veiculos as StockVehicle[]) || []);
+      } catch {
+        setVehicleResults([]);
+      } finally {
+        setSearchingVehicle(false);
+      }
+    }, 400);
+    return () => { if (vehicleDebounce.current) clearTimeout(vehicleDebounce.current); };
+  }, [vehicleDescription, vehicleSel, open]);
+
+  function selectVehicle(v: StockVehicle) {
+    const price = parsePrecoBRL(v.preco);
+    setVehicleSel(v);
+    setVehicleDescription(v.titulo);
+    setVehicleResults([]);
+    setFormData((prev) => ({
+      ...prev,
+      original_price: price,
+      negotiated_price: price,
+      discount_percent: 0,
+    }));
+    setFlexiblePayments([]);
+  }
 
   const [formData, setFormData] = useState<Partial<CreateDealInput>>({
     contact_id: leadId,
@@ -227,7 +296,19 @@ export function CreateDealModal({
           : formData.installments,
         expected_close_date: formData.expected_close_date || undefined,
         notes: formData.notes,
-        metadata: { vehicle: { description: vehicleDescription.trim() } },
+        metadata: {
+          vehicle: vehicleSel
+            ? {
+                id: vehicleSel.vehicle_id,
+                description: vehicleSel.titulo,
+                year: vehicleSel.ano ?? null,
+                mileage: vehicleSel.km ?? null,
+                price: parsePrecoBRL(vehicleSel.preco) || null,
+                price_formatted: vehicleSel.preco ?? null,
+                store_name: vehicleSel.loja ?? null,
+              }
+            : { description: vehicleDescription.trim() },
+        },
       });
 
       // Create deal payments if using flexible payments
@@ -265,6 +346,8 @@ export function CreateDealModal({
       setFlexiblePayments([]);
       setUseFlexiblePayments(false);
       setVehicleDescription("");
+      setVehicleSel(null);
+      setVehicleResults([]);
     } catch (error) {
       console.error("Erro ao criar deal:", error);
       toast({
@@ -300,16 +383,52 @@ export function CreateDealModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Veículo e Responsável */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label className="flex items-center gap-2">
                 <Car className="h-4 w-4" />
                 Veículo *
               </Label>
               <Input
-                placeholder="Ex: Honda Civic 2023, HB20 1.0..."
+                placeholder="Busque no estoque (ex: Onix, Polo)..."
                 value={vehicleDescription}
-                onChange={(e) => setVehicleDescription(e.target.value)}
+                onChange={(e) => {
+                  setVehicleDescription(e.target.value);
+                  if (vehicleSel) {
+                    // Editou depois de selecionar → volta pro modo busca/texto livre
+                    setVehicleSel(null);
+                    setFormData((prev) => ({ ...prev, original_price: 0 }));
+                  }
+                }}
               />
+              {(searchingVehicle || vehicleResults.length > 0) && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-md max-h-56 overflow-y-auto">
+                  {searchingVehicle && (
+                    <div className="flex items-center gap-2 p-2.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Buscando no estoque…
+                    </div>
+                  )}
+                  {!searchingVehicle && vehicleResults.map((v) => (
+                    <button
+                      key={v.vehicle_id}
+                      type="button"
+                      onClick={() => selectVehicle(v)}
+                      className="w-full text-left p-2.5 hover:bg-muted/60 transition-colors border-b last:border-b-0"
+                    >
+                      <p className="text-sm font-medium leading-tight truncate">{v.titulo}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[v.ano, v.km != null ? `${v.km.toLocaleString("pt-BR")} km` : null, v.loja]
+                          .filter(Boolean).join(" · ")}
+                        {v.preco ? ` — ${v.preco}` : ""}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                {vehicleSel
+                  ? `Do estoque: ${vehicleSel.loja || ""}${vehicleSel.cidade ? ` — ${vehicleSel.cidade}` : ""}`
+                  : "Selecione do estoque (preço automático) ou digite livre."}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -365,7 +484,7 @@ export function CreateDealModal({
           {/* Precos */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Preco Original</Label>
+              <Label>Preço do veículo (estoque)</Label>
               <Input
                 type="number"
                 value={formData.original_price || ""}

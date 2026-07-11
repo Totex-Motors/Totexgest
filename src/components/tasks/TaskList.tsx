@@ -49,7 +49,7 @@ const taskTypeConfig: Record<string, { icon: any; color: string; label: string }
   call: { icon: Phone, color: 'text-blue-500 bg-blue-500/10', label: 'Ligação' },
   whatsapp: { icon: MessageSquare, color: 'text-green-500 bg-green-500/10', label: 'WhatsApp' },
   email: { icon: Mail, color: 'text-purple-500 bg-purple-500/10', label: 'Email' },
-  meeting: { icon: Video, color: 'text-indigo-500 bg-indigo-500/10', label: 'Reunião' },
+  meeting: { icon: Video, color: 'text-indigo-500 bg-indigo-500/10', label: 'Visita/Vídeo' },
   onboarding: { icon: Target, color: 'text-teal-500 bg-teal-500/10', label: 'Onboarding' },
   follow_up: { icon: Clock, color: 'text-yellow-500 bg-yellow-500/10', label: 'Follow-up' },
   checkin: { icon: Users, color: 'text-cyan-500 bg-cyan-500/10', label: 'Check-in' },

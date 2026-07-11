@@ -228,7 +228,7 @@ const TeamMeetings = () => {
 
           const calendarResult = await createCalendarEvent({
             title: newTitle,
-            description: newNotes || 'Reunião do time',
+            description: newNotes || 'Agendamento do time',
             startDateTime: addBrasiliaTimezone(newDateTime) || newDateTime,
             durationMinutes: newDuration,
             attendees: [...internalEmails, ...externalAttendees],
@@ -239,7 +239,7 @@ const TeamMeetings = () => {
           toast({ title: 'Meet criado!', description: 'Link gerado automaticamente' });
         } catch (calError) {
           console.error('Erro ao criar evento:', calError);
-          toast({ title: 'Aviso', description: 'Não foi possível criar o Meet. Reunião será criada sem link.', variant: 'destructive' });
+          toast({ title: 'Aviso', description: 'Não foi possível criar o Meet. Agendamento será criada sem link.', variant: 'destructive' });
         }
       } else if (meetingLinkType === 'external' && externalLink.trim()) {
         finalMeetingLink = ensureHttps(externalLink.trim());
@@ -254,15 +254,15 @@ const TeamMeetings = () => {
         created_by: teamMember?.id,
       });
 
-      toast({ title: 'Reunião criada!' });
+      toast({ title: 'Agendamento criada!' });
       setIsCreateOpen(false);
 
       // Perguntar se quer iniciar agora
-      if (confirm('Deseja iniciar a reunião agora com transcrição?')) {
+      if (confirm('Deseja iniciar a agendamento agora com transcrição?')) {
         await handleStartMeeting(meeting.id);
       }
     } catch (error) {
-      toast({ title: 'Erro ao criar reunião', variant: 'destructive' });
+      toast({ title: 'Erro ao criar agendamento', variant: 'destructive' });
     } finally {
       setIsCreating(false);
     }
@@ -274,7 +274,7 @@ const TeamMeetings = () => {
       setActiveMeetingId(meetingId);
       setShowTranscription(true);
     } catch (error) {
-      toast({ title: 'Erro ao iniciar reunião', variant: 'destructive' });
+      toast({ title: 'Erro ao iniciar agendamento', variant: 'destructive' });
     }
   };
 
@@ -303,7 +303,7 @@ const TeamMeetings = () => {
       });
 
       toast({
-        title: 'Reunião processada!',
+        title: 'Agendamento processada!',
         description: 'Veja o resumo e as tarefas sugeridas',
       });
 
@@ -319,7 +319,7 @@ const TeamMeetings = () => {
         setShowSummary(true);
       }
     } catch (error) {
-      toast({ title: 'Erro ao processar reunião', variant: 'destructive' });
+      toast({ title: 'Erro ao processar agendamento', variant: 'destructive' });
     } finally {
       setProcessingMeetingId(null);
     }
@@ -349,7 +349,7 @@ const TeamMeetings = () => {
       });
 
       toast({
-        title: 'Reunião processada!',
+        title: 'Agendamento processada!',
         description: 'Veja o resumo e as tarefas sugeridas',
       });
 
@@ -390,7 +390,7 @@ const TeamMeetings = () => {
 
     try {
       await deleteMeeting.mutateAsync(meetingToDelete.id);
-      toast({ title: 'Reunião excluída!' });
+      toast({ title: 'Agendamento excluída!' });
       setMeetingToDelete(null);
     } catch (error) {
       toast({ title: 'Erro ao excluir', variant: 'destructive' });
@@ -408,14 +408,14 @@ const TeamMeetings = () => {
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Reuniões do Time</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Agendamentos do Time</h1>
             <p className="text-sm text-muted-foreground">
-              Grave, transcreva e extraia tarefas das reuniões
+              Grave, transcreva e extraia tarefas das agendamentos
             </p>
           </div>
           <Button onClick={() => setIsCreateOpen(true)} className="gap-2 w-full sm:w-auto">
             <Plus className="h-4 w-4" />
-            Nova Reunião
+            Nova Agendamento
           </Button>
         </div>
 
@@ -429,7 +429,7 @@ const TeamMeetings = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{meetings.length}</p>
-                  <p className="text-xs text-muted-foreground">Total de reuniões</p>
+                  <p className="text-xs text-muted-foreground">Total de agendamentos</p>
                 </div>
               </div>
             </CardContent>
@@ -481,10 +481,10 @@ const TeamMeetings = () => {
           </Card>
         </div>
 
-        {/* Lista de Reuniões */}
+        {/* Lista de Agendamentos */}
         <Card>
           <CardHeader>
-            <CardTitle>Reuniões Recentes</CardTitle>
+            <CardTitle>Agendamentos Recentes</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -494,14 +494,14 @@ const TeamMeetings = () => {
             ) : meetings.length === 0 ? (
               <div className="text-center py-12">
                 <Video className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                <p className="text-muted-foreground">Nenhuma reunião ainda</p>
+                <p className="text-muted-foreground">Nenhuma agendamento ainda</p>
                 <Button
                   variant="outline"
                   className="mt-4"
                   onClick={() => setIsCreateOpen(true)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Criar primeira reunião
+                  Criar primeira agendamento
                 </Button>
               </div>
             ) : (
@@ -686,7 +686,7 @@ const TeamMeetings = () => {
                               onClick={() => setMeetingToDelete(meeting)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir Reunião
+                              Excluir Agendamento
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -700,13 +700,13 @@ const TeamMeetings = () => {
         </Card>
       </motion.div>
 
-      {/* Modal Criar Reunião */}
+      {/* Modal Criar Agendamento */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Video className="h-5 w-5 text-muted-foreground" />
-              Nova Reunião do Time
+              Nova Agendamento do Time
             </DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -780,9 +780,9 @@ const TeamMeetings = () => {
                 </Select>
               </div>
 
-              {/* Link da Reunião */}
+              {/* Link da Agendamento */}
               <div className="space-y-2 p-2 bg-muted/50 rounded-lg border">
-                <Label className="text-xs font-medium">Link da Reunião</Label>
+                <Label className="text-xs font-medium">Link da Agendamento</Label>
                 <RadioGroup
                   value={meetingLinkType}
                   onValueChange={(v) => setMeetingLinkType(v as 'auto' | 'external' | 'none')}
@@ -930,7 +930,7 @@ const TeamMeetings = () => {
               <div className="space-y-1">
                 <Label className="text-xs">Notas / Pauta</Label>
                 <Textarea
-                  placeholder="Tópicos da reunião, pauta..."
+                  placeholder="Tópicos da agendamento, pauta..."
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
                   rows={5}
@@ -945,7 +945,7 @@ const TeamMeetings = () => {
             </Button>
             <Button onClick={handleCreateMeeting} disabled={isCreating || createMeeting.isPending}>
               {(isCreating || createMeeting.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Criar Reunião
+              Criar Agendamento
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -959,7 +959,7 @@ const TeamMeetings = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Cole a transcrição da reunião (do Zoom, Meet, etc.) para a IA processar e
+              Cole a transcrição da agendamento (do Zoom, Meet, etc.) para a IA processar e
               extrair resumo, decisões e tarefas.
             </p>
             <Textarea
@@ -1075,9 +1075,9 @@ const TeamMeetings = () => {
       <AlertDialog open={!!meetingToDelete} onOpenChange={(open) => !open && setMeetingToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir reunião?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir agendamento?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a reunião "{meetingToDelete?.title}"?
+              Tem certeza que deseja excluir a agendamento "{meetingToDelete?.title}"?
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>

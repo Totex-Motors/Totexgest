@@ -56,7 +56,7 @@ const routeTitles: Record<string, string> = {
   "/comercial/treinamento": "Treinamento",
   "/gestao/tarefas": "Tarefas",
   "/gestao/calendario": "Calendário",
-  "/gestao/reunioes": "Reuniões",
+  "/gestao/reunioes": "Agendamentos",
   "/meu-whatsapp": "Meu WhatsApp",
 };
 

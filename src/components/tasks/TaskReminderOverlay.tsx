@@ -41,7 +41,7 @@ const taskTypeLabels: Record<string, string> = {
   call: "Ligação",
   whatsapp: "WhatsApp",
   email: "Email",
-  meeting: "Reunião",
+  meeting: "Visita/Vídeo",
   onboarding: "Onboarding",
   follow_up: "Follow-up",
   checkin: "Check-in",

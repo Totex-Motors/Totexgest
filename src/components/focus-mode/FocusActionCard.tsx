@@ -197,7 +197,13 @@ export const FocusActionCard = ({ item }: FocusActionCardProps) => {
       timeline: lead?.bant_timeline,
     };
     const bantCount = Object.values(bant).filter(Boolean).length;
-    const monthlyRevenue = item.data?.monthly_revenue;
+    // Automotivo: veículo de interesse no lugar do faturamento B2B
+    const focusMeta = ((lead as any)?.metadata ?? {}) as Record<string, any>;
+    const vehicleInterest: string | null =
+      focusMeta?.vehicle?.description ||
+      [focusMeta?.vehicle?.brand, focusMeta?.vehicle?.model].filter(Boolean).join(" ") ||
+      focusMeta?.veiculo_interesse_texto ||
+      null;
     const dealTitle = item.data?.deal?.title;
     const salesStage = lead?.sales_stage;
 
@@ -257,15 +263,15 @@ export const FocusActionCard = ({ item }: FocusActionCardProps) => {
               </div>
             )}
 
-            {/* Info grid: Faturamento + BANT */}
+            {/* Info grid: Veículo de interesse + BANT */}
             <div className="grid grid-cols-2 gap-3 mb-4">
-              {/* Faturamento */}
+              {/* Veículo de interesse */}
               <div className="bg-muted/50 rounded-lg p-3">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                  <DollarSign className="h-3.5 w-3.5" /> Faturamento
+                  <DollarSign className="h-3.5 w-3.5" /> Veículo de interesse
                 </div>
                 <p className="text-sm font-semibold">
-                  {monthlyRevenue || 'Não informado'}
+                  {vehicleInterest || 'Não informado'}
                 </p>
               </div>
 

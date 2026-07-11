@@ -152,7 +152,7 @@ export default function BookMeeting() {
           </div>
           {step === "form" && fieldIndex === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
-              <h1 className="text-xl font-bold text-gray-900 mb-1">Agende sua reunião com nosso especialista</h1>
+              <h1 className="text-xl font-bold text-gray-900 mb-1">Agende sua visita, test drive ou chamada de vídeo</h1>
               <p className="text-sm text-gray-500">Vamos entender seu negócio e mostrar como IA pode te ajudar</p>
             </motion.div>
           )}
@@ -338,7 +338,7 @@ export default function BookMeeting() {
                   className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto">
                   <Calendar className="w-8 h-8 text-blue-600" />
                 </motion.div>
-                <h2 className="text-xl font-bold text-gray-900">Você já tem reunião agendada!</h2>
+                <h2 className="text-xl font-bold text-gray-900">Você já tem um agendamento!</h2>
                 {bookingResult?.scheduled_at && (
                   <div className="bg-blue-50 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-center gap-2 text-gray-700">
@@ -364,7 +364,7 @@ export default function BookMeeting() {
                   className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </motion.div>
-                <h2 className="text-xl font-bold text-gray-900">Reunião confirmada!</h2>
+                <h2 className="text-xl font-bold text-gray-900">Agendamento confirmado!</h2>
                 {bookingResult?.scheduled_at && (
                   <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                     <div className="flex items-center justify-center gap-2 text-gray-700">

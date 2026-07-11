@@ -63,7 +63,7 @@ interface QuickCreateTaskModalProps {
 
 // Tipos rápidos de eventos (inspirado no Google Calendar)
 const quickTypes = [
-  { value: "meeting", label: "Reunião", icon: Video, color: "bg-indigo-500" },
+  { value: "meeting", label: "Visita/Vídeo", icon: Video, color: "bg-indigo-500" },
   { value: "call", label: "Ligação", icon: Phone, color: "bg-blue-500" },
   { value: "internal", label: "Bloqueio", icon: Coffee, color: "bg-gray-500" },
   { value: "follow_up", label: "Tarefa", icon: Clock, color: "bg-yellow-500" },
@@ -73,7 +73,7 @@ const taskTypes = [
   { value: "call", label: "Ligação", icon: Phone },
   { value: "whatsapp", label: "WhatsApp", icon: MessageSquare },
   { value: "email", label: "Email", icon: Mail },
-  { value: "meeting", label: "Reunião", icon: Video },
+  { value: "meeting", label: "Visita/Vídeo", icon: Video },
   { value: "onboarding", label: "Onboarding", icon: Target },
   { value: "follow_up", label: "Follow-up", icon: Clock },
   { value: "checkin", label: "Check-in", icon: Users },

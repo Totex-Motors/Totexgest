@@ -159,7 +159,7 @@ export function DashboardTabVendas({ filters, teamMemberId, dateRange }: Props) 
             {expandedKPI === 'faturado' && kpis && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm">Detalhamento de Faturamento</h3>
+                  <h3 className="font-semibold text-sm">Detalhamento de Vendas</h3>
                   <button onClick={() => setExpandedKPI(null)} className="text-muted-foreground hover:text-foreground">
                     <ChevronUp className="h-4 w-4" />
                   </button>
