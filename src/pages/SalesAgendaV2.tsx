@@ -999,8 +999,8 @@ export function AgendaViewContent() {
                           "bg-emerald-100 text-emerald-700": activeMetric === 'completed',
                         })}>
                           {activeMetric === 'overdue' && `Atrasadas (${listTasks.length})`}
-                          {activeMetric === 'today' && `Reuniões hoje (${listTasks.length})`}
-                          {activeMetric === 'week' && `Reuniões semana (${listTasks.length})`}
+                          {activeMetric === 'today' && `Agendamentos hoje (${listTasks.length})`}
+                          {activeMetric === 'week' && `Agendamentos semana (${listTasks.length})`}
                           {activeMetric === 'completed' && `Concluídas (${listTasks.length})`}
                         </Badge>
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setActiveMetric(null)}>
@@ -1325,8 +1325,8 @@ export function AgendaViewContent() {
                           "bg-emerald-100 text-emerald-700": activeMetric === 'completed',
                         })}>
                           {activeMetric === 'overdue' && `Atrasadas (${listTasks.length})`}
-                          {activeMetric === 'today' && `Reuniões hoje (${listTasks.length})`}
-                          {activeMetric === 'week' && `Reuniões semana (${listTasks.length})`}
+                          {activeMetric === 'today' && `Agendamentos hoje (${listTasks.length})`}
+                          {activeMetric === 'week' && `Agendamentos semana (${listTasks.length})`}
                           {activeMetric === 'completed' && `Concluídas (${listTasks.length})`}
                         </Badge>
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setActiveMetric(null)}>
@@ -1750,7 +1750,7 @@ function SidebarLegend() {
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Legenda</h3>
       <div className="space-y-1">
         {[
-          { label: "Reunião", color: "bg-indigo-500" },
+          { label: "Visita/Vídeo", color: "bg-indigo-500" },
           { label: "Ligação", color: "bg-blue-500" },
           { label: "WhatsApp", color: "bg-green-500" },
           { label: "Bloqueio", color: "bg-slate-400" },

@@ -117,7 +117,7 @@ const sections: NavSection[] = [
     items: [
       { title: "Tarefas", url: "/gestao/tarefas", icon: CheckSquare },
       { title: "Calendário", url: "/gestao/calendario", icon: Calendar },
-      { title: "Reuniões", url: "/gestao/reunioes", icon: Video },
+      { title: "Agendamentos", url: "/gestao/reunioes", icon: Video },
     ],
   },
   {

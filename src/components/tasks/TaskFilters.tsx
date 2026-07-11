@@ -42,7 +42,7 @@ const taskTypes = [
   { value: "call", label: "Ligação" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "email", label: "Email" },
-  { value: "meeting", label: "Reunião" },
+  { value: "meeting", label: "Visita/Vídeo" },
   { value: "onboarding", label: "Onboarding" },
   { value: "follow_up", label: "Follow-up" },
   { value: "checkin", label: "Check-in" },

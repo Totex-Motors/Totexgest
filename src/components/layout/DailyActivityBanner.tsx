@@ -121,7 +121,7 @@ export function DailyActivityBanner() {
         { icon: Video, label: "Calls", value: stats?.meetings_done ?? 0 },
         { icon: FileText, label: "Propostas", value: stats?.proposals_sent ?? 0 },
         { icon: Users, label: "Contatados", value: stats?.leads_contacted ?? 0 },
-        { icon: Video, label: "Reuniões", value: stats?.meetings_scheduled ?? 0 },
+        { icon: Video, label: "Agendamentos", value: stats?.meetings_scheduled ?? 0 },
       ];
 
   return (

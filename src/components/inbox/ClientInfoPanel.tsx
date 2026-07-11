@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import {
   User,
   Building2,
+  Car,
+  CreditCard,
+  Repeat,
   Phone,
   Mail,
   ExternalLink,
@@ -381,38 +384,34 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
           </div>
         </div>
 
-        {/* Faturamento / Funcionários destaque — herda do lead principal se necessário */}
+        {/* Veículo de interesse + orçamento — automotivo (herda do lead principal) */}
         {(() => {
           const pl = linkedData?.primaryLead;
-          const hasVal = (v: any) => v != null && String(v).trim() !== "" && !/^n[aã]o\s*informad/i.test(String(v));
-          const revenue = hasVal(lead?.monthly_revenue) ? lead?.monthly_revenue : hasVal(pl?.monthly_revenue) ? pl?.monthly_revenue : null;
-          const employees = lead?.employee_count || pl?.employee_count || null;
-          if (!revenue && !employees) return null;
+          const meta = ((lead as any)?.metadata ?? (pl as any)?.metadata ?? {}) as Record<string, any>;
+          const veiculo: string | null =
+            meta?.vehicle?.description ||
+            [meta?.vehicle?.brand, meta?.vehicle?.model].filter(Boolean).join(" ") ||
+            meta?.veiculo_interesse_texto ||
+            null;
+          const orcamento = Number(meta?.faixa_preco_max) || null;
+          if (!veiculo && !orcamento) return null;
           return (
             <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl border bg-gradient-to-r from-emerald-50 to-emerald-100/50 border-emerald-200/60">
               <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-                {revenue ? (
-                  <DollarSign className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <Users className="h-4 w-4 text-emerald-600" />
-                )}
+                <Car className="h-4 w-4 text-emerald-600" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] text-emerald-600 font-medium leading-none">
-                  {revenue ? "Faturamento" : "Funcionários"}
+                  {veiculo ? "Veículo de interesse" : "Orçamento"}
                 </p>
                 <p className="text-sm font-bold text-emerald-800 mt-0.5 line-clamp-2">
-                  {revenue
-                    ? (isNaN(Number(revenue))
-                      ? String(revenue)
-                      : formatCurrency(Number(revenue)))
-                    : `${employees} funcionários`}
+                  {veiculo || `até ${formatCurrency(orcamento!)}`}
                 </p>
               </div>
-              {revenue && employees ? (
+              {veiculo && orcamento ? (
                 <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50 shrink-0">
-                  <Users className="h-3 w-3 mr-1" />
-                  {employees}
+                  <DollarSign className="h-3 w-3 mr-1" />
+                  até {formatCurrency(orcamento)}
                 </Badge>
               ) : null}
             </div>
@@ -904,13 +903,24 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
               // Tratar "não informado", "N/A", strings vazias como null
               const hasValue = (v: any) => v != null && String(v).trim() !== "" && !/^n[aã]o\s*informad/i.test(String(v)) && String(v).toLowerCase() !== "n/a";
               const pick = (own: any, fallback: any) => hasValue(own) ? own : hasValue(fallback) ? fallback : null;
+              // Perfil de compra automotivo (leads.metadata — preenchido pelo agente/vendedor)
+              const meta = ((lead as any)?.metadata ?? {}) as Record<string, any>;
+              const plMeta = ((pl as any)?.metadata ?? {}) as Record<string, any>;
+              const pickMeta = (k: string) => pick(meta?.[k], plMeta?.[k]);
+              const veiculoQ =
+                meta?.vehicle?.description || plMeta?.vehicle?.description ||
+                pickMeta("veiculo_interesse_texto");
+              const orcMax = Number(pickMeta("faixa_preco_max")) || null;
+              const financiar = pickMeta("precisa_financiar");
+              const troca = pickMeta("tem_veiculo_troca");
+              const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
               const effectiveLead = {
-                company_name: pick(lead?.company_name, pl?.company_name),
-                employee_count: pick(lead?.employee_count, pl?.employee_count),
-                monthly_revenue: pick(lead?.monthly_revenue, pl?.monthly_revenue),
-                challenges: pick(lead?.challenges, pl?.challenges),
+                veiculo: veiculoQ,
+                orcamento: orcMax ? `até ${fmtBRL(orcMax)}` : null,
+                financiamento: financiar == null ? null : (String(financiar) === "true" ? "Precisa financiar" : "À vista"),
+                troca: troca == null ? null : (String(troca) === "true" ? "Tem carro na troca" : "Sem troca"),
               };
-              const isFromPrimary = !hasValue(lead?.company_name) && hasValue(pl?.company_name);
+              const isFromPrimary = !hasValue(veiculoQ ? "x" : null) && hasValue(plMeta?.vehicle?.description);
               return (
               <div>
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5 uppercase tracking-wide">
@@ -925,10 +935,10 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
                 </h4>
                 <div className="space-y-1.5">
                   {[
-                    { icon: Building2, label: 'Empresa', value: effectiveLead.company_name, color: 'blue' },
-                    { icon: Users, label: 'Funcionários', value: effectiveLead.employee_count ? `${effectiveLead.employee_count} funcionários` : null, color: 'purple' },
-                    { icon: DollarSign, label: 'Faturamento', value: effectiveLead.monthly_revenue, color: 'emerald' },
-                    { icon: Target, label: 'Desafios', value: effectiveLead.challenges, color: 'amber' },
+                    { icon: Car, label: 'Veículo', value: effectiveLead.veiculo, color: 'blue' },
+                    { icon: DollarSign, label: 'Orçamento', value: effectiveLead.orcamento, color: 'emerald' },
+                    { icon: CreditCard, label: 'Pagamento', value: effectiveLead.financiamento, color: 'purple' },
+                    { icon: Repeat, label: 'Troca', value: effectiveLead.troca, color: 'amber' },
                   ].map(({ icon: Icon, label, value, color }) => (
                     <div
                       key={label}

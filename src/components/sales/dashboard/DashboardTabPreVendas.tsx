@@ -343,7 +343,7 @@ export function DashboardTabPreVendas({ filters, dateRange, teamMemberId }: Prop
         ) : (
           <>
             <KPICard
-              title="Reunioes Marcadas"
+              title="Agendamentos Marcados"
               value={String(meetings?.marcadas || 0)}
               subtitle={`meta: ${SDR_TARGETS.meetings}/dia`}
               icon={<CalendarCheck className="h-5 w-5 text-white" />}
@@ -392,7 +392,7 @@ export function DashboardTabPreVendas({ filters, dateRange, teamMemberId }: Prop
         )}
       </div>
 
-      {/* Row 2: Atividades Hoje + Reunioes Agendadas */}
+      {/* Row 2: Atividades Hoje + Agendamentos */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Atividades hoje */}
         <Card className="lg:col-span-7 border shadow-sm">
@@ -417,7 +417,7 @@ export function DashboardTabPreVendas({ filters, dateRange, teamMemberId }: Prop
                   icon={<Phone className="h-3.5 w-3.5 text-blue-500" />}
                 />
                 <ActivityProgressBar
-                  label="Reunioes agendadas"
+                  label="Agendamentos"
                   current={Number(activity.meetings_scheduled)}
                   target={SDR_TARGETS.meetings}
                   icon={<CalendarCheck className="h-3.5 w-3.5 text-emerald-500" />}
@@ -451,7 +451,7 @@ export function DashboardTabPreVendas({ filters, dateRange, teamMemberId }: Prop
           </CardContent>
         </Card>
 
-        {/* Reunioes agendadas com leads */}
+        {/* Agendamentos com leads */}
         <Card className="lg:col-span-5 border shadow-sm">
           <CardHeader className="pb-2 pt-4 px-4">
             <div className="flex items-center justify-between">
@@ -795,13 +795,13 @@ export function DashboardTabPreVendas({ filters, dateRange, teamMemberId }: Prop
         </SheetContent>
       </Sheet>
 
-      {/* Reunioes Marcadas - Rich (criadas no período) */}
+      {/* Agendamentos Marcados - Rich (criadas no período) */}
       <Sheet open={drillDown === 'meetings'} onOpenChange={(open) => !open && setDrillDown(null)}>
         <SheetContent className="w-[440px] sm:w-[520px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <CalendarCheck className="h-5 w-5 text-blue-500" />
-              Reunioes Marcadas ({bookedMeetings?.length || 0})
+              Agendamentos Marcados ({bookedMeetings?.length || 0})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-120px)] mt-4">

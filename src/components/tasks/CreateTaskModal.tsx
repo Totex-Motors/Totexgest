@@ -75,7 +75,7 @@ interface CreateTaskModalProps {
 
 const taskTypes = [
   { value: 'call', label: 'Ligação', icon: Phone },
-  { value: 'meeting', label: 'Reunião', icon: Video },
+  { value: 'meeting', label: 'Visita/Vídeo', icon: Video },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { value: 'email', label: 'Email', icon: Mail },
   { value: 'follow_up', label: 'Follow-up', icon: Clock },
@@ -87,7 +87,7 @@ const taskTypes = [
 
 const defaultTitleByType: Record<string, string> = {
   call: 'Ligação',
-  meeting: 'Reunião IA na Prática',
+  meeting: 'Visita/Vídeo IA na Prática',
   whatsapp: 'Mensagem WhatsApp',
   email: 'Email',
   follow_up: 'Follow-up',

@@ -63,11 +63,14 @@ export function SalesConversationRow({
   const isHotLead = leadScore && leadScore >= 70;
   const isWarmLead = leadScore && leadScore >= 40 && leadScore < 70;
 
-  // Dados B2B
+  // Dados do lead — automotivo: veículo de interesse no lugar dos campos B2B
   const companyName = (conv as any).lead_company_name || (conv as any).company_name;
-  const jobTitle = (conv as any).lead_job_title || (conv as any).job_title;
-  const monthlyRevenue = conv.lead_monthly_revenue || (conv as any).monthly_revenue;
-  const employeeCount = conv.lead_employee_count || (conv as any).employee_count;
+  const leadMeta = ((conv as any).lead_metadata ?? {}) as Record<string, any>;
+  const vehicleInterest: string | null =
+    leadMeta?.vehicle?.description ||
+    [leadMeta?.vehicle?.brand, leadMeta?.vehicle?.model].filter(Boolean).join(" ") ||
+    leadMeta?.veiculo_interesse_texto ||
+    null;
 
   // Responsável (vendedor atribuído ao lead)
   const responsavelName = conv.assigned_agent_name;
@@ -195,15 +198,11 @@ export function SalesConversationRow({
               <span className="truncate">{companyName}</span>
             </p>
           )}
-          {(monthlyRevenue || employeeCount) && (
+          {vehicleInterest && (
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-              {monthlyRevenue ? (
-                <span className="text-green-600 dark:text-green-400 font-medium">
-                  <DollarSign className="h-3 w-3 inline shrink-0" />R${monthlyRevenue}
-                </span>
-              ) : employeeCount ? (
-                <span className="opacity-70">{employeeCount} funcionários</span>
-              ) : null}
+              <span className="text-green-600 dark:text-green-400 font-medium truncate">
+                🚗 {vehicleInterest}
+              </span>
             </p>
           )}
         </div>
@@ -303,22 +302,6 @@ export function SalesConversationRow({
             )}>
               {timeDisplay}
             </span>
-
-            {/* Revenue / Employees */}
-            {monthlyRevenue && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-0.5 truncate max-w-[120px]" title={`Faturamento: ${monthlyRevenue}`}>
-                <DollarSign className="h-3 w-3 shrink-0" />
-                {isNaN(Number(monthlyRevenue))
-                  ? (monthlyRevenue.length > 12 ? monthlyRevenue.slice(0, 12) + "…" : monthlyRevenue)
-                  : Number(monthlyRevenue).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
-              </span>
-            )}
-            {!monthlyRevenue && employeeCount && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 flex items-center gap-0.5" title={`${employeeCount} funcionários`}>
-                <Users className="h-3 w-3 shrink-0" />
-                {employeeCount}
-              </span>
-            )}
 
             {/* Products */}
             {conv.lead_products && conv.lead_products.length > 0 && (

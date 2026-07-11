@@ -20,7 +20,8 @@ import {
   Plus, TrendingUp, DollarSign, Target, Phone, Video,
   Clock, MessageSquare, AlertTriangle, Flame, Snowflake,
   Calendar, User, Users, Crown, ExternalLink, Send, PhoneCall, CheckCircle,
-  UserX, Pause, XCircle, Building2, Trash2, Sparkles, ChevronRight
+  UserX, Pause, XCircle, Building2, Trash2, Sparkles, ChevronRight,
+  Car as CarIcon,
 } from "lucide-react";
 import { useDemoMode } from "@/contexts/DemoModeContext";
 import { AlertBadge } from "@/components/sales/AlertBadge";
@@ -1169,20 +1170,28 @@ function DealCard({
             </Tooltip>
           )}
 
-          {/* Faturamento - prioriza monthly_revenue do lead, fallback pra diagnostic */}
-          {((deal.lead as any)?.monthly_revenue || (deal as any).diagnostic_revenue) && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700">
-                  <DollarSign className="h-3 w-3" />
-                  <span className="whitespace-nowrap">{(deal.lead as any)?.monthly_revenue || (deal as any).diagnostic_revenue}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Faturamento: {(deal.lead as any)?.monthly_revenue || (deal as any).diagnostic_revenue}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          {/* Veículo da negociação (automotivo) — vem do metadata do deal ou do lead */}
+          {(() => {
+            const vMeta = ((deal as any)?.metadata?.vehicle ?? (deal.lead as any)?.metadata?.vehicle) as Record<string, any> | undefined;
+            const vDesc: string | null =
+              vMeta?.description ||
+              [vMeta?.brand, vMeta?.model].filter(Boolean).join(" ") ||
+              ((deal.lead as any)?.metadata?.veiculo_interesse_texto ?? null);
+            if (!vDesc) return null;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700 max-w-[140px]">
+                    <CarIcon className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{vDesc}</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Veículo: {vDesc}</p>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
         </div>
 
         {/* Scheduled call date for Call Agendada */}

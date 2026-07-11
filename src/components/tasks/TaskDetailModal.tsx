@@ -58,7 +58,7 @@ const taskTypes = [
   { value: 'call', label: 'Ligação', icon: Phone },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { value: 'email', label: 'Email', icon: Mail },
-  { value: 'meeting', label: 'Reunião', icon: Video },
+  { value: 'meeting', label: 'Visita/Vídeo', icon: Video },
   { value: 'onboarding', label: 'Onboarding', icon: Target },
   { value: 'follow_up', label: 'Follow-up', icon: Clock },
   { value: 'checkin', label: 'Check-in', icon: Users },
