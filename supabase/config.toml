@@ -18,11 +18,6 @@ project_id = "seu-projeto-aqui"
 # WEBHOOKS EXTERNOS — JWT não se aplica (fontes externas)
 # ============================================================
 
-[functions.asaas-webhook]
-verify_jwt = false
-
-# Webhook do Resend (eventos de email: delivered/opened/clicked/bounced).
-# Assinatura validada via Svix (resend_webhook_secret por tenant) dentro da função.
 [functions.process-email-event]
 verify_jwt = false
 
@@ -44,58 +39,17 @@ verify_jwt = false
 [functions.whatsapp-cloud-webhook]
 verify_jwt = false
 
-[functions.webinar-webhook]
-verify_jwt = false
-
-[functions.instagram-webhook]
-verify_jwt = false
-
 [functions.google-calendar-webhook]
 verify_jwt = false
 
-[functions.proxy-pain-webhook]
-verify_jwt = false
-
-# ============================================================
-# ENDPOINTS PÚBLICOS — chamados por páginas sem auth CRM
-# ============================================================
-
-# Quiz/formulários públicos (landing pages, /vaga, /onboarding, /pain)
-[functions.quiz-api]
-verify_jwt = false
-
-# Link de descadastro de email (clicado direto do email pelo lead, sem login).
-# Auth via unsubscribe_token único na URL.
 [functions.unsubscribe]
 verify_jwt = false
 
 # PWA do participante de evento (auth próprio via session token)
-[functions.event-app-auth]
-verify_jwt = false
-
-[functions.event-app-actions]
-verify_jwt = false
-
-# Página pública de agendamento (/agendar)
 [functions.book-meeting]
 verify_jwt = false
 
 # Página pública de NPS (/nps/:token)
-[functions.submit-nps-response]
-verify_jwt = false
-
-# Página pública de confirmação de webinar
-[functions.send-webinar-confirmation]
-verify_jwt = false
-
-# Roleplay (usa client secret OpenAI, não auth CRM)
-[functions.roleplay-session]
-verify_jwt = false
-
-[functions.roleplay-evaluate]
-verify_jwt = false
-
-# Health check (endpoint de status)
 [functions.health-check]
 verify_jwt = false
 
@@ -115,20 +69,10 @@ verify_jwt = false
 [functions.email-automation-tick]
 verify_jwt = false
 
-[functions.ceo-whatsapp-bot]
-verify_jwt = false
-
-[functions.content-whatsapp-bot]
-verify_jwt = false
-
-# Lembretes e follow-ups automáticos
 [functions.process-task-reminders]
 verify_jwt = false
 
 [functions.process-noshow-followup]
-verify_jwt = false
-
-[functions.process-touchpoint-followups]
 verify_jwt = false
 
 [functions.process-notification-event]
@@ -154,16 +98,6 @@ verify_jwt = false
 [functions.daily-sales-digest]
 verify_jwt = false
 
-[functions.cs-ai-daily-briefing]
-verify_jwt = false
-
-# Tasks periódicas
-[functions.schedule-nps-surveys]
-verify_jwt = false
-
-[functions.calculate-health-scores]
-verify_jwt = false
-
 [functions.renew-calendar-watches]
 verify_jwt = false
 
@@ -171,9 +105,6 @@ verify_jwt = false
 verify_jwt = false
 
 # Syncs periódicos
-[functions.sync-instagram-messages]
-verify_jwt = false
-
 [functions.sync-missed-messages]
 verify_jwt = false
 
@@ -186,19 +117,10 @@ verify_jwt = false
 [functions.sync-member-data]
 verify_jwt = false
 
-[functions.scrape-instagram-profile]
-verify_jwt = false
-
 [functions.batch-fetch-avatars]
 verify_jwt = false
 
 # Asaas sync (cron pull)
-[functions.asaas-sync-payments]
-verify_jwt = false
-
-# ── Plataforma de Agentes IA ──
-# (runner chamado por webhooks/cron com service key; telegram pelo Telegram sem JWT;
-#  codex-import/generate-embedding chamados internamente)
 [functions.agent-runner]
 verify_jwt = false
 
