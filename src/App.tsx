@@ -134,6 +134,11 @@ import SalesCampaignDetail from "./pages/SalesCampaignDetail";
 // Inteligência de Demanda (dashboards de comportamento do consumidor)
 const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence"));
 
+// Lead Ads Meta + Canais de Entrada + Importação (portados do template v3)
+const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
+const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
+const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
+
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
 // Unsubscribe público (LGPD) — sem auth
@@ -258,6 +263,9 @@ const AppRoutes = () => {
       <Route path="/marketing/automacoes/nova" element={<ProtectedRoute><MarketingAutomationEditor /></ProtectedRoute>} />
       <Route path="/marketing/automacoes/:id" element={<ProtectedRoute><MarketingAutomationEditor /></ProtectedRoute>} />
       <Route path="/marketing/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplates /></ProtectedRoute>} />
+      <Route path="/marketing/lead-ads" element={<ProtectedRoute><React.Suspense fallback={<div />}><MetaLeadAds /></React.Suspense></ProtectedRoute>} />
+      <Route path="/marketing/canais" element={<ProtectedRoute><React.Suspense fallback={<div />}><CanaisEntrada /></React.Suspense></ProtectedRoute>} />
+      <Route path="/marketing/importar" element={<ProtectedRoute><React.Suspense fallback={<div />}><ImportLeads /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/whatsapp-templates/novo" element={<ProtectedRoute><WhatsAppTemplateNew /></ProtectedRoute>} />
       <Route path="/comercial/campanhas" element={<ProtectedRoute><SalesCampaigns /></ProtectedRoute>} />
       <Route path="/comercial/campanhas/nova" element={<ProtectedRoute><SalesCampaignNew /></ProtectedRoute>} />
