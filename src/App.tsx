@@ -138,6 +138,7 @@ const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence")
 const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
 const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
+const MarketingForms = React.lazy(() => import("./pages/MarketingForms"));
 
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
@@ -266,6 +267,7 @@ const AppRoutes = () => {
       <Route path="/marketing/lead-ads" element={<ProtectedRoute><React.Suspense fallback={<div />}><MetaLeadAds /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/canais" element={<ProtectedRoute><React.Suspense fallback={<div />}><CanaisEntrada /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/importar" element={<ProtectedRoute><React.Suspense fallback={<div />}><ImportLeads /></React.Suspense></ProtectedRoute>} />
+      <Route path="/marketing/formularios" element={<ProtectedRoute><React.Suspense fallback={<div />}><MarketingForms /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/whatsapp-templates/novo" element={<ProtectedRoute><WhatsAppTemplateNew /></ProtectedRoute>} />
       <Route path="/comercial/campanhas" element={<ProtectedRoute><SalesCampaigns /></ProtectedRoute>} />
       <Route path="/comercial/campanhas/nova" element={<ProtectedRoute><SalesCampaignNew /></ProtectedRoute>} />

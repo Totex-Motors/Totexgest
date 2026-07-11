@@ -39,6 +39,7 @@ import { GoogleCalendarSection } from "@/components/settings/sections/GoogleCale
 import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
+import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfigTab";
 import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
@@ -131,6 +132,12 @@ const navigationSections: NavSection[] = [
         label: "WhatsApp",
         icon: Smartphone,
         description: "Gerencie suas instâncias de WhatsApp. Conecte via QR Code e veja o status de cada número.",
+      },
+      {
+        id: "whatsapp-cloud",
+        label: "WhatsApp Oficial (Cloud)",
+        icon: Smartphone,
+        description: "Conecte números da API oficial da Meta (Cloud API), incluindo o número que você já usa no app (Coexistência / Embedded Signup).",
       },
       {
         id: "wavoip",
@@ -432,6 +439,8 @@ function SettingsContent({ section }: { section: string }) {
       return <IntegrationsSection />;
     case "whatsapp":
       return <WhatsAppInstancesSection />;
+    case "whatsapp-cloud":
+      return <WhatsAppCloudConfigTab />;
     case "wavoip":
       return <WavoipAdminPanel />;
     case "email-config":
