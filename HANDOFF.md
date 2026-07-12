@@ -17,7 +17,7 @@
 |---|---|
 | Projeto Supabase (CRM) | `mztfyavuclqzivywkaeu` — "CRM Interno Totex", org "JoaoMendes0524's org" |
 | ⚠️ MCP Supabase | A conexão às vezes volta pra conta errada (org "totexmotors", projetos OS/Car Finance). Se der "permission denied" no `mztfy...`, pedir pro Marco reconectar a integração com a conta certa. |
-| Frontend | Vercel, auto-deploy no push da `main` (workflow `deploy.yml`) |
+| Frontend | Vercel, auto-deploy no push da `main` via INTEGRAÇÃO NATIVA GitHub↔Vercel (o antigo workflow `deploy.yml` era redundante e falhava com "Project not found" — foi REMOVIDO em 2026-07-12; verificado que o site atualiza normalmente sem ele) |
 | Edge functions | GitHub Action `deploy-supabase.yml` — push na `main` deploya **TODAS** as functions (verify_jwt por função via `supabase/config.toml`). Secret `SUPABASE_ACCESS_TOKEN` configurado. |
 | Migrations | **NÃO automatizadas** (falta secret `SUPABASE_DB_PASSWORD`). Aplicar via MCP `apply_migration` ou o Marco roda `supabase db push`. Sempre salvar o arquivo em `supabase/migrations/` ANTES. |
 | Git flow | trabalhar na `develop` → merge `--no-ff` pra `main` → push (dispara deploys). Commits em pt-BR. |
