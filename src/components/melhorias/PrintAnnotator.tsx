@@ -145,9 +145,14 @@ export function PrintAnnotator({ image, open, onCancel, onConfirm }: {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (!ready || textInput) return;
+    if (!ready) return;
+    // Já tem um texto sendo digitado → clique no canvas confirma ele
+    if (textInput) { commitText(); return; }
     const { x, y } = toImageCoords(e);
     if (tool === 'text') {
+      // preventDefault: sem isso o mousedown move o foco pro canvas e o
+      // input (que monta com autoFocus logo em seguida) perde o foco na hora
+      e.preventDefault();
       setTextInput({ x, y, value: '' });
       return;
     }
@@ -188,6 +193,7 @@ export function PrintAnnotator({ image, open, onCancel, onConfirm }: {
   const handleConfirm = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (textInput) commitText(); // texto em digitação entra no print final
     setSaving(true);
     try {
       redraw(); // garante estado final desenhado
@@ -198,13 +204,14 @@ export function PrintAnnotator({ image, open, onCancel, onConfirm }: {
     }
   };
 
-  // Posição do input de texto em % (acompanha o scale CSS do canvas)
+  // Posição do input de texto em % (acompanha o scale CSS do canvas).
+  // Clamp pra ele nunca cair fora da área visível (topo/bordas do print).
   const textInputStyle = (() => {
     const canvas = canvasRef.current;
     if (!textInput || !canvas) return undefined;
     return {
-      left: `${(textInput.x / canvas.width) * 100}%`,
-      top: `${(textInput.y / canvas.height) * 100}%`,
+      left: `${Math.min(70, Math.max(1, (textInput.x / canvas.width) * 100))}%`,
+      top: `${Math.min(90, Math.max(1, (textInput.y / canvas.height) * 100))}%`,
     };
   })();
 
@@ -268,10 +275,10 @@ export function PrintAnnotator({ image, open, onCancel, onConfirm }: {
                 value={textInput.value}
                 onChange={(e) => setTextInput((t) => t && { ...t, value: e.target.value })}
                 onKeyDown={(e) => { if (e.key === 'Enter') commitText(); if (e.key === 'Escape') setTextInput(null); }}
-                onBlur={commitText}
+                onPointerDown={(e) => e.stopPropagation()}
                 placeholder="Digite e Enter…"
-                style={textInputStyle}
-                className="absolute z-10 -translate-y-full rounded border-2 bg-white px-2 py-1 text-sm font-bold shadow-lg outline-none dark:bg-zinc-900"
+                style={{ ...textInputStyle, borderColor: color }}
+                className="absolute z-10 w-48 rounded border-2 bg-white px-2 py-1 text-sm font-bold shadow-lg outline-none dark:bg-zinc-900"
               />
             )}
             {!ready && (
