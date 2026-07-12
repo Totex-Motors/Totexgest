@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getRecentErrors, type CapturedError } from '@/lib/errorBuffer';
 import { Camera, ChevronRight, Loader2, Monitor, Paperclip, X } from 'lucide-react';
 import {
   CATEGORY_LABELS, SEVERITY_LABELS,
@@ -49,14 +50,23 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
   const [capturing, setCapturing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Contexto capturado no momento da abertura
-  const context = useMemo(() => ({
-    url: window.location.href,
-    screen: `${window.screen.width * (window.devicePixelRatio || 1)}x${window.screen.height * (window.devicePixelRatio || 1)}`,
-    window: `${window.innerWidth}x${window.innerHeight}`,
-    browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edg)\/[\d.]+/)?.[0] ?? navigator.userAgent.slice(0, 60),
+  // Contexto capturado no momento da abertura — inclui os erros recentes do
+  // console ("já pega o log do erro", sem o usuário fazer nada)
+  const context = useMemo(() => {
+    const recentErrors = getRecentErrors();
+    const ctx: {
+      url: string; screen: string; window: string; browser: string;
+      extra?: { recent_errors: CapturedError[] };
+    } = {
+      url: window.location.href,
+      screen: `${window.screen.width * (window.devicePixelRatio || 1)}x${window.screen.height * (window.devicePixelRatio || 1)}`,
+      window: `${window.innerWidth}x${window.innerHeight}`,
+      browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edg)\/[\d.]+/)?.[0] ?? navigator.userAgent.slice(0, 60),
+    };
+    if (recentErrors.length > 0) ctx.extra = { recent_errors: recentErrors };
+    return ctx;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [open]);
+  }, [open]);
 
   // Limpa previews ao fechar (evita vazar object URLs)
   useEffect(() => {
@@ -251,6 +261,7 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
                   ['Tela', context.screen],
                   ['Janela', context.window],
                   ['Browser', context.browser],
+                  ['Erros recentes', String(context.extra?.recent_errors?.length ?? 0)],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-3">
                     <dt className="shrink-0 text-muted-foreground">{k}</dt>

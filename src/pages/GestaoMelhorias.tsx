@@ -337,6 +337,9 @@ function MelhoriaDetailDialog({ report, onClose, onMove }: {
               </div>
             )}
 
+            {/* Log de erros capturado junto com o report */}
+            <CapturedErrorsBlock context={report.context} />
+
             {/* Notas de resolução */}
             <div>
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -381,6 +384,28 @@ function MelhoriaDetailDialog({ report, onClose, onMove }: {
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Erros do console capturados no momento do report (context.extra.recent_errors). */
+function CapturedErrorsBlock({ context }: { context: MelhoriaReport['context'] }) {
+  const errors = (context?.extra as { recent_errors?: Array<{ ts: string; type: string; message: string }> } | undefined)
+    ?.recent_errors;
+  if (!errors?.length) return null;
+  return (
+    <div>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Log de erros · {errors.length}
+      </div>
+      <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border bg-red-500/5 p-3">
+        {errors.map((e, i) => (
+          <div key={i} className="font-mono text-[10px] leading-snug text-red-700 dark:text-red-400">
+            <span className="text-muted-foreground">{e.ts.slice(11, 19)}</span>{' '}
+            <span className="uppercase">[{e.type}]</span> {e.message}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
