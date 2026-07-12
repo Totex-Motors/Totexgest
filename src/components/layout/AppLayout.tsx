@@ -12,6 +12,9 @@ import React from "react";
 const FloatingAgentHost = React.lazy(() =>
   import("@/agents-platform/components/FloatingAgentHost").then((m) => ({ default: m.FloatingAgentHost }))
 );
+const FloatingMelhoriaButton = React.lazy(() =>
+  import("@/components/melhorias/FloatingMelhoriaButton").then((m) => ({ default: m.FloatingMelhoriaButton }))
+);
 import { DailyActivityBanner } from "./DailyActivityBanner";
 import { useLocation } from "react-router-dom";
 import { useCall } from "@/contexts/CallContext";
@@ -57,6 +60,7 @@ const routeTitles: Record<string, string> = {
   "/gestao/tarefas": "Tarefas",
   "/gestao/calendario": "Calendário",
   "/gestao/reunioes": "Agendamentos",
+  "/gestao/melhorias": "Melhorias",
   "/meu-whatsapp": "Meu WhatsApp",
 };
 
@@ -177,6 +181,11 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Bolha de chat flutuante do agente (canais: floating) — lazy pra não poluir bundle inicial */}
       <React.Suspense fallback={null}>
         <FloatingAgentHost />
+      </React.Suspense>
+
+      {/* Botão flutuante "Reportar melhoria" (borda direita) — cards caem no kanban /gestao/melhorias */}
+      <React.Suspense fallback={null}>
+        <FloatingMelhoriaButton />
       </React.Suspense>
     </SidebarProvider>
   );

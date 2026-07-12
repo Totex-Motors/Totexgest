@@ -81,6 +81,7 @@ import NotFound from "./pages/NotFound";
 // Settings unificada + WhatsApp
 import SettingsUnified from "./pages/SettingsUnified";
 const MyWhatsApp = React.lazy(() => import("./pages/MyWhatsApp"));
+const GestaoMelhorias = React.lazy(() => import("./pages/GestaoMelhorias"));
 
 // Plataforma de Agentes IA
 const AgentList = React.lazy(() => import("./agents-platform/pages/AgentList"));
@@ -291,6 +292,7 @@ const AppRoutes = () => {
       <Route path="/gestao/tarefas" element={<ProtectedRoute><TaskManagement /></ProtectedRoute>} />
       <Route path="/gestao/calendario" element={<ProtectedRoute><TeamCalendar /></ProtectedRoute>} />
       <Route path="/gestao/reunioes" element={<ProtectedRoute><TeamMeetings /></ProtectedRoute>} />
+      <Route path="/gestao/melhorias" element={<ProtectedRoute><React.Suspense fallback={<div />}><GestaoMelhorias /></React.Suspense></ProtectedRoute>} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
