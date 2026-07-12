@@ -294,11 +294,12 @@ export function AgentChat({
             ) : (
               agent.messages.map((m, idx) => {
                 const isLast = idx === agent.messages.length - 1;
-                const isEmptyAssistantStreaming =
-                  isLast && agent.streaming && m.role === 'assistant' && !m.content;
-                // FIX bolha cinza vazia: NÃO renderiza Bubble quando assistant tá vazio +
-                // streaming (a bolha "pensando..." abaixo já cobre esse estado).
-                if (isEmptyAssistantStreaming) return null;
+                // NÃO renderiza bolha de assistant sem conteúdo — deixaria só um buraco
+                // em branco no chat. Dois casos cobertos:
+                //  1) histórico: turno de tool-call (content vazio + tool_calls) — a
+                //     atividade já aparece no card da própria tool (role='tool').
+                //  2) streaming: bolha ainda sem o 1º delta — a bolha "pensando…" abaixo cobre.
+                if (m.role === 'assistant' && !m.content?.trim()) return null;
                 return (
                   <Bubble
                     key={m.id}
