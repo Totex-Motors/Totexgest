@@ -620,7 +620,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
         setSendingInstanceId(data.instance_id);
       } else {
         // Fallback: instância Cloud API (OFICIAL)
-        const cloudInst = availableInstances.find(i => (i as any).metadata?.type === 'cloud_api');
+        const cloudInst = availableInstances.find(i => isCloudMeta((i as any).metadata));
         if (cloudInst) setSendingInstanceId(cloudInst.id);
         else if (availableInstances.length > 0) setSendingInstanceId(availableInstances[0].id);
       }
@@ -708,7 +708,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
         .eq('id', resolvedId)
         .maybeSingle();
 
-      const isCloud = inst?.metadata?.type === 'cloud_api';
+      const isCloud = isCloudMeta(inst?.metadata);
       setSelectedInstanceIsCloudAPI(isCloud);
 
       if (!isCloud || !leadId) { setWindowClosed(false); return; }
@@ -926,9 +926,17 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   };
 
   // Helper: checar se instância é Cloud API
-  const isCloudAPI = (instance: any): boolean => {
+  // Instância é da API oficial (Cloud)? Aceita as duas marcações usadas no sistema:
+// metadata.type='cloud_api' (chat/inbox) e metadata.provider='whatsapp_cloud' /
+// provider='meta_cloud' (multi-número v3 / instâncias antigas sem o type).
+const isCloudMeta = (metadata: any): boolean => {
+  const m = (metadata ?? {}) as Record<string, any>;
+  return m.type === 'cloud_api' || m.provider === 'whatsapp_cloud' || m.provider === 'meta_cloud' || !!m.phone_number_id;
+};
+
+const isCloudAPI = (instance: any): boolean => {
     const metadata = instance.metadata as Record<string, any> || {};
-    return metadata.type === 'cloud_api';
+    return isCloudMeta(metadata);
   };
 
   // Enviar template via Cloud API
@@ -1191,7 +1199,7 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
       const metadata = msgInstance.metadata as Record<string, any> || {};
 
       // Cloud API não suporta delete de msg enviada
-      if (metadata.type === 'cloud_api') {
+      if (isCloudMeta(metadata)) {
         toast({ title: 'Não é possível apagar mensagens da API oficial', variant: 'destructive' });
         return;
       }
