@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'; // SDK for Deno
+import { createClient } from 'jsr:@supabase/supabase-js@2'; // SDK for Deno
 import { getIntegrationKey } from "../_shared/config.ts";
 import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 const corsHeaders = {
