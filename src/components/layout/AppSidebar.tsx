@@ -28,6 +28,7 @@ import {
   BrainCircuit,
   Share2,
   Upload,
+  Lightbulb,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -124,6 +125,7 @@ const sections: NavSection[] = [
       { title: "Tarefas", url: "/gestao/tarefas", icon: CheckSquare },
       { title: "Calendário", url: "/gestao/calendario", icon: Calendar },
       { title: "Agendamentos", url: "/gestao/reunioes", icon: Video },
+      { title: "Melhorias", url: "/gestao/melhorias", icon: Lightbulb },
     ],
   },
   {
