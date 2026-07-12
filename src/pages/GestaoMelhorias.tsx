@@ -340,6 +340,23 @@ function MelhoriaDetailDialog({ report, onClose, onMove }: {
             {/* Log de erros capturado junto com o report */}
             <CapturedErrorsBlock context={report.context} />
 
+            {/* Análise do Claude (rotina 3x/dia analisa os cards em "Eu peguei") */}
+            {report.ai_analysis && (
+              <div>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  🤖 Análise do Claude
+                  {report.ai_analyzed_at && (
+                    <span className="ml-1 font-normal normal-case tracking-normal">
+                      · {formatDistanceToNow(new Date(report.ai_analyzed_at), { addSuffix: true, locale: ptBR })}
+                    </span>
+                  )}
+                </div>
+                <div className="whitespace-pre-wrap rounded-md border border-violet-500/20 bg-violet-500/5 p-3 text-xs leading-relaxed">
+                  {report.ai_analysis}
+                </div>
+              </div>
+            )}
+
             {/* Notas de resolução */}
             <div>
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

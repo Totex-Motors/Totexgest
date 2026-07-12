@@ -43,6 +43,8 @@ export interface MelhoriaReport {
   prints: MelhoriaPrint[];
   resolution_notes: string | null;
   resolved_at: string | null;
+  ai_analysis: string | null;
+  ai_analyzed_at: string | null;
   created_at: string;
   updated_at: string;
   reporter?: { id: string; name: string } | null;
