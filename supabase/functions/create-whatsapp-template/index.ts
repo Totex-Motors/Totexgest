@@ -112,12 +112,43 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (!instance?.business_account_id || !instance?.api_key) {
+    if (!instance?.api_key) {
       return jsonRes({ error: "Nenhuma instância Cloud API conectada para este tenant" }, 404);
     }
 
+    // WABA ID ausente (instância criada antes do multi-número): resolve na Meta
+    // via debug_token (granular_scopes traz o target_id da WABA) e persiste.
+    let wabaId: string | null = instance.business_account_id ?? null;
+    if (!wabaId) {
+      try {
+        const dbg = await fetch(
+          `https://graph.facebook.com/${GRAPH_API_VERSION}/debug_token?input_token=${encodeURIComponent(instance.api_key)}`,
+          { headers: { Authorization: `Bearer ${instance.api_key}` } },
+        );
+        const dbgData = await dbg.json();
+        const scopes = dbgData?.data?.granular_scopes as Array<{ scope: string; target_ids?: string[] }> | undefined;
+        const mgmt = scopes?.find((s) =>
+          s.scope === "whatsapp_business_management" || s.scope === "whatsapp_business_messaging"
+        );
+        wabaId = mgmt?.target_ids?.[0] ?? null;
+        if (wabaId) {
+          await supabase.from("whatsapp_instances")
+            .update({ business_account_id: wabaId })
+            .eq("id", instance.id);
+          console.log(`[create-whatsapp-template] WABA resolvido e salvo: ${wabaId}`);
+        }
+      } catch (e) {
+        console.error("[create-whatsapp-template] debug_token falhou:", (e as Error).message);
+      }
+    }
+    if (!wabaId) {
+      return jsonRes({
+        error: "WABA ID não configurado. Preencha o Business Account ID da instância em Configurações → WhatsApp Oficial (Cloud).",
+      }, 400);
+    }
+
     // POST pra Meta
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${instance.business_account_id}/message_templates`;
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/message_templates`;
     const metaRes = await fetch(url, {
       method: "POST",
       headers: {
