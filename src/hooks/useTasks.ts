@@ -868,6 +868,11 @@ export const useCreateTask = () => {
         });
       }
     },
+    // Sem isso a falha era MUDA: o botão parecia não fazer nada (ex: follow-up
+    // rápido mandando coluna inexistente). Erro de criação sempre vira toast.
+    onError: (error: Error) => {
+      toast.error('Erro ao criar tarefa', { description: error.message });
+    },
   });
 };
 

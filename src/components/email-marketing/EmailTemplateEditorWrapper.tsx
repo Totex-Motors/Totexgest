@@ -151,6 +151,10 @@ export default function EmailTemplateEditorWrapper({ templateId, onBack }: Props
     }
   }, [templateId, existingTemplate, toast]);
 
+  // Injeta o CSS do editor Maily. O arquivo AGORA EXISTE em public/ (era o bug:
+  // o link apontava pra um arquivo que nunca foi copiado — sem ele os menus do
+  // editor ficavam sobrepostos/fora da tela). É cópia do dist do @maily-to/core;
+  // ao atualizar o pacote, re-copiar (ver nota no topo do arquivo).
   useEffect(() => {
     const id = 'maily-editor-css';
     if (document.getElementById(id)) return;

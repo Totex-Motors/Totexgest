@@ -10,6 +10,10 @@ import {
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { blocksPtBR } from './maily-blocks-pt';
+// CSS do editor: /maily-editor.css (public/) — injetado pelo
+// EmailTemplateEditorWrapper. É cópia do dist do @maily-to/core; não pode
+// ser importado aqui porque é Tailwind v4 e o PostCSS do projeto (v3)
+// rejeita, e o exports do pacote bloqueia o import direto do dist.
 
 interface Props extends Omit<EditorProps, 'extensions'> {
   /** Hook adicional pra forçar override da config padrão */

@@ -226,12 +226,13 @@ const SalesWhatsAppInbox = () => {
     scheduledDate.setHours(9, 0, 0, 0);
 
     createTask.mutate({
-      title,
+      name: title,
       description: "",
       task_type: "follow_up",
       priority: "medium",
       team: "sales",
-      assigned_to: teamMember.id,
+      responsavel_id: teamMember.id,
+      created_by_id: teamMember.id,
       lead_id: selectedConversation.lead_id,
       scheduled_at: scheduledDate.toISOString(),
     }, {

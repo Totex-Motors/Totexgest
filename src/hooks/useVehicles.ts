@@ -1,149 +1,72 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
+
+/**
+ * Estoque de veículos — vem da API PÚBLICA do marketplace Totex, via edge
+ * function `consultar-estoque` (formato=completo), a MESMA que o agente usa.
+ *
+ * Decisão de arquitetura (PLANNING-AUTOMOTIVO): o CRM NÃO guarda estoque —
+ * a antiga tabela local `vehicles` nunca existiu em produção, por isso o
+ * "Inserir veículo do estoque" não capturava nada. A API do marketplace
+ * exige termo de busca (e não manda CORS), daí a edge function no meio.
+ */
 
 export type Vehicle = {
   id: string;
-  url: string | null;
   title: string;
-  description: string | null;
-  seller: string;
-  category: string | null;
-  condition: string | null;
-  negotiation: string | null;
-  make: string | null;
-  model: string | null;
-  version: string | null;
-  body: string | null;
   year: number | null;
-  fabric_year: number | null;
-  color: string | null;
-  mileage: number | null;
-  fuel: string | null;
-  gear: string | null;
-  motor: string | null;
-  doors: number | null;
-  hp: string | null;
-  fipe: string | null;
-  plate: string | null;
-  full_plate: string | null;
   price: number | null;
-  regular_price: number | null;
-  promotion_price: number | null;
-  location_city: string | null;
-  location_state: string | null;
-  neighborhood: string | null;
-  zip_code: string | null;
+  mileage: number | null;
+  color: string | null;
+  fuel: string | null;
+  transmission: string | null;
+  city: string | null;
+  state: string | null;
+  /** Nome da loja dona do veículo (marketplace multi-loja) */
+  dealership: string | null;
   images: string[];
-  features: string[];
-  video: string | null;
-  is_active: boolean;
-  is_sold: boolean;
-  last_seen_at: string;
-  published_at: string | null;
-  last_updated_at: string | null;
-  updated_at: string;
+  /** Link público do anúncio no marketplace */
+  url: string | null;
+  /** Derivado: 0 km = novo */
+  condition: "novo" | "usado";
 };
 
 export type VehicleFilters = {
-  seller?: string;
-  condition?: "novo" | "usado";
-  make?: string;
-  minPrice?: number;
-  maxPrice?: number;
   search?: string;
 };
 
+const MIN_SEARCH_LEN = 2;
+
 export const useVehicles = (filters: VehicleFilters = {}) => {
+  const search = (filters.search || "").trim();
+
   return useQuery({
-    queryKey: ["vehicles", filters],
+    queryKey: ["vehicles-marketplace", search],
     staleTime: 60_000,
-    queryFn: async () => {
-      let q = supabase
-        .from("vehicles")
-        .select("*")
-        .eq("is_active", true)
-        .order("price", { ascending: false });
-
-      if (filters.seller) q = q.eq("seller", filters.seller);
-      if (filters.condition) q = q.eq("condition", filters.condition);
-      if (filters.make) q = q.eq("make", filters.make);
-      if (filters.minPrice != null) q = q.gte("price", filters.minPrice);
-      if (filters.maxPrice != null) q = q.lte("price", filters.maxPrice);
-      if (filters.search) {
-        const s = filters.search.trim();
-        q = q.or(`title.ilike.%${s}%,make.ilike.%${s}%,model.ilike.%${s}%,full_plate.ilike.%${s}%`);
-      }
-
-      const { data, error } = await q.limit(500);
-      if (error) throw error;
-      return (data || []) as Vehicle[];
-    },
-  });
-};
-
-export const useVehicleStats = () => {
-  return useQuery({
-    queryKey: ["vehicle-stats"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vehicles")
-        .select("seller, condition, price, is_active");
-      if (error) throw error;
-      const rows = (data || []) as Pick<Vehicle, "seller" | "condition" | "price" | "is_active">[];
-      const active = rows.filter((r) => r.is_active);
-      const bySeller: Record<string, { total: number; novos: number; usados: number; valor: number }> = {};
-      for (const r of active) {
-        const k = r.seller || "Outros";
-        if (!bySeller[k]) bySeller[k] = { total: 0, novos: 0, usados: 0, valor: 0 };
-        bySeller[k].total++;
-        if (r.condition === "novo") bySeller[k].novos++;
-        if (r.condition === "usado") bySeller[k].usados++;
-        bySeller[k].valor += Number(r.price || 0);
-      }
-      return {
-        total: active.length,
-        valor_total: active.reduce((a, r) => a + Number(r.price || 0), 0),
-        bySeller,
-      };
-    },
-  });
-};
-
-export const useSyncVehicles = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const res = await fetch(`${supabaseUrl}/functions/v1/sync-vehicle-stock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+    // API do marketplace exige termo de busca (500 sem `search`)
+    enabled: search.length >= MIN_SEARCH_LEN,
+    queryFn: async (): Promise<Vehicle[]> => {
+      const { data, error } = await supabase.functions.invoke("consultar-estoque", {
+        body: { arguments: { busca: search, limite: 12, formato: "completo" } },
       });
-      if (!res.ok) throw new Error(`Sync HTTP ${res.status}`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      toast.success("Estoque sincronizado", {
-        description: `${data.upserted ?? 0} veículos atualizados em ${data.elapsed_ms}ms`,
-      });
-      qc.invalidateQueries({ queryKey: ["vehicles"] });
-      qc.invalidateQueries({ queryKey: ["vehicle-stats"] });
-    },
-    onError: (e: any) => {
-      toast.error("Falha ao sincronizar estoque", { description: e.message });
-    },
-  });
-};
-
-export const useVehicleMakes = () => {
-  return useQuery({
-    queryKey: ["vehicle-makes"],
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data } = await supabase.from("vehicles").select("make").eq("is_active", true);
-      const makes = new Set((data || []).map((r: any) => r.make).filter(Boolean));
-      return Array.from(makes).sort() as string[];
+      if (error) throw new Error(error.message || "Erro consultando estoque");
+      const list: any[] = Array.isArray(data?.veiculos) ? data.veiculos : [];
+      return list.map((v) => ({
+        id: String(v.id),
+        title: String(v.title || ""),
+        year: v.year ?? null,
+        price: v.price ?? null,
+        mileage: v.mileage ?? null,
+        color: v.color ?? null,
+        fuel: v.fuel ?? null,
+        transmission: v.transmission ?? null,
+        city: v.city ?? null,
+        state: v.state ?? null,
+        dealership: v.dealership ?? null,
+        images: Array.isArray(v.images) ? v.images : [],
+        url: v.url ?? null,
+        condition: Number(v.mileage) === 0 ? "novo" : "usado",
+      }));
     },
   });
 };
