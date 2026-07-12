@@ -43,6 +43,7 @@ import { callProvider } from "./lib/providers/index.ts";
 import { executeTool } from "./lib/tools/executor.ts";
 import { logAgentCall } from "./lib/logging.ts";
 import { stripInternalThinking } from "./lib/safety.ts";
+import { deliverFollowupWhatsApp } from "./lib/wa-delivery.ts";
 import { resolveHumanization, waitDebounce } from "./lib/humanization/index.ts";
 import { buildAutoContext } from "./lib/auto-context.ts";
 
@@ -233,6 +234,10 @@ Deno.serve(async (req: Request) => {
       // (lembrete agendado / job async). A instrução [SISTEMA] é só pro LLM
       // daquele turno; não deve virar mensagem visível no histórico.
       const isSystemResume = (payload.context as { _system_resume?: boolean } | null | undefined)?._system_resume === true;
+      // Textos do assistant nesta execução — usados pra ENTREGAR no WhatsApp
+      // quando o run veio de lembrete/follow-up (system_resume não tem webhook
+      // inbound pra responder; sem isso a mensagem morre no banco).
+      const systemResumeOutputs: string[] = [];
       // Anexos da mensagem atual (imagens) — passados pro provider e salvos em raw
       const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
       if (!isSystemResume) {
@@ -334,6 +339,7 @@ Deno.serve(async (req: Request) => {
           if (insertErr || !assistantMsg) {
             throw new Error(`Falha ao persistir assistant message: ${insertErr?.message || "null returned"}`);
           }
+          if (isSystemResume && cleanedText) systemResumeOutputs.push(cleanedText);
 
           // Atualiza histórico in-memory
           currentHistory = [
@@ -444,20 +450,46 @@ Deno.serve(async (req: Request) => {
             totalUsage.output_tokens += finalResult.usage.output_tokens;
             totalCost += finalResult.cost_brl;
             // Persiste essa resposta final
+            const finalCleaned = stripInternalThinking(finalResult.text);
             await db.from("agents_messages").insert({
               tenant_id: tenantId,
               session_id: sessionId,
               role: "assistant",
-              content: stripInternalThinking(finalResult.text),
+              content: finalCleaned,
               token_count: finalResult.usage.output_tokens,
               cost_brl: finalResult.cost_brl,
               status: "completed",
             });
+            if (isSystemResume && finalCleaned) systemResumeOutputs.push(finalCleaned);
           } catch (e) {
             writer.write({
               type: "error",
               message: `Limite ${MAX_TOOL_ITERATIONS} iterações atingido — não consegui responder: ${String(e)}`,
             });
+          }
+        }
+
+        // Entrega no WhatsApp quando o run veio de lembrete/follow-up (poller).
+        // Respeita a janela de 24h da Cloud API: fora dela vai template aprovado.
+        if (isSystemResume && payload.channel === "whatsapp" && systemResumeOutputs.length > 0) {
+          const ctx = (payload.context ?? {}) as Record<string, unknown>;
+          const recipient = String(ctx.recipient ?? "");
+          if (recipient) {
+            try {
+              await deliverFollowupWhatsApp({
+                db,
+                tenantId,
+                agentSettings: (agent.settings as Record<string, unknown> | null) ?? null,
+                texts: systemResumeOutputs,
+                recipient,
+                instanceId: (ctx.instance_id as string | undefined) ?? null,
+                leadId: (ctx.lead_id as string | undefined) ?? null,
+              });
+            } catch (e) {
+              console.error("[agent-runner] entrega de follow-up falhou:", (e as Error).message);
+            }
+          } else {
+            console.warn("[agent-runner] system_resume whatsapp sem context.recipient — nada enviado");
           }
         }
 
