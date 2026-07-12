@@ -318,6 +318,15 @@ Deno.serve(async (req: Request) => {
           // Persiste assistant message
           // FIX: cap em raw + redactPII pra não vazar dados sensíveis no banco
           const cleanedText = stripInternalThinking(result.text);
+          const hasToolCalls = result.tool_calls.length > 0;
+
+          // Turno 100% vazio (sem texto E sem tool call): não persiste nada.
+          // Um assistant vazio sem tool_use não agrega ao histórico (o adapter
+          // Anthropic já o descarta) e só polui o chat interno com bolha em branco.
+          // Turnos com tool_call CONTINUAM sendo persistidos — ali o content vazio é
+          // normal (a linha carrega os tool_calls, necessários pra reconstruir o histórico).
+          if (!cleanedText && !hasToolCalls) break;
+
           const rawCapped = capRaw(result.raw);
           const { data: assistantMsg, error: insertErr } = await db
             .from("agents_messages")
@@ -349,7 +358,7 @@ Deno.serve(async (req: Request) => {
           ];
 
           // Se não pediu tool, terminou
-          if (result.tool_calls.length === 0) break;
+          if (!hasToolCalls) break;
 
           // FIX: Promise.allSettled — falha de uma tool não derruba o batch
           const toolResults = await Promise.allSettled(
