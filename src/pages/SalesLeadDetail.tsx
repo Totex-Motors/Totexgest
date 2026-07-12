@@ -1286,8 +1286,8 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                                 const scheduledDate = addDays(new Date(), quickFuWhen);
                                 scheduledDate.setHours(9, 0, 0, 0);
                                 createTaskMut.mutate({
-                                  title, description: "", task_type: "follow_up", priority: "medium", team: "sales",
-                                  assigned_to: teamMember.id, lead_id: id, scheduled_at: scheduledDate.toISOString(),
+                                  name: title, description: "", task_type: "follow_up", priority: "medium", team: "sales",
+                                  responsavel_id: teamMember.id, created_by_id: teamMember.id, lead_id: id, scheduled_at: scheduledDate.toISOString(),
                                 }, { onSuccess: () => { toast({ title: "Follow-up criado" }); setQuickFuOpen(false); setQuickFuTitle(""); } });
                               }
                             }}
@@ -1318,8 +1318,8 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                               const scheduledDate = addDays(new Date(), quickFuWhen);
                               scheduledDate.setHours(9, 0, 0, 0);
                               createTaskMut.mutate({
-                                title, description: "", task_type: "follow_up", priority: "medium", team: "sales",
-                                assigned_to: teamMember.id, lead_id: id, scheduled_at: scheduledDate.toISOString(),
+                                name: title, description: "", task_type: "follow_up", priority: "medium", team: "sales",
+                                responsavel_id: teamMember.id, created_by_id: teamMember.id, lead_id: id, scheduled_at: scheduledDate.toISOString(),
                               }, { onSuccess: () => { toast({ title: "Follow-up criado" }); setQuickFuOpen(false); setQuickFuTitle(""); } });
                             }}
                           >

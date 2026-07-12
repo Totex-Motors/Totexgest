@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,14 @@ function brl(n: number | null | undefined) {
 
 export default function VehicleInsertDialog({ open, onOpenChange, onInsert }: Props) {
   const [search, setSearch] = useState("");
-  const { data: vehicles = [], isLoading } = useVehicles({ search: search || undefined });
+  // Debounce: a busca vai pra API do marketplace — sem isso, 1 request por tecla
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  const { data: vehicles = [], isFetching } = useVehicles({ search: debounced });
+  const searching = debounced.trim().length >= 2;
 
   const handlePick = (v: Vehicle) => {
     onInsert(v);
@@ -53,7 +60,8 @@ export default function VehicleInsertDialog({ open, onOpenChange, onInsert }: Pr
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por marca, modelo, placa..."
+            autoFocus
+            placeholder="Digite marca ou modelo (ex: Onix, Golf, Corolla)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -61,7 +69,12 @@ export default function VehicleInsertDialog({ open, onOpenChange, onInsert }: Pr
         </div>
 
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
-          {isLoading ? (
+          {!searching ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Search className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p>Digite pelo menos 2 letras pra buscar no estoque do marketplace</p>
+            </div>
+          ) : isFetching ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="aspect-[3/2] bg-muted rounded-lg animate-pulse" />
@@ -70,7 +83,7 @@ export default function VehicleInsertDialog({ open, onOpenChange, onInsert }: Pr
           ) : vehicles.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Car className="h-10 w-10 mx-auto mb-2 opacity-50" />
-              <p>Nenhum veículo encontrado</p>
+              <p>Nenhum veículo encontrado pra "{debounced.trim()}"</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -105,6 +118,11 @@ export default function VehicleInsertDialog({ open, onOpenChange, onInsert }: Pr
                     <h3 className="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.5rem]">
                       {v.title}
                     </h3>
+                    {(v.dealership || v.year) && (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                        {[v.year, v.dealership, v.city].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                     <div className="flex items-center justify-between mt-2">
                       <span className="font-bold text-base">{brl(v.price)}</span>
                       <Button size="sm" variant="outline" className="gap-1">

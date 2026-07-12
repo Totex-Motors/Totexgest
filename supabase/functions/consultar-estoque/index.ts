@@ -69,6 +69,10 @@ Deno.serve(async (req: Request) => {
     const estado = String(args.estado ?? "").trim();
     const precoMax = Number(args.preco_max ?? args.precoMax ?? 0);
     const limite = Math.min(Math.max(Number(args.limite ?? 6) || 6, 1), 12);
+    // formato=completo: payload cru pro CRM (fotos, link, preço numérico) —
+    // usado pelo "Inserir veículo do estoque" do editor de templates de email.
+    // O formato default (resumido) continua sendo o do agente.
+    const formato = String(args.formato ?? "").trim();
 
     if (!busca && !marca && !modelo) {
       return json({ error: "Informe ao menos 'busca', 'marca' ou 'modelo'." }, 400);
@@ -96,6 +100,32 @@ Deno.serve(async (req: Request) => {
     }
     const data = await res.json();
     const list: any[] = Array.isArray(data?.data) ? data.data : [];
+
+    if (formato === "completo") {
+      // Browse humano: matching por substring da API é o desejado (busca parcial),
+      // então NÃO aplicamos o filtro de palavra inteira do agente.
+      const completos = list.map((v) => ({
+        id: String(v.id),
+        title: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+        year: v.year ?? null,
+        price: Number.isFinite(Number(v.price)) ? Number(v.price) : null,
+        mileage: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null,
+        color: v.color ?? null,
+        fuel: v.fuel ?? null,
+        transmission: v.transmission ?? null,
+        city: v.city ?? null,
+        state: v.state ?? null,
+        dealership: v.dealership?.name ?? null,
+        images: Array.isArray(v.images)
+          ? [...v.images]
+              .sort((a, b) => (b?.isPrimary ? 1 : 0) - (a?.isPrimary ? 1 : 0) || (a?.order ?? 0) - (b?.order ?? 0))
+              .map((i) => i?.url)
+              .filter(Boolean)
+          : [],
+        url: `${base}/veiculo/${v.id}`,
+      }));
+      return json({ total: completos.length, veiculos: completos });
+    }
 
     const veiculos = list.map((v) => ({
       vehicle_id: v.id,
