@@ -19,7 +19,8 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getRecentErrors, type CapturedError } from '@/lib/errorBuffer';
-import { Camera, ChevronRight, Loader2, Monitor, Paperclip, X } from 'lucide-react';
+import { Camera, ChevronRight, Loader2, Monitor, Paperclip, Pencil, X } from 'lucide-react';
+import { PrintAnnotator } from './PrintAnnotator';
 import {
   CATEGORY_LABELS, SEVERITY_LABELS,
   useCreateMelhoria, captureScreenPrint,
@@ -48,6 +49,9 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
   const [severity, setSeverity] = useState<MelhoriaSeverity>('media');
   const [prints, setPrints] = useState<PendingPrint[]>([]);
   const [capturing, setCapturing] = useState(false);
+  // Anotador (estilo Zoho Annotator): abre logo após a captura de tela, ou
+  // pelo lápis na miniatura (replaceIndex = qual print está sendo editado)
+  const [annotating, setAnnotating] = useState<{ blob: Blob; replaceIndex: number | null } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Contexto capturado no momento da abertura — inclui os erros recentes do
@@ -92,14 +96,33 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
   };
 
   const handleCaptureScreen = async () => {
+    if (prints.length >= MAX_PRINTS) { toast.warning(`Máximo de ${MAX_PRINTS} prints`); return; }
     setCapturing(true);
     try {
       const shot = await captureScreenPrint();
-      if (shot) addPrint(shot.blob, shot.width, shot.height);
+      // Capturou → abre o anotador (marca com círculo/quadrado/seta/texto antes de anexar)
+      if (shot) setAnnotating({ blob: shot.blob, replaceIndex: null });
     } catch (e) {
       toast.error(`Captura falhou: ${(e as Error).message}`);
     } finally {
       setCapturing(false);
+    }
+  };
+
+  const handleAnnotated = (blob: Blob, width: number, height: number) => {
+    const idx = annotating?.replaceIndex;
+    setAnnotating(null);
+    if (idx != null) {
+      // Editou um print existente → substitui no lugar
+      setPrints((prev) => {
+        if (!prev[idx]) return prev;
+        URL.revokeObjectURL(prev[idx].previewUrl);
+        const next = [...prev];
+        next[idx] = { blob, previewUrl: URL.createObjectURL(blob), width, height };
+        return next;
+      });
+    } else {
+      addPrint(blob, width, height);
     }
   };
 
@@ -216,13 +239,24 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
                       {p.width}×{p.height}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => removePrint(i)}
-                    className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:block"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
+                    <button
+                      type="button"
+                      title="Marcar no print (círculo, seta, texto…)"
+                      onClick={() => setAnnotating({ blob: p.blob, replaceIndex: i })}
+                      className="rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Remover"
+                      onClick={() => removePrint(i)}
+                      className="rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -245,6 +279,17 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
               </Button>
               <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={handleFile} />
             </div>
+            <p className="mt-1.5 text-[10px] text-muted-foreground">
+              Depois de capturar, dá pra marcar com círculo, quadrado, seta ou texto — igual anotador de print.
+            </p>
+          </div>
+
+          {/* Aviso visível do que vai junto sozinho (não fica escondido no collapsible) */}
+          <div className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400">
+            ✓ Vai junto automaticamente: a tela onde você está ({pathname}), seu navegador
+            {context.extra?.recent_errors?.length
+              ? ` e os últimos ${context.extra.recent_errors.length} erros do console — não precisa copiar erro nenhum.`
+              : '. Se houver erros no console, eles também vão.'}
           </div>
 
           {/* Contexto capturado */}
@@ -282,6 +327,14 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
             </Button>
           </div>
         </div>
+
+        {/* Editor de anotações (abre após capturar, ou pelo lápis na miniatura) */}
+        <PrintAnnotator
+          image={annotating?.blob ?? null}
+          open={!!annotating}
+          onCancel={() => setAnnotating(null)}
+          onConfirm={handleAnnotated}
+        />
       </SheetContent>
     </Sheet>
   );
