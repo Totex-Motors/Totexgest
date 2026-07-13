@@ -5,13 +5,18 @@
  * e MÓVEL: arrasta verticalmente pra onde quiser (pra não sobrepor uma call,
  * um painel etc). A posição fica salva no navegador. Badge mostra quantos
  * reports estão na coluna NOVO. Clique abre o MelhoriaReportSheet.
+ *
+ * Atalho Alt+M: captura a tela ANTES de abrir o painel — é o único jeito de
+ * printar com dropdown/menu aberto (qualquer clique, inclusive no botão,
+ * fecharia o menu; teclado não fecha).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Lightbulb } from 'lucide-react';
-import { useMelhoriasNovasCount } from '@/hooks/useMelhorias';
-import { MelhoriaReportSheet } from './MelhoriaReportSheet';
+import { toast } from 'sonner';
+import { useMelhoriasNovasCount, captureScreenPrint } from '@/hooks/useMelhorias';
+import { MelhoriaReportSheet, type InitialShot } from './MelhoriaReportSheet';
 
 const POSITION_KEY = 'melhoria-btn-top-pct';
 const DRAG_THRESHOLD_PX = 6; // abaixo disso é clique, não arrasto
@@ -24,9 +29,36 @@ function loadTopPct(): number {
 export function FloatingMelhoriaButton() {
   const [open, setOpen] = useState(false);
   const [topPct, setTopPct] = useState<number>(loadTopPct);
+  // Print capturado ANTES do painel abrir (fluxo Alt+M) — entra direto no anotador
+  const [initialShot, setInitialShot] = useState<InitialShot | null>(null);
+  const capturingRef = useRef(false);
   const dragState = useRef<{ startY: number; startPct: number; moved: boolean } | null>(null);
   const { pathname } = useLocation();
   const { data: novas = 0 } = useMelhoriasNovasCount();
+
+  // Alt+M: captura primeiro (dropdown continua aberto — nada foi clicado na
+  // página; o seletor de captura é UI do browser), depois abre o painel com
+  // o print já no anotador. keydown é gesto de usuário → getDisplayMedia ok.
+  useEffect(() => {
+    const onKeyDown = async (e: KeyboardEvent) => {
+      if (!e.altKey || e.key.toLowerCase() !== 'm' || e.ctrlKey || e.metaKey) return;
+      if (open || capturingRef.current) return;
+      e.preventDefault();
+      capturingRef.current = true;
+      try {
+        const shot = await captureScreenPrint();
+        setInitialShot(shot); // null = usuário cancelou o seletor → painel abre sem print
+        document.body.style.pointerEvents = '';
+        setOpen(true);
+      } catch (err) {
+        toast.error(`Captura falhou: ${(err as Error).message}`);
+      } finally {
+        capturingRef.current = false;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -68,6 +100,7 @@ export function FloatingMelhoriaButton() {
   const handleOpenChange = useCallback((v: boolean) => {
     setOpen(v);
     if (!v) {
+      setInitialShot(null);
       // Safety: se o cleanup do Radix perder a corrida (dropdown + sheet
       // modais fechando em sequência), o body ficaria pointer-events:none
       // pra sempre — página inteira morta. Destrava após a animação.
@@ -87,7 +120,7 @@ export function FloatingMelhoriaButton() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        title="Reportar melhoria (arrasta pra mover)"
+        title="Reportar melhoria (arrasta pra mover) · Alt+M captura a tela com menus abertos"
         style={{ top: `${topPct}%` }}
         // pointer-events-auto: dropdowns/selects Radix abertos colocam
         // pointer-events:none no body — sem isso o 1º clique no botão só
@@ -102,7 +135,7 @@ export function FloatingMelhoriaButton() {
         )}
       </button>
 
-      <MelhoriaReportSheet open={open} onOpenChange={handleOpenChange} />
+      <MelhoriaReportSheet open={open} onOpenChange={handleOpenChange} initialShot={initialShot} />
     </>
   );
 }
