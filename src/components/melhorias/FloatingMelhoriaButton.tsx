@@ -54,7 +54,26 @@ export function FloatingMelhoriaButton() {
         return pct;
       });
     } else {
-      setOpen(true); // foi um clique
+      // Foi um clique. Se havia um dropdown/select Radix aberto, ele está
+      // fechando NESTE mesmo clique — abrir o Sheet (modal) no mesmo tick
+      // disputa o lock de pointer-events do body e a página fica travada.
+      // Espera o layer fechar e garante o body destravado antes de abrir.
+      setTimeout(() => {
+        document.body.style.pointerEvents = '';
+        setOpen(true);
+      }, 150);
+    }
+  }, []);
+
+  const handleOpenChange = useCallback((v: boolean) => {
+    setOpen(v);
+    if (!v) {
+      // Safety: se o cleanup do Radix perder a corrida (dropdown + sheet
+      // modais fechando em sequência), o body ficaria pointer-events:none
+      // pra sempre — página inteira morta. Destrava após a animação.
+      setTimeout(() => {
+        document.body.style.pointerEvents = '';
+      }, 350);
     }
   }, []);
 
@@ -83,7 +102,7 @@ export function FloatingMelhoriaButton() {
         )}
       </button>
 
-      <MelhoriaReportSheet open={open} onOpenChange={setOpen} />
+      <MelhoriaReportSheet open={open} onOpenChange={handleOpenChange} />
     </>
   );
 }
