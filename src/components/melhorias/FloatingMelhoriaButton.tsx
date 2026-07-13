@@ -70,7 +70,10 @@ export function FloatingMelhoriaButton() {
         onPointerUp={onPointerUp}
         title="Reportar melhoria (arrasta pra mover)"
         style={{ top: `${topPct}%` }}
-        className="fixed right-0 z-40 -translate-y-1/2 cursor-grab touch-none rounded-l-full border border-r-0 border-primary/30 bg-primary py-2.5 pl-2.5 pr-1.5 text-white shadow-lg transition-[padding] hover:pr-3 focus:outline-none active:cursor-grabbing"
+        // pointer-events-auto: dropdowns/selects Radix abertos colocam
+        // pointer-events:none no body — sem isso o 1º clique no botão só
+        // fechava o menu e era preciso clicar de novo.
+        className="pointer-events-auto fixed right-0 z-40 -translate-y-1/2 cursor-grab touch-none rounded-l-full border border-r-0 border-primary/30 bg-primary py-2.5 pl-2.5 pr-1.5 text-white shadow-lg transition-[padding] hover:pr-3 focus:outline-none active:cursor-grabbing"
       >
         <Lightbulb className="h-4 w-4" />
         {novas > 0 && (
