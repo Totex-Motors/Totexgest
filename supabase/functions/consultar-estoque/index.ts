@@ -15,6 +15,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,7 +69,7 @@ Deno.serve(async (req: Request) => {
     const cidade = String(args.cidade ?? "").trim();
     const estado = String(args.estado ?? "").trim();
     const precoMax = Number(args.preco_max ?? args.precoMax ?? 0);
-    const limite = Math.min(Math.max(Number(args.limite ?? 6) || 6, 1), 12);
+    const limite = Math.min(Math.max(Number(args.limite ?? 6) || 6, 1), 24);
     // formato=completo: payload cru pro CRM (fotos, link, preço numérico) —
     // usado pelo "Inserir veículo do estoque" do editor de templates de email.
     // O formato default (resumido) continua sendo o do agente.
@@ -82,6 +83,22 @@ Deno.serve(async (req: Request) => {
     const cfgUrl = await getIntegrationKey(supabase, "TOTEX_MARKETPLACE_API_URL");
     const base = (cfgUrl || DEFAULT_BASE).replace(/\/$/, "");
 
+    // Escopo por loja (multi-tenant): se o chamador é um usuário do CRM cuja
+    // loja tem mapping no marketplace, filtra o estoque pra ela. Chamadas do
+    // agente (service key, sem tenant no JWT) e tenants sem mapping (Stand,
+    // porta única) veem o estoque CONJUNTO — comportamento intencional.
+    const callerTenant = getTenantIdFromRequest(req);
+    let dealershipId: string | null = null;
+    if (callerTenant) {
+      const { data: mapping } = await supabase
+        .from("marketplace_store_mappings")
+        .select("marketplace_store_id")
+        .eq("tenant_id", callerTenant)
+        .eq("active", true)
+        .maybeSingle();
+      dealershipId = mapping?.marketplace_store_id ?? null;
+    }
+
     const qs = new URLSearchParams();
     if (busca) qs.set("search", busca);
     if (marca) qs.set("brand", marca);
@@ -89,6 +106,7 @@ Deno.serve(async (req: Request) => {
     if (cidade) qs.set("city", cidade);
     if (estado) qs.set("state", estado);
     if (precoMax > 0) qs.set("maxPrice", String(precoMax));
+    if (dealershipId) qs.set("dealershipId", dealershipId);
     qs.set("limit", String(limite));
     qs.set("sort", "price_asc");
 
@@ -124,7 +142,11 @@ Deno.serve(async (req: Request) => {
           : [],
         url: `${base}/veiculo/${v.id}`,
       }));
-      return json({ total: completos.length, veiculos: completos });
+      return json({
+        total: Number(data?.total) || completos.length, // total REAL no marketplace
+        mostrando: completos.length,
+        veiculos: completos,
+      });
     }
 
     const veiculos = list.map((v) => ({

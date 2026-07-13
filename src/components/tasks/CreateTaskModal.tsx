@@ -79,8 +79,8 @@ const taskTypes = [
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { value: 'email', label: 'Email', icon: Mail },
   { value: 'follow_up', label: 'Follow-up', icon: Clock },
-  { value: 'onboarding', label: 'Onboarding', icon: Target },
-  { value: 'checkin', label: 'Check-in', icon: Users },
+  // 'onboarding' e 'checkin' descontinuados (CRM 100% automotivo) — tarefas
+  // antigas desses tipos seguem renderizando, só não dá mais pra criar novas.
   { value: 'internal', label: 'Interna', icon: CalendarIcon },
   { value: 'other', label: 'Outro...', icon: MoreHorizontal },
 ];

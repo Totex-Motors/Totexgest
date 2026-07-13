@@ -74,7 +74,7 @@ import { usePipelines } from "@/hooks/usePipelineConfig";
 import { useCalculateLeadScore } from "@/hooks/useSalesAI";
 import { useContactDeals, useDeleteDeal } from "@/hooks/useSalesDeals";
 import { useLeadDeals, useLinkedContacts, useUnlinkContact, type LinkedContact } from "@/hooks/useDealContacts";
-import { useLeadTransactions, useClientLTV, convertTransactionAmount } from "@/hooks/useTransactions";
+import { useLeadTransactions, convertTransactionAmount } from "@/hooks/useTransactions";
 import { useClientTimeline } from "@/hooks/useClientTimeline";
 import { useInstagramProfile, useInstagramPosts, useInstagramStories } from "@/hooks/useInstagramProfile";
 import { LeadInstagramChat, InstagramStoriesCarousel, PostViewerModal } from "@/components/sales/instagram";
@@ -248,7 +248,6 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
 
   // Transactions & LTV
   const { data: transactions } = useLeadTransactions(id);
-  const { data: ltv } = useClientLTV(id);
 
   // Timeline
   const { data: timeline } = useClientTimeline(id, undefined);
@@ -1091,14 +1090,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
           {/* Left Column - Quick Info */}
           <div className="lg:col-span-4 space-y-6">
             {/* Quick Stats - Compact */}
-            <div className="grid grid-cols-4 gap-2">
+            {/* LTV removido (métrica B2B/recorrência — não faz sentido em venda de veículo) */}
+            <div className="grid grid-cols-3 gap-2">
               <div className="text-center p-2 rounded-lg bg-muted/50">
                 <p className={cn("text-lg font-bold", getScoreColor(salesScore))}>{salesScore}</p>
                 <p className="text-[10px] text-muted-foreground">Score</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-muted/50">
-                <p className="text-lg font-bold text-green-600">R${((ltv || 0) / 1000).toFixed(0)}k</p>
-                <p className="text-[10px] text-muted-foreground">LTV</p>
               </div>
               <div className="text-center p-2 rounded-lg bg-muted/50">
                 <p className="text-lg font-bold">{contactDeals?.length || 0}</p>

@@ -47,7 +47,7 @@ export const useVehicles = (filters: VehicleFilters = {}) => {
     enabled: search.length >= MIN_SEARCH_LEN,
     queryFn: async (): Promise<Vehicle[]> => {
       const { data, error } = await supabase.functions.invoke("consultar-estoque", {
-        body: { arguments: { busca: search, limite: 12, formato: "completo" } },
+        body: { arguments: { busca: search, limite: 24, formato: "completo" } },
       });
       if (error) throw new Error(error.message || "Erro consultando estoque");
       const list: any[] = Array.isArray(data?.veiculos) ? data.veiculos : [];
