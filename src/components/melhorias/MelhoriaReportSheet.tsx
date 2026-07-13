@@ -61,6 +61,7 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
   // pelo lápis na miniatura (replaceIndex = qual print está sendo editado)
   const [annotating, setAnnotating] = useState<{ blob: Blob; replaceIndex: number | null } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Contexto capturado no momento da abertura — inclui os erros recentes do
   // console ("já pega o log do erro", sem o usuário fazer nada)
@@ -116,6 +117,11 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
   const handleCaptureScreen = async () => {
     if (prints.length >= MAX_PRINTS) { toast.warning(`Máximo de ${MAX_PRINTS} prints`); return; }
     setCapturing(true);
+    // Esconde o PRÓPRIO painel (e o escurecimento) durante a captura — senão
+    // o print sai com o popup em cima da área que a pessoa quer mostrar.
+    // O portal do Radix contém overlay + conteúdo: some com os dois de uma vez.
+    const portal = contentRef.current?.parentElement as HTMLElement | null;
+    if (portal) portal.style.visibility = 'hidden';
     try {
       const shot = await captureScreenPrint();
       // Capturou → abre o anotador (marca com círculo/quadrado/seta/texto antes de anexar)
@@ -123,6 +129,7 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
     } catch (e) {
       toast.error(`Captura falhou: ${(e as Error).message}`);
     } finally {
+      if (portal) portal.style.visibility = '';
       setCapturing(false);
     }
   };
@@ -175,7 +182,7 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+      <SheetContent ref={contentRef} side="right" className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">💡</span>
@@ -299,6 +306,7 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
             </div>
             <p className="mt-1.5 text-[10px] text-muted-foreground">
               Depois de capturar, dá pra marcar com círculo, quadrado, seta ou texto — igual anotador de print.
+              Este painel se esconde sozinho durante a captura (o print sai limpo, sem ele por cima).
               <br />
               💡 Pra printar com um dropdown/menu ABERTO: deixa ele aberto e aperta <kbd className="rounded border bg-muted px-1 font-mono">Alt+M</kbd> — a captura acontece antes deste painel abrir.
             </p>

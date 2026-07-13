@@ -18,21 +18,31 @@ import { toast } from 'sonner';
 import { useMelhoriasNovasCount, captureScreenPrint } from '@/hooks/useMelhorias';
 import { MelhoriaReportSheet, type InitialShot } from './MelhoriaReportSheet';
 
-const POSITION_KEY = 'melhoria-btn-top-pct';
+const POSITION_KEY = 'melhoria-btn-pos'; // {x,y} em % da viewport
 const DRAG_THRESHOLD_PX = 6; // abaixo disso é clique, não arrasto
 
-function loadTopPct(): number {
-  const saved = Number(localStorage.getItem(POSITION_KEY));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 92 ? saved : 50;
+interface BtnPos { x: number; y: number }
+
+const clampPos = (p: BtnPos): BtnPos => ({
+  x: Math.min(97, Math.max(3, p.x)),
+  y: Math.min(94, Math.max(4, p.y)),
+});
+
+function loadPos(): BtnPos {
+  try {
+    const saved = JSON.parse(localStorage.getItem(POSITION_KEY) || '');
+    if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) return clampPos(saved);
+  } catch { /* default */ }
+  return { x: 97, y: 50 }; // borda direita, meio da tela
 }
 
 export function FloatingMelhoriaButton() {
   const [open, setOpen] = useState(false);
-  const [topPct, setTopPct] = useState<number>(loadTopPct);
+  const [pos, setPos] = useState<BtnPos>(loadPos);
   // Print capturado ANTES do painel abrir (fluxo Alt+M) — entra direto no anotador
   const [initialShot, setInitialShot] = useState<InitialShot | null>(null);
   const capturingRef = useRef(false);
-  const dragState = useRef<{ startY: number; startPct: number; moved: boolean } | null>(null);
+  const dragState = useRef<{ startX: number; startY: number; startPos: BtnPos; moved: boolean } | null>(null);
   const { pathname } = useLocation();
   const { data: novas = 0 } = useMelhoriasNovasCount();
 
@@ -62,17 +72,21 @@ export function FloatingMelhoriaButton() {
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    dragState.current = { startY: e.clientY, startPct: topPct, moved: false };
-  }, [topPct]);
+    dragState.current = { startX: e.clientX, startY: e.clientY, startPos: pos, moved: false };
+  }, [pos]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     const s = dragState.current;
     if (!s) return;
-    const deltaY = e.clientY - s.startY;
-    if (!s.moved && Math.abs(deltaY) < DRAG_THRESHOLD_PX) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    if (!s.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
     s.moved = true;
-    const pct = Math.min(92, Math.max(8, s.startPct + (deltaY / window.innerHeight) * 100));
-    setTopPct(pct);
+    // Arrasto LIVRE em 2D — leva o botão pra qualquer canto da tela
+    setPos(clampPos({
+      x: s.startPos.x + (dx / window.innerWidth) * 100,
+      y: s.startPos.y + (dy / window.innerHeight) * 100,
+    }));
   }, []);
 
   const onPointerUp = useCallback(() => {
@@ -81,9 +95,9 @@ export function FloatingMelhoriaButton() {
     if (!s) return;
     if (s.moved) {
       // Terminou um arrasto — persiste posição, NÃO abre o painel
-      setTopPct((pct) => {
-        localStorage.setItem(POSITION_KEY, String(Math.round(pct)));
-        return pct;
+      setPos((p) => {
+        localStorage.setItem(POSITION_KEY, JSON.stringify({ x: Math.round(p.x), y: Math.round(p.y) }));
+        return p;
       });
     } else {
       // Foi um clique. Se havia um dropdown/select Radix aberto, ele está
@@ -120,12 +134,12 @@ export function FloatingMelhoriaButton() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        title="Reportar melhoria (arrasta pra mover) · Alt+M captura a tela com menus abertos"
-        style={{ top: `${topPct}%` }}
+        title="Reportar melhoria (arrasta pra qualquer canto) · Alt+M captura a tela com menus abertos"
+        style={{ top: `${pos.y}%`, left: `${pos.x}%` }}
         // pointer-events-auto: dropdowns/selects Radix abertos colocam
         // pointer-events:none no body — sem isso o 1º clique no botão só
         // fechava o menu e era preciso clicar de novo.
-        className="pointer-events-auto fixed right-0 z-40 -translate-y-1/2 cursor-grab touch-none rounded-l-full border border-r-0 border-primary/30 bg-primary py-2.5 pl-2.5 pr-1.5 text-white shadow-lg transition-[padding] hover:pr-3 focus:outline-none active:cursor-grabbing"
+        className="pointer-events-auto fixed z-40 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border border-primary/30 bg-primary p-2.5 text-white shadow-lg hover:scale-110 transition-transform focus:outline-none active:cursor-grabbing"
       >
         <Lightbulb className="h-4 w-4" />
         {novas > 0 && (
