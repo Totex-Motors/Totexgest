@@ -147,6 +147,23 @@ Deno.serve(async (req: Request) => {
           timeline: lead.bant_timeline,
         },
         ai_conversation_insights: lead.ai_conversation_insights,
+        // Automotivo: veículo de interesse + perfil de compra capturado pelo
+        // agente (capturar_perfil_compra) — sinais fortes de intenção/budget
+        vehicle_of_interest: (lead.metadata as any)?.vehicle
+          ? {
+              titulo: (lead.metadata as any).vehicle.title ?? (lead.metadata as any).vehicle.titulo ?? null,
+              preco: (lead.metadata as any).vehicle.price ?? (lead.metadata as any).vehicle.preco ?? null,
+              ano: (lead.metadata as any).vehicle.year ?? (lead.metadata as any).vehicle.ano ?? null,
+            }
+          : null,
+        buyer_profile: {
+          faixa_preco: (lead.metadata as any)?.faixa_preco ?? null,
+          precisa_financiar: (lead.metadata as any)?.precisa_financiar ?? null,
+          entrada: (lead.metadata as any)?.entrada ?? null,
+          troca: (lead.metadata as any)?.troca ?? null,
+          forma_pagamento: (lead.metadata as any)?.forma_pagamento ?? null,
+          urgencia: (lead.metadata as any)?.urgencia ?? null,
+        },
       },
       playbook_context: playbook_context || null,
       conversations: (whatsappMessages || []).slice(0, 30).map((m: any) => ({
@@ -193,31 +210,29 @@ Deno.serve(async (req: Request) => {
       : "";
 
     // Chamar Anthropic Claude
-    const systemPrompt = `Você é um especialista em qualificação de leads de vendas.${playbookSection}
+    const systemPrompt = `Você é um especialista em qualificação de leads de COMPRA DE VEÍCULOS (revenda automotiva multimarcas).${playbookSection}
 
 Analise TODOS os dados do lead e calcule um SCORE DE 0 A 100 baseado em:
 
-**FATORES DE PONTUAÇÃO:**
-1. **Engajamento (0-25)**: Frequência e qualidade das conversas, respostas rápidas, perguntas detalhadas, quantidade de mensagens, iniciativa do lead
-2. **Intenção de Compra (0-35)**: Menções a preço, timing, comparação com concorrentes, perguntas sobre produto, checkouts abandonados, transações anteriores, deals criados
-3. **Perfil (0-20)**: Origem (UTM), perfil Instagram, seguidores, se é empresa, região, dados da empresa
-4. **Timing (0-20)**: Urgência demonstrada, checkouts abandonados, data da última interação, timeline de eventos
+**FATORES DE PONTUAÇÃO (critérios automotivos):**
+1. **Engajamento (0-25)**: Responde rápido, faz perguntas detalhadas sobre o carro (km, revisões, laudo, único dono), manda áudio/foto, mantém a conversa viva, toma iniciativa
+2. **Intenção de Compra (0-35)**: Citou modelo/versão ESPECÍFICA ou veio de anúncio de um carro identificado (vehicle_of_interest preenchido = sinal fortíssimo), perguntou preço/parcela/entrada, pediu simulação de financiamento, quis agendar visita ou test-drive, mencionou carro na troca, comparou modelos ou lojas
+3. **Perfil (0-20)**: Perfil de compra capturado (buyer_profile: faixa de preço definida, forma de pagamento clara), origem do lead (clique em carro no marketplace vale mais que formulário genérico), cidade/região compatível com a loja, uso definido (trabalho, app, família)
+4. **Timing (0-20)**: Prazo de compra declarado ("essa semana", "esse mês"), urgência real (carro atual quebrou/vendeu, precisa pra trabalhar), recência da última interação
 
 **DADOS DISPONÍVEIS PARA ANÁLISE:**
-- Conversas WhatsApp (mensagens do lead e do vendedor)
+- Conversas WhatsApp (mensagens do lead e do vendedor/agente)
+- Veículo de interesse (vehicle_of_interest) e perfil de compra (buyer_profile) capturados pelo agente IA
 - Timeline de eventos (visitas, interações, etc.)
-- Transações e checkouts abandonados
 - Histórico de deals/negociações
-- Produtos disponíveis e preços
-- Dados do Instagram (se disponível)
 - Insights anteriores de IA (se existirem)
 
-**BANT QUALIFICATION:**
+**BANT QUALIFICATION (automotivo):**
 Identifique se o lead demonstrou:
-- Budget (Orçamento): Perguntou preço, parcelas, demonstrou capacidade financeira, mencionou valores
-- Authority (Autoridade): É o decisor ou mencionou precisar consultar alguém, cargo/função
-- Need (Necessidade): Expressou claramente o problema/dor que quer resolver, interesse específico
-- Timeline (Urgência): Mencionou prazo, demonstrou urgência, evento gatilho
+- Budget (Orçamento): Falou faixa de preço, valor de entrada, parcela que cabe no bolso, financiamento pré-aprovado ou carro na troca com valor
+- Authority (Autoridade): É quem decide a compra (ou deixou claro que decide junto com cônjuge/família — ainda conta se ele conduz a conversa)
+- Need (Necessidade): Uso definido (trabalho, aplicativo, família, lazer) ou modelo/categoria clara do que procura
+- Timeline (Urgência): Prazo de compra declarado ou evento gatilho (carro atual quebrou, vendeu, mudança de vida)
 
 Responda APENAS em JSON válido:
 {
