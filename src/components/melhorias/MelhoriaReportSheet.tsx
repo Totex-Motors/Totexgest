@@ -37,9 +37,17 @@ interface PendingPrint {
   height?: number;
 }
 
-export function MelhoriaReportSheet({ open, onOpenChange }: {
+/** Print capturado ANTES do painel abrir (atalho Alt+M — pega dropdowns abertos). */
+export interface InitialShot {
+  blob: Blob;
+  width: number;
+  height: number;
+}
+
+export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialShot?: InitialShot | null;
 }) {
   const { pathname } = useLocation();
   const create = useCreateMelhoria();
@@ -84,6 +92,16 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
       setSeverity('media');
     }
   }, [open]);
+
+  // Print pré-capturado via Alt+M (com dropdown aberto) → direto no anotador
+  const consumedShotRef = useRef<InitialShot | null>(null);
+  useEffect(() => {
+    if (open && initialShot && consumedShotRef.current !== initialShot) {
+      consumedShotRef.current = initialShot;
+      setAnnotating({ blob: initialShot.blob, replaceIndex: null });
+    }
+    if (!open) consumedShotRef.current = null;
+  }, [open, initialShot]);
 
   const addPrint = (blob: Blob, width?: number, height?: number) => {
     setPrints((prev) => {
@@ -281,6 +299,8 @@ export function MelhoriaReportSheet({ open, onOpenChange }: {
             </div>
             <p className="mt-1.5 text-[10px] text-muted-foreground">
               Depois de capturar, dá pra marcar com círculo, quadrado, seta ou texto — igual anotador de print.
+              <br />
+              💡 Pra printar com um dropdown/menu ABERTO: deixa ele aberto e aperta <kbd className="rounded border bg-muted px-1 font-mono">Alt+M</kbd> — a captura acontece antes deste painel abrir.
             </p>
           </div>
 
