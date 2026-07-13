@@ -117,11 +117,18 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
   const handleCaptureScreen = async () => {
     if (prints.length >= MAX_PRINTS) { toast.warning(`Máximo de ${MAX_PRINTS} prints`); return; }
     setCapturing(true);
-    // Esconde o PRÓPRIO painel (e o escurecimento) durante a captura — senão
-    // o print sai com o popup em cima da área que a pessoa quer mostrar.
-    // O portal do Radix contém overlay + conteúdo: some com os dois de uma vez.
-    const portal = contentRef.current?.parentElement as HTMLElement | null;
-    if (portal) portal.style.visibility = 'hidden';
+    // Esconde o PRÓPRIO painel e o escurecimento durante a captura — senão o
+    // print sai com o popup em cima da área que a pessoa quer mostrar.
+    // ⚠️ O portal do Radix monta overlay e conteúdo DIRETO no <body> (não há
+    // wrapper) — esconder o parentElement esconderia a página inteira e o
+    // print sairia em branco. Escondemos só os dois elementos:
+    const content = contentRef.current;
+    const overlaySibling = content?.previousElementSibling as HTMLElement | null;
+    const toHide = [
+      content,
+      overlaySibling?.hasAttribute('data-state') ? overlaySibling : null,
+    ].filter(Boolean) as HTMLElement[];
+    toHide.forEach((el) => { el.style.visibility = 'hidden'; });
     try {
       const shot = await captureScreenPrint();
       // Capturou → abre o anotador (marca com círculo/quadrado/seta/texto antes de anexar)
@@ -129,7 +136,7 @@ export function MelhoriaReportSheet({ open, onOpenChange, initialShot }: {
     } catch (e) {
       toast.error(`Captura falhou: ${(e as Error).message}`);
     } finally {
-      if (portal) portal.style.visibility = '';
+      toHide.forEach((el) => { el.style.visibility = ''; });
       setCapturing(false);
     }
   };
