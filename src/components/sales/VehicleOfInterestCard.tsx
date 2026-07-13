@@ -154,7 +154,7 @@ function LinkVehicleModal({
     debounceRef.current = setTimeout(async () => {
       try {
         const { data, error } = await supabase.functions.invoke("consultar-estoque", {
-          body: { arguments: { busca: q, limite: 10 } },
+          body: { arguments: { busca: q, limite: 24 } },
         });
         if (error) throw error;
         setResults((data?.veiculos as StockResult[]) || []);

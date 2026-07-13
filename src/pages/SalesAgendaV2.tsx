@@ -79,7 +79,7 @@ const TASK_TYPE_CONFIG: Record<string, { color: string; dotColor: string; label:
   call: { color: "bg-blue-100 text-blue-700 border-blue-200", dotColor: "bg-blue-500", label: "Call", icon: Phone },
   whatsapp: { color: "bg-green-100 text-green-700 border-green-200", dotColor: "bg-green-500", label: "WhatsApp", icon: MessageSquare },
   email: { color: "bg-purple-100 text-purple-700 border-purple-200", dotColor: "bg-purple-500", label: "Email", icon: Mail },
-  meeting: { color: "bg-indigo-100 text-indigo-700 border-indigo-200", dotColor: "bg-indigo-500", label: "Meeting", icon: Video },
+  meeting: { color: "bg-indigo-100 text-indigo-700 border-indigo-200", dotColor: "bg-indigo-500", label: "Visita/Vídeo", icon: Video },
   onboarding: { color: "bg-teal-100 text-teal-700 border-teal-200", dotColor: "bg-teal-500", label: "Onboarding", icon: Building2 },
   follow_up: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", dotColor: "bg-yellow-500", label: "Follow-up", icon: Clock },
   internal: { color: "bg-gray-100 text-gray-700 border-gray-200", dotColor: "bg-gray-400", label: "Interna", icon: Settings2 },
@@ -103,10 +103,11 @@ const APPOINTMENT_TYPES = new Set(["meeting", "onboarding"]);
 const isAppointment = (t: { task_type: string; meeting_link?: string | null }) =>
   APPOINTMENT_TYPES.has(t.task_type) || (t.task_type === "call" && !!t.meeting_link);
 // All filterable types for the grid filter bar
+// 100% automotivo: sem "Onboarding" (função descontinuada — tarefas antigas
+// desse tipo aparecem junto com Visitas/Vídeo) e rótulos em português.
 const GRID_FILTER_TYPES = [
-  { key: "call", label: "Calls", dotColor: "bg-blue-500" },
-  { key: "meeting", label: "Meetings", dotColor: "bg-indigo-500" },
-  { key: "onboarding", label: "Onboarding", dotColor: "bg-teal-500" },
+  { key: "call", label: "Ligações", dotColor: "bg-blue-500" },
+  { key: "meeting", label: "Visitas/Vídeo", dotColor: "bg-indigo-500" },
   { key: "whatsapp", label: "WhatsApp", dotColor: "bg-green-500" },
   { key: "email", label: "Email", dotColor: "bg-purple-500" },
   { key: "follow_up", label: "Follow-up", dotColor: "bg-yellow-500" },
@@ -395,7 +396,9 @@ export function AgendaViewContent() {
 
   // ── Split tasks for grid views (appointments vs quick tasks) ──
   const { gridAppointments, gridQuickTasks } = useMemo(() => {
-    const filtered = allTasks.filter(t => activeGridTypes.has(t.task_type));
+    // Tarefas legadas de "onboarding" (tipo descontinuado, sem chip próprio)
+    // entram no balde de Visitas/Vídeo pra não sumirem da agenda.
+    const filtered = allTasks.filter(t => activeGridTypes.has(t.task_type === "onboarding" ? "meeting" : t.task_type));
     const appointments = filtered.filter(t => isAppointment(t));
     const quick = filtered.filter(t => !isAppointment(t));
     return { gridAppointments: appointments, gridQuickTasks: quick };
@@ -755,7 +758,7 @@ export function AgendaViewContent() {
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 border-b bg-muted/30 shrink-0">
           <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300")}>
             <Video className="h-3.5 w-3.5" />
-            <span>{summaryBadges.reunioes} reuniões</span>
+            <span>{summaryBadges.reunioes} agendamentos</span>
           </div>
           <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300")}>
             <Clock className="h-3.5 w-3.5" />
@@ -842,7 +845,7 @@ export function AgendaViewContent() {
                                 {meetings.length > 0 && (
                                   <div className="flex items-center gap-1">
                                     <div className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0 rounded leading-tight">
-                                      {meetings.length} {meetings.length === 1 ? "reunião" : "reuniões"}
+                                      {meetings.length} {meetings.length === 1 ? "agendamento" : "agendamentos"}
                                     </div>
                                   </div>
                                 )}
@@ -1690,7 +1693,7 @@ function GridFilterBar({
             : "bg-muted/40 border-transparent text-muted-foreground hover:bg-accent",
         )}
       >
-        Só reuniões
+        Só agendamentos
       </button>
       {!allGridTypesActive && (
         <button

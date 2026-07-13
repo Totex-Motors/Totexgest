@@ -145,7 +145,7 @@ export function CreateDealModal({
     vehicleDebounce.current = setTimeout(async () => {
       try {
         const { data } = await supabase.functions.invoke("consultar-estoque", {
-          body: { arguments: { busca: q, limite: 6 } },
+          body: { arguments: { busca: q, limite: 24 } },
         });
         setVehicleResults((data?.veiculos as StockVehicle[]) || []);
       } catch {
