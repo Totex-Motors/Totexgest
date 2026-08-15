@@ -358,6 +358,7 @@ async function fetchCommenterProfile(
 /** SSE consumer do agent-runner (padrão whatsapp-webhook/agent-platform.ts) */
 async function runAgent(args: {
   agentSlug: string;
+  tenantId: string;
   sessionId: string | null;
   message: string;
   userId: string;
@@ -369,6 +370,9 @@ async function runAgent(args: {
     signal: AbortSignal.timeout(60_000), // agente pendurado não pode segurar o worker
     body: JSON.stringify({
       agent_slug: args.agentSlug,
+      // agent-runner multi-tenant: chamada service-to-service (sem JWT de usuário)
+      // PRECISA do tenant_id no body, senão 400 "tenant_id não resolvido"
+      tenant_id: args.tenantId,
       channel: "instagram_comment",
       session_id: args.sessionId,
       message: args.message,
@@ -705,6 +709,7 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
       const link = buildTriggerLink(trig, senderUsername);
       const runT = await runAgent({
         agentSlug: trig.agent_slug || "ig-primeiro-contato",
+        tenantId,
         sessionId: personSession, // usa a sessão existente (contexto) se houver
         message: text,
         userId: senderUsername,
@@ -751,6 +756,7 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
       const linkAula = buildAulaLink(materialBase, null, senderUsername); // sem campanha → dm_direto + @ pré-preenche a LP
       const run = await runAgent({
         agentSlug: "ig-primeiro-contato",
+        tenantId,
         sessionId: personSession || conv.agent_session_id,
         message: text,
         userId: senderUsername,
@@ -821,6 +827,7 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
       const linkAulaCamp = buildAulaLink(materialBase, c, senderUsername); // convite: UTM da campanha + @ pré-preenche a LP
       const run = await runAgent({
         agentSlug: c.agent_slug,
+        tenantId,
         sessionId: personSession || rec.agent_session_id, // sessão única → contexto
         message: text,
         userId: senderUsername,
@@ -1395,6 +1402,7 @@ async function triageCommentWithAgent(supabase: Supa, args: {
 
   const run = await runAgent({
     agentSlug: "ig-primeiro-contato",
+    tenantId,
     sessionId,
     message: `[COMENTÁRIO no post] ${args.text}`,
     userId: args.username,
