@@ -137,6 +137,7 @@ const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence")
 
 // Lead Ads Meta + Canais de Entrada + Importação (portados do template v3)
 const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
+const InstagramCampaigns = React.lazy(() => import("./pages/marketing/InstagramCampaigns"));
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
 const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
 const MarketingForms = React.lazy(() => import("./pages/MarketingForms"));
@@ -266,6 +267,7 @@ const AppRoutes = () => {
       <Route path="/marketing/automacoes/:id" element={<ProtectedRoute><MarketingAutomationEditor /></ProtectedRoute>} />
       <Route path="/marketing/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplates /></ProtectedRoute>} />
       <Route path="/marketing/lead-ads" element={<ProtectedRoute><React.Suspense fallback={<div />}><MetaLeadAds /></React.Suspense></ProtectedRoute>} />
+      <Route path="/marketing/instagram" element={<ProtectedRoute><React.Suspense fallback={<div />}><InstagramCampaigns /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/canais" element={<ProtectedRoute><React.Suspense fallback={<div />}><CanaisEntrada /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/importar" element={<ProtectedRoute><React.Suspense fallback={<div />}><ImportLeads /></React.Suspense></ProtectedRoute>} />
       <Route path="/marketing/formularios" element={<ProtectedRoute><React.Suspense fallback={<div />}><MarketingForms /></React.Suspense></ProtectedRoute>} />

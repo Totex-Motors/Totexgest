@@ -37,6 +37,8 @@ interface AuthContextType {
   isComercial: boolean;
   canAccessSettings: boolean;
   canAccessHR: boolean;
+  /** tenant do usuário logado (team_members.tenant_id) — null enquanto carrega */
+  tenantId: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -309,6 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isComercial,
       canAccessSettings,
       canAccessHR,
+      tenantId: teamMember?.tenant_id ?? null,
     }}>
       {children}
     </AuthContext.Provider>
