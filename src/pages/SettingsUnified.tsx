@@ -23,6 +23,7 @@ import {
   Bell,
   Calendar,
   Smartphone,
+  Instagram,
   MessageSquare,
   Settings,
   LogOut,
@@ -40,6 +41,7 @@ import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
 import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfigTab";
+import { InstagramConfigTab } from "@/components/settings/InstagramConfigTab";
 import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
@@ -138,6 +140,13 @@ const navigationSections: NavSection[] = [
         label: "WhatsApp Oficial (Cloud)",
         icon: Smartphone,
         description: "Conecte números da API oficial da Meta (Cloud API), incluindo o número que você já usa no app (Coexistência / Embedded Signup).",
+      },
+      {
+        id: "instagram",
+        label: "Instagram Oficial (API Meta)",
+        icon: Instagram,
+        description: "Conecte a conta do Instagram para inbox, agente de IA e campanhas comentário → DM. Inclui gatilhos de palavra-chave e modo teste.",
+        adminOnly: true,
       },
       {
         id: "wavoip",
@@ -441,6 +450,8 @@ function SettingsContent({ section }: { section: string }) {
       return <WhatsAppInstancesSection />;
     case "whatsapp-cloud":
       return <WhatsAppCloudConfigTab />;
+    case "instagram":
+      return <InstagramConfigTab />;
     case "wavoip":
       return <WavoipAdminPanel />;
     case "email-config":

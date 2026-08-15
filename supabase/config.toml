@@ -164,3 +164,17 @@ verify_jwt = false
 
 [functions.fetch-meta-creative]
 verify_jwt = false
+
+# ── Instagram Oficial (API Meta) ─────────────────────────────
+# webhook: chamado pela Meta (sem JWT). crons: chamados pelo pg_cron (sem JWT).
+# tools/send-dm: service-to-service (agent-runner/crons). list-media: só UI.
+[functions.instagram-webhook]
+verify_jwt = false
+[functions.instagram-crons]
+verify_jwt = false
+[functions.instagram-tools]
+verify_jwt = false
+[functions.instagram-send-dm]
+verify_jwt = false
+[functions.instagram-list-media]
+verify_jwt = true

@@ -29,6 +29,7 @@ import {
   Share2,
   Upload,
   Lightbulb,
+  Instagram,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -110,6 +111,7 @@ const sections: NavSection[] = [
       { title: "Templates Email", url: "/marketing/templates", icon: FileText },
       { title: "Automações", url: "/marketing/automacoes", icon: Workflow },
       { title: "Campanhas WhatsApp", url: "/comercial/campanhas", icon: Send },
+      { title: "Campanhas Instagram", url: "/marketing/instagram", icon: Instagram },
       { title: "Templates WhatsApp", url: "/marketing/whatsapp-templates", icon: FileText },
       { title: "Lead Ads (Meta)", url: "/marketing/lead-ads", icon: Megaphone },
       { title: "Canais de Entrada", url: "/marketing/canais", icon: Share2 },
