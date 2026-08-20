@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,7 +9,12 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDistributionConfigs } from "@/hooks/useLeadDistribution";
+import { useDistributionConfigs, useCreateDistributionConfig, useUpdateDistributionConfig, useRegenerateApiKey, type DistributionConfig } from "@/hooks/useLeadDistribution";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePipelines } from "@/hooks/usePipelineConfig";
 import {
   FileText, Zap, Globe, Pencil, Users, Plus, ExternalLink,
@@ -38,6 +43,7 @@ export default function CanaisEntrada() {
   const { data: instances = [] } = useAvailableWhatsAppInstances();
   const [activeTab, setActiveTab] = useState("canais");
   const [routingDialogConfigId, setRoutingDialogConfigId] = useState<string | null>(null);
+  const [channelDialog, setChannelDialog] = useState<{ open: boolean; config: DistributionConfig | null }>({ open: false, config: null });
 
   const getInstanceName = (id: string | null) => {
     if (!id) return null;
@@ -144,7 +150,7 @@ export default function CanaisEntrada() {
               <p className="text-sm text-muted-foreground">
                 Cada canal representa uma origem de leads.
               </p>
-              <Button onClick={() => navigate('/comercial/configuracoes?tab=forms')}>
+              <Button onClick={() => setChannelDialog({ open: true, config: null })}>
                 <Plus className="h-4 w-4 mr-1.5" />
                 Novo Canal
               </Button>
@@ -242,7 +248,7 @@ export default function CanaisEntrada() {
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => navigate(`/comercial/configuracoes?tab=forms&id=${form.id}`)}
+                          onClick={() => navigate('/marketing/formularios')}
                         >
                           <Settings className="h-3 w-3 mr-1" />
                           Editar
@@ -274,7 +280,7 @@ export default function CanaisEntrada() {
               <p className="text-sm text-muted-foreground">
                 Grupos de vendedores que recebem os leads dos canais.
               </p>
-              <Button onClick={() => navigate('/comercial/configuracoes?tab=distribution')}>
+              <Button onClick={() => setChannelDialog({ open: true, config: null })}>
                 <Plus className="h-4 w-4 mr-1.5" />
                 Nova Distribuição
               </Button>
@@ -383,7 +389,7 @@ export default function CanaisEntrada() {
                         variant="outline"
                         size="sm"
                         className="w-full h-7 text-xs"
-                        onClick={() => navigate(`/comercial/configuracoes?tab=distribution`)}
+                        onClick={() => setChannelDialog({ open: true, config: dist })}
                       >
                         <Settings className="h-3 w-3 mr-1" />
                         Configurar Vendedores & Pesos
@@ -406,6 +412,13 @@ export default function CanaisEntrada() {
         </Tabs>
       </div>
 
+      {/* Dialog de criar/editar canal (fila de distribuição) */}
+      <ChannelDialog
+        open={channelDialog.open}
+        config={channelDialog.config}
+        onClose={() => setChannelDialog({ open: false, config: null })}
+      />
+
       {/* Dialog de regras WhatsApp pra distribuição selecionada */}
       {routingDialogConfigId && (() => {
         const cfg = (distributions || []).find(d => d.id === routingDialogConfigId);
@@ -419,5 +432,166 @@ export default function CanaisEntrada() {
         );
       })()}
     </AppLayout>
+  );
+}
+
+
+// ─── Diálogo de criar/editar canal (fila de distribuição) ───────────────────
+// Substitui os navigates pra "/comercial/configuracoes?tab=..." (rotas do
+// template original que não existem neste CRM). Cria a fila, garante api_key
+// e vincula os vendedores (lead_distribution_members).
+function ChannelDialog({ open, config, onClose }: {
+  open: boolean;
+  config: DistributionConfig | null;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: pipelines } = usePipelines();
+  const createConfig = useCreateDistributionConfig();
+  const updateConfig = useUpdateDistributionConfig();
+  const regenKey = useRegenerateApiKey();
+
+  const [name, setName] = useState("");
+  const [pipelineId, setPipelineId] = useState<string>("");
+  const [stageId, setStageId] = useState<string>("");
+  const [members, setMembers] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  const { data: teamMembers } = useQuery({
+    queryKey: ["canais-team-members"],
+    queryFn: async () => {
+      const { data } = await supabase.from("team_members")
+        .select("id, name, role").eq("is_active", true).order("name");
+      return data || [];
+    },
+    enabled: open,
+  });
+
+  const { data: stages } = useQuery({
+    queryKey: ["canais-stages", pipelineId],
+    queryFn: async () => {
+      const { data } = await supabase.from("sales_pipeline_stages")
+        .select("id, name, position").eq("pipeline_id", pipelineId)
+        .eq("is_won", false).eq("is_lost", false).order("position");
+      return data || [];
+    },
+    enabled: open && !!pipelineId,
+  });
+
+  // Prefill ao abrir (criação ou edição)
+  useEffect(() => {
+    if (!open) return;
+    setName(config?.name ?? "");
+    setPipelineId(config?.pipeline_id ?? "");
+    setStageId(config?.first_stage_id ?? "");
+    if (config?.id) {
+      supabase.from("lead_distribution_members")
+        .select("team_member_id").eq("config_id", config.id).eq("is_active", true)
+        .then(({ data }) => setMembers(new Set((data || []).map((m: any) => m.team_member_id))));
+    } else {
+      setMembers(new Set());
+    }
+  }, [open, config?.id]);
+
+  const toggleMember = (id: string) =>
+    setMembers((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!name.trim()) { toast({ title: "Dê um nome ao canal", variant: "destructive" }); return; }
+    if (members.size === 0) { toast({ title: "Selecione pelo menos 1 vendedor pra receber os leads", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      let saved: DistributionConfig;
+      if (config?.id) {
+        saved = await updateConfig.mutateAsync({
+          id: config.id, name: name.trim(),
+          pipeline_id: pipelineId || null, first_stage_id: stageId || null,
+        });
+      } else {
+        saved = await createConfig.mutateAsync({
+          name: name.trim(), pipeline_id: pipelineId || null,
+          first_stage_id: stageId || null, auto_create_deal: true,
+        });
+      }
+      // Garante api_key (a chave que o receive-lead/Meta Lead Ads usam)
+      if (!saved.api_key) await regenKey.mutateAsync(saved.id);
+
+      // Sincroniza vendedores da fila
+      await supabase.from("lead_distribution_members").delete().eq("config_id", saved.id);
+      if (members.size > 0) {
+        await supabase.from("lead_distribution_members").insert(
+          [...members].map((tm, i) => ({ config_id: saved.id, team_member_id: tm, weight: 1, position: i, is_active: true })),
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ["distribution-configs-all"] });
+      queryClient.invalidateQueries({ queryKey: ["distribution-config"] });
+      toast({ title: config?.id ? "Canal atualizado!" : "Canal criado! 🎉", description: "A API key do canal aparece no card — use-a nas integrações." });
+      onClose();
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar canal", description: e?.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{config?.id ? "Editar canal" : "Novo canal de entrada"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1">
+            <Label>Nome do canal *</Label>
+            <Input placeholder="Ex: Site, Lead Ads, Feirão..." value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Pipeline de destino</Label>
+            <Select value={pipelineId} onValueChange={(v) => { setPipelineId(v); setStageId(""); }}>
+              <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                {(pipelines || []).map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {pipelineId && (
+            <div className="space-y-1">
+              <Label>Estágio inicial</Label>
+              <Select value={stageId} onValueChange={setStageId}>
+                <SelectTrigger><SelectValue placeholder="Primeiro estágio..." /></SelectTrigger>
+                <SelectContent>
+                  {(stages || []).map((s: any) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="space-y-1">
+            <Label>Vendedores que recebem os leads (rodízio) *</Label>
+            <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-1">
+              {(teamMembers || []).map((tm: any) => (
+                <label key={tm.id} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                  <input type="checkbox" checked={members.has(tm.id)} onChange={() => toggleMember(tm.id)} />
+                  <span>{tm.name}</span>
+                  <span className="text-xs text-muted-foreground">({tm.role})</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar canal"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
