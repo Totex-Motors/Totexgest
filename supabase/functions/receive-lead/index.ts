@@ -424,6 +424,22 @@ Deno.serve(async (req: Request) => {
         console.log("[receive-lead] Reconversion for lead:", existingLead.id, existingLead.name);
 
         try {
+        // Portais de carro: reconversão costuma ser interesse em OUTRO anúncio —
+        // atualiza o veículo de interesse no metadata (merge, preserva o resto).
+        const reconvVehicle = String(
+          (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? ""
+        ).trim() || null;
+        if (reconvVehicle) {
+          try {
+            const { data: freshLead } = await supabase
+              .from("leads").select("metadata").eq("id", existingLead.id).maybeSingle();
+            const md = (freshLead?.metadata && typeof freshLead.metadata === "object") ? freshLead.metadata : {};
+            await supabase.from("leads").update({
+              metadata: { ...md, veiculo_interesse_texto: reconvVehicle, vehicle: { ...(md.vehicle || {}), description: reconvVehicle } },
+            }).eq("id", existingLead.id);
+          } catch (e) { console.warn("[receive-lead] reconv vehicle merge falhou:", e); }
+        }
+
         // Update lead UTMs + enrichment fields (last conversion = current UTMs)
         const updateFields: RawPayload = {};
         if (parsed.utm_source) updateFields.utm_source = parsed.utm_source;
@@ -921,6 +937,9 @@ Deno.serve(async (req: Request) => {
       return "Lead sem nome";
     }
     const leadName = buildFallbackName();
+    const portalVehicle = String(
+      (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? ""
+    ).trim() || null;
     const { data: newLead, error: leadError } = await supabase
       .from("leads")
       .insert({
@@ -950,6 +969,16 @@ Deno.serve(async (req: Request) => {
         metadata: {
           source: "receive-lead",
           origin,
+          // Portais de carro (WebMotors, OLX, Mercado Livre...) mandam o anúncio
+          // de interesse: aceita veiculo|vehicle|carro (texto) + link/preço.
+          ...(portalVehicle ? {
+            veiculo_interesse_texto: portalVehicle,
+            vehicle: {
+              description: portalVehicle,
+              ...(String((raw as RawPayload).veiculo_link ?? "").trim() ? { link: String((raw as RawPayload).veiculo_link).trim() } : {}),
+              ...(String((raw as RawPayload).veiculo_preco ?? "").trim() ? { price_formatted: String((raw as RawPayload).veiculo_preco).trim() } : {}),
+            },
+          } : {}),
           ...(raw.form_id ? { form_id: raw.form_id, form_name: raw.form_name } : {}),
           ...(raw.gclid ? { gclid: raw.gclid } : {}),
           ...(raw.fbclid ? { fbclid: raw.fbclid } : {}),
