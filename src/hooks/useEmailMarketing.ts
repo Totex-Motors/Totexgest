@@ -129,7 +129,7 @@ export const useEmailTemplate = (id: string | undefined) => {
 
 export const useCreateEmailTemplate = () => {
   const queryClient = useQueryClient();
-  const { teamMember } = useAuth();
+  const { teamMember, user } = useAuth();
   // MULTI-TENANT
   const tenantId = teamMember?.tenant_id;
   return useMutation({
@@ -140,7 +140,8 @@ export const useCreateEmailTemplate = () => {
           ...template,
           // MULTI-TENANT: tenant_id obrigatório
           tenant_id: tenantId,
-          created_by: teamMember?.id,
+          // FK aponta pra auth.users, não pra team_members
+          created_by: user?.id ?? null,
         })
         .select()
         .single();
@@ -257,7 +258,7 @@ export const useEmailCampaign = (id: string | undefined) => {
 
 export const useCreateEmailCampaign = () => {
   const queryClient = useQueryClient();
-  const { teamMember } = useAuth();
+  const { teamMember, user } = useAuth();
   // MULTI-TENANT
   const tenantId = teamMember?.tenant_id;
   return useMutation({
@@ -268,7 +269,8 @@ export const useCreateEmailCampaign = () => {
           ...campaign,
           // MULTI-TENANT: tenant_id obrigatório
           tenant_id: tenantId,
-          created_by: teamMember?.id,
+          // FK aponta pra auth.users, não pra team_members
+          created_by: user?.id ?? null,
         })
         .select()
         .single();
