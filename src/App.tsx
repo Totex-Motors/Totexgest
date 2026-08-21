@@ -139,6 +139,7 @@ const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence")
 const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
 const InstagramCampaigns = React.lazy(() => import("./pages/marketing/InstagramCampaigns"));
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
+const OperationTower = React.lazy(() => import("./pages/OperationTower"));
 const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
 const MarketingForms = React.lazy(() => import("./pages/MarketingForms"));
 
@@ -244,6 +245,7 @@ const AppRoutes = () => {
       <Route path="/agentes/:slug/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
 
       {/* Sales/Commercial routes */}
+      <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/cockpit" element={<ProtectedRoute><CockpitShell /></ProtectedRoute>} />
       <Route path="/comercial/meu-dia" element={<Navigate to="/comercial/cockpit" replace />} />
       <Route path="/comercial/agenda" element={<ProtectedRoute><SalesAgenda /></ProtectedRoute>} />
