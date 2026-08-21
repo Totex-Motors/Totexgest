@@ -7,14 +7,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNavigate } from "react-router-dom";
 import {
-  Radar, Zap, AlertTriangle, Clock, Phone, RefreshCw, UserPlus,
-  MessageSquare, Sparkles, TrendingUp, CheckCircle2, Gauge,
+  Radar, Zap, AlertTriangle, Clock, RefreshCw, UserPlus,
+  Sparkles, TrendingUp, CheckCircle2, Gauge, Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useOperationTower } from "@/hooks/useOperationTower";
 import { useSupervisorBriefing } from "@/hooks/useSupervisorBriefing";
+import { OperationAlertConfigDialog } from "@/components/sales/OperationAlertConfigDialog";
 
 // Semáforo por minutos de espera (lead sem primeiro contato)
 function slaColor(minutes: number): { dot: string; text: string; label: string } {
@@ -35,6 +36,7 @@ export default function OperationTower() {
   const { data, isLoading, refetch, isRefetching } = useOperationTower();
   const briefing = useSupervisorBriefing();
   const [briefingText, setBriefingText] = useState<string | null>(null);
+  const [alertConfigOpen, setAlertConfigOpen] = useState(false);
 
   const stats = data?.stats;
 
@@ -73,11 +75,19 @@ export default function OperationTower() {
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", isRefetching && "animate-spin")} />
-            Atualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAlertConfigOpen(true)}>
+              <Bell className="h-4 w-4 mr-1.5" />
+              Configurar alertas
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+              <RefreshCw className={cn("h-4 w-4 mr-1.5", isRefetching && "animate-spin")} />
+              Atualizar
+            </Button>
+          </div>
         </div>
+
+        <OperationAlertConfigDialog open={alertConfigOpen} onOpenChange={setAlertConfigOpen} />
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
