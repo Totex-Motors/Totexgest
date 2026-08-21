@@ -13,6 +13,7 @@ export interface TradeInVehicle {
   km: number | null;
   placa: string | null;
   condicao: 'otimo' | 'bom' | 'regular' | 'ruim' | null;
+  modalidade: 'troca' | 'compra' | 'intermediacao' | 'consignacao' | 'anuncio_trafego' | null;
   valor_pedido: number | null;
   valor_avaliado: number | null;
   observacoes: string | null;

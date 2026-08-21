@@ -117,6 +117,7 @@ function renderTemplate(tpl: string, vars: Record<string, string>): string {
 /** Chama agent-runner e concatena o SSE (mesmo padrão do whatsapp-webhook/agent-platform.ts) */
 async function runAgent(args: {
   agentSlug: string;
+  tenantId: string;
   sessionId: string | null;
   message: string;
   userId: string;
@@ -128,6 +129,9 @@ async function runAgent(args: {
     signal: AbortSignal.timeout(45_000), // agente pendurado não pode segurar a run
     body: JSON.stringify({
       agent_slug: args.agentSlug,
+      // agent-runner multi-tenant: chamada service-to-service (sem JWT de usuário)
+      // PRECISA do tenant_id no body, senão 400 "tenant_id não resolvido"
+      tenant_id: args.tenantId,
       channel: "instagram_comment",
       session_id: args.sessionId,
       message: args.message,
@@ -603,6 +607,7 @@ async function processAccount(supabase: any, account: IgAccount, report: Report)
           const linkAula = buildAulaLink(materialBase, c, rec.commenter_username); // UTM da campanha + @ pré-preenche a LP
           const run = await runAgent({
             agentSlug: c.agent_slug,
+            tenantId,
             sessionId: personSession,
             // A sessão do agente é POR PESSOA, então o comentário entra na MESMA
             // thread do direct. Mandar só o texto ("lead") faz o modelo ler como
