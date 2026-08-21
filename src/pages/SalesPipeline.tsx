@@ -591,7 +591,14 @@ export function PipelineBoardContent() {
                           : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                       }`}
                     >
-                      {isSuperAdmin ? ((p as any).tenants?.name || p.name) : p.name}
+                      {/* Super admin: pipeline padrão mostra só a loja; pipeline extra
+                          (ex: Captação Tamboré) mostra "Loja — Pipeline" pra não gerar
+                          abas duplicadas quando a loja tem 2+ pipelines */}
+                      {isSuperAdmin
+                        ? (p.is_default
+                            ? ((p as any).tenants?.name || p.name)
+                            : `${(p as any).tenants?.name ? (p as any).tenants.name + " — " : ""}${p.name}`)
+                        : p.name}
                     </button>
                   ))}
                 </div>
