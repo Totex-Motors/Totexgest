@@ -36,6 +36,7 @@ import {
   useDemoMultiplier, dv,
 } from './shared';
 import { useSessionState } from './shared';
+import { VehicleIntakeCard } from './VehicleIntakeCard';
 
 // Activity targets (hardcoded phase 1)
 const DAILY_TARGETS = {
@@ -535,6 +536,13 @@ export function DashboardTabGeral({ filters, dateRange }: Props) {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Row 5: Captacao de Veiculos (BI de modalidades) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-5">
+          <VehicleIntakeCard />
+        </div>
       </div>
 
       {/* Won Deals Drill-Down Sheet (shared by Faturado and Ticket Medio) */}

@@ -103,3 +103,22 @@ export const useDeleteTradeIn = () => {
     },
   });
 };
+
+// Mapa lead_id -> modalidade do veículo do cliente (filtro do pipeline / BI).
+// Query leve (2 colunas); RLS já escopa por tenant.
+export const useTradeInModalidadeMap = () =>
+  useQuery({
+    queryKey: ['trade-in', 'modalidade-map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trade_in_vehicles')
+        .select('lead_id, modalidade');
+      if (error) throw error;
+      const map: Record<string, string | null> = {};
+      for (const r of (data || []) as { lead_id: string | null; modalidade: string | null }[]) {
+        if (r.lead_id) map[r.lead_id] = r.modalidade;
+      }
+      return map;
+    },
+    staleTime: 60_000,
+  });

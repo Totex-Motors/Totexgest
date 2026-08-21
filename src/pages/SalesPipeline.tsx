@@ -12,6 +12,7 @@ import {
 import { PipelineKanban, PipelineKanbanHeader, type PipelineSortBy } from "@/components/sales/PipelineKanban";
 import { CreateLeadOrDealModal } from "@/components/sales/CreateLeadOrDealModal";
 import { LoseDealModal } from "@/components/sales/LoseDealModal";
+import { useTradeInModalidadeMap } from "@/hooks/useTradeInVehicles";
 import { BatchImportDealsModal } from "@/components/sales/BatchImportDealsModal";
 import { BulkWhatsAppModal } from "@/components/sales/BulkWhatsAppModal";
 import { SalesAIChat } from "@/components/sales/ai";
@@ -183,6 +184,7 @@ export function PipelineBoardContent() {
   const [revenueFilter, setRevenueFilter] = useSessionState<string>("pipeline_revenueFilter", "all");
   const [activityFilter, setActivityFilter] = useSessionState<string>("pipeline_activityFilter", "all");
   const [portalFilter, setPortalFilter] = useSessionState<string>("pipeline_portalFilter", "all");
+  const [modalidadeFilter, setModalidadeFilter] = useSessionState<string>("pipeline_modalidadeFilter", "all");
   const [utmSourceFilter, setUtmSourceFilter] = useState<string>("all");
   const [utmCampaignFilter, setUtmCampaignFilter] = useState<string>("all");
   const [utmContentFilter, setUtmContentFilter] = useState<string>("all");
@@ -202,7 +204,15 @@ export function PipelineBoardContent() {
   const [isBulkWhatsAppOpen, setIsBulkWhatsAppOpen] = useState(false);
   const [webinarFilter, setWebinarFilter] = useSessionState<string | undefined>("pipeline_webinarFilter", undefined);
 
+  // Deep-link vindo do dashboard (card Captação de Veículos): /comercial/pipeline?modalidade=troca
+  useEffect(() => {
+    const m = searchParams.get("modalidade");
+    if (m) setModalidadeFilter(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const { data: pipelines } = usePipelines();
+  const { data: modalidadeMap } = useTradeInModalidadeMap();
   const { data: webinarConfigs = [] } = useWebinarConfigs();
 
   // Set default pipeline on load (fallback pro primeiro se n\u00e3o houver is_default)
@@ -255,6 +265,7 @@ export function PipelineBoardContent() {
     const searchNormalized = removeAccents(searchQuery.trim());
     const hasSearch = searchNormalized.length > 0;
     const hasPortalFilter = portalFilter !== "all";
+    const hasModalidadeFilter = modalidadeFilter !== "all";
     const hasUrgencyFilter = urgencyFilter !== "all";
     const hasRevenueFilter = revenueFilter !== "all";
     const hasActivityFilter = activityFilter !== "all";
@@ -264,7 +275,7 @@ export function PipelineBoardContent() {
     const dateRange = getDateRange(periodFilter, customDateFrom, customDateTo);
     const hasPeriodFilter = dateRange !== null;
 
-    if (!hasSearch && !hasPortalFilter && !hasUrgencyFilter && !hasActivityFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
+    if (!hasSearch && !hasPortalFilter && !hasModalidadeFilter && !hasUrgencyFilter && !hasActivityFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
 
     return pipeline.map((column): PipelineColumn => {
       const filteredDeals = column.deals.filter((deal) => {
@@ -298,6 +309,15 @@ export function PipelineBoardContent() {
           if (portalFilter === "_sem_portal") {
             if (leadSrc === "credere" || leadSrc === "marketplace" || leadSrc === "stand") return false;
           } else if (leadSrc !== portalFilter) return false;
+        }
+
+        // Filtro de modalidade do veículo do cliente (troca/compra/consignação...)
+        if (hasModalidadeFilter) {
+          const leadId = deal.lead?.id || (deal as any).lead_id;
+          const m = leadId ? modalidadeMap?.[leadId] : undefined;
+          if (modalidadeFilter === "_com_veiculo") {
+            if (m === undefined) return false;
+          } else if (m !== modalidadeFilter) return false;
         }
 
         // Filtro de urgência
@@ -392,7 +412,7 @@ export function PipelineBoardContent() {
         total_value: filteredDeals.reduce((sum, d) => sum + (Number(d.negotiated_price) || 0), 0),
       };
     });
-  }, [pipeline, searchQuery, portalFilter, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
+  }, [pipeline, searchQuery, portalFilter, modalidadeFilter, modalidadeMap, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
 
   // Contar totais de urgência para mostrar no filtro
   const urgencyCounts = useMemo(() => {
@@ -453,14 +473,16 @@ export function PipelineBoardContent() {
     };
   }, [pipeline]);
 
-  const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
+  const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || modalidadeFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
 
   const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "IA de Qualificação", _sem_portal: "Sem portal" };
+  const MODALIDADE_FILTER_LABELS: Record<string, string> = { troca: "Troca", compra: "Compra", intermediacao: "Intermediação", consignacao: "Consignação", anuncio_trafego: "Anúncio c/ tráfego", _com_veiculo: "Com veículo" };
 
   // Count active advanced filters (excludes search, sort, view - those are always visible)
   const activeAdvancedFilters = useMemo(() => {
     const filters: { key: string; label: string; onRemove: () => void }[] = [];
     if (portalFilter !== "all") filters.push({ key: "portal", label: `Portal: ${PORTAL_LABELS[portalFilter] || portalFilter}`, onRemove: () => setPortalFilter("all") });
+    if (modalidadeFilter !== "all") filters.push({ key: "modalidade", label: `Veículo: ${MODALIDADE_FILTER_LABELS[modalidadeFilter] || modalidadeFilter}`, onRemove: () => setModalidadeFilter("all") });
     if (urgencyFilter !== "all") filters.push({ key: "urgency", label: urgencyFilter === "critical" ? "Críticos" : urgencyFilter === "warning" ? "Alertas" : "OK", onRemove: () => setUrgencyFilter("all") });
     if (activityFilter !== "all") filters.push({ key: "activity", label: { call_today: "Calls hoje", meeting_today: "Reuniões hoje", task_today: "Tarefas hoje", no_task_today: "Sem tarefa", any_task: "Com tarefa", overdue: "Atrasadas" }[activityFilter] || activityFilter, onRemove: () => setActivityFilter("all") });
     if (periodFilter !== "all") filters.push({ key: "period", label: { today: "Hoje", this_week: "Semana", this_month: "Este mês", last_month: "Mês passado", last_3_months: "3 meses", custom: "Customizado" }[periodFilter] || "Período", onRemove: () => { setPeriodFilter("all"); setDateField("created_at"); setCustomDateFrom(""); setCustomDateTo(""); } });
@@ -469,7 +491,7 @@ export function PipelineBoardContent() {
     if (utmCampaignFilter !== "all") filters.push({ key: "utm_campaign", label: `Campanha: ${utmCampaignFilter === "_sem_utm" ? "Sem" : utmCampaignFilter}`, onRemove: () => setUtmCampaignFilter("all") });
     if (utmContentFilter !== "all") filters.push({ key: "utm_content", label: `Conteúdo: ${utmContentFilter === "_sem_utm" ? "Sem" : utmContentFilter}`, onRemove: () => setUtmContentFilter("all") });
     return filters;
-  }, [portalFilter, urgencyFilter, activityFilter, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
+  }, [portalFilter, modalidadeFilter, urgencyFilter, activityFilter, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
 
   const handleDealClick = (deal: Deal, e?: React.MouseEvent) => {
     if (deal.lead_id) {
@@ -745,6 +767,25 @@ export function PipelineBoardContent() {
                           </span>
                         </SelectItem>
                         <SelectItem value="_sem_portal">Sem portal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Veículo do cliente (modalidade do trade-in) */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">Veículo do cliente</label>
+                    <Select value={modalidadeFilter} onValueChange={setModalidadeFilter}>
+                      <SelectTrigger className="h-9 text-sm border-slate-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="_com_veiculo">Com veículo registrado</SelectItem>
+                        <SelectItem value="troca">Troca</SelectItem>
+                        <SelectItem value="compra">Compra</SelectItem>
+                        <SelectItem value="intermediacao">Intermediação</SelectItem>
+                        <SelectItem value="consignacao">Consignação</SelectItem>
+                        <SelectItem value="anuncio_trafego">Anúncio c/ tráfego</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
