@@ -55,9 +55,18 @@ const BLANK_FORM = {
   km: "",
   placa: "",
   condicao: "" as "" | "otimo" | "bom" | "regular" | "ruim",
+  modalidade: "" as "" | "troca" | "compra" | "intermediacao" | "consignacao" | "anuncio_trafego",
   valor_pedido: "",
   valor_avaliado: "",
   observacoes: "",
+};
+
+const MODALIDADE_LABEL: Record<string, string> = {
+  troca: "Troca",
+  compra: "Compra",
+  intermediacao: "Intermediação",
+  consignacao: "Consignação",
+  anuncio_trafego: "Anúncio c/ tráfego",
 };
 
 export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
@@ -80,6 +89,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
         km: tradeIn.km != null ? String(tradeIn.km) : "",
         placa: tradeIn.placa ?? "",
         condicao: (tradeIn.condicao ?? "") as typeof form.condicao,
+        modalidade: (tradeIn.modalidade ?? "") as typeof form.modalidade,
         valor_pedido: tradeIn.valor_pedido != null ? String(tradeIn.valor_pedido) : "",
         valor_avaliado: tradeIn.valor_avaliado != null ? String(tradeIn.valor_avaliado) : "",
         observacoes: tradeIn.observacoes ?? "",
@@ -101,6 +111,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
       km: form.km ? parseInt(form.km.replace(/\D/g, ""), 10) : null,
       placa: form.placa || null,
       condicao: form.condicao || null,
+      modalidade: form.modalidade || null,
       valor_pedido: parseNum(form.valor_pedido),
       valor_avaliado: parseNum(form.valor_avaliado),
       observacoes: form.observacoes || null,
@@ -146,7 +157,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca
+              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca/Compra
             </span>
             <div className="flex gap-1">
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditing(false)}>
@@ -159,6 +170,20 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Modalidade</Label>
+            <Select value={form.modalidade} onValueChange={(v) => setForm((f) => ({ ...f, modalidade: v as typeof form.modalidade }))}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Troca, compra, consignação..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="troca">Troca</SelectItem>
+                <SelectItem value="compra">Compra</SelectItem>
+                <SelectItem value="intermediacao">Intermediação</SelectItem>
+                <SelectItem value="consignacao">Consignação</SelectItem>
+                <SelectItem value="anuncio_trafego">Anúncio c/ tráfego</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">Marca</Label>
@@ -239,7 +264,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca
+              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca/Compra
             </span>
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openEdit}>
               <Plus className="h-3 w-3" />
@@ -247,7 +272,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground">Nenhum veículo de troca registrado.</p>
+          <p className="text-xs text-muted-foreground">Nenhum veículo do cliente registrado.</p>
         </CardContent>
       </Card>
     );
@@ -259,7 +284,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca
+              <ArrowLeftRight className="h-4 w-4 text-amber-500" /> Veículo na Troca/Compra
             </span>
             <div className="flex gap-1">
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowDelete(true)}>
@@ -273,9 +298,16 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
         </CardHeader>
         <CardContent className="space-y-2">
           <div>
-            <p className="font-medium text-sm leading-tight">
-              {[tradeIn.marca, tradeIn.modelo].filter(Boolean).join(" ") || "Veículo"}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium text-sm leading-tight">
+                {[tradeIn.marca, tradeIn.modelo].filter(Boolean).join(" ") || "Veículo"}
+              </p>
+              {tradeIn.modalidade && (
+                <span className="shrink-0 rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-medium">
+                  {MODALIDADE_LABEL[tradeIn.modalidade]}
+                </span>
+              )}
+            </div>
             {tradeIn.versao && <p className="text-xs text-muted-foreground">{tradeIn.versao}</p>}
           </div>
 
