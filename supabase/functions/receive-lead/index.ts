@@ -121,6 +121,94 @@ function parseGeneric(raw: RawPayload) {
   };
 }
 
+/** Nota/tratativa vinda no payload (TotexCar Co-pilot etc): subject + notes + custom.
+ *  notes pode chegar como notes | message | description — usa o primeiro presente. */
+function extractInboundNote(raw: RawPayload) {
+  const subject = typeof raw.subject === "string" && raw.subject.trim() ? raw.subject.trim() : null;
+  const notesRaw = raw.notes ?? raw.message ?? raw.description;
+  const notes = typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim() : null;
+  const custom = raw.custom && typeof raw.custom === "object" && !Array.isArray(raw.custom)
+    ? (raw.custom as RawPayload)
+    : null;
+  if (!subject && !notes && !custom) return null;
+  return { subject, notes, custom };
+}
+
+const CUSTOM_FIELD_LABELS: Record<string, string> = {
+  carro: "Carro", modalidade: "Modalidade", valor_proposto: "Valor proposto",
+  fipe: "FIPE", margem: "Margem", prazo_dias: "Prazo (dias)", loja: "Loja",
+  tipo: "Tipo", data: "Data", horario: "Horário", unidade: "Unidade",
+  marca: "Marca", modelo: "Modelo", ano: "Ano", combustivel: "Combustível",
+};
+const CUSTOM_MONEY_KEYS = new Set(["valor_proposto", "fipe", "margem", "valor"]);
+
+function formatCustomFields(custom: RawPayload): string {
+  const lines: string[] = [];
+  for (const [k, v] of Object.entries(custom)) {
+    if (v === null || v === undefined || String(v).trim() === "") continue;
+    const label = CUSTOM_FIELD_LABELS[k] || k;
+    const val = typeof v === "number" && CUSTOM_MONEY_KEYS.has(k)
+      ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      : String(v);
+    lines.push(`${label}: ${val}`);
+  }
+  return lines.join("\n");
+}
+
+/** Registra a tratativa como nota na timeline do lead (company_activities) e
+ *  guarda o custom no metadata do lead (ultima_tratativa). Best-effort: nunca
+ *  quebra o fluxo de recebimento. Roda em lead novo E reconversão. */
+// deno-lint-ignore no-explicit-any
+async function registerInboundNote(supabase: any, tenantId: string, leadId: string, dealId: string | null, raw: RawPayload, sourceLabel: string) {
+  const note = extractInboundNote(raw);
+  if (!note) return;
+  try {
+    const bodyParts: string[] = [];
+    if (note.notes) bodyParts.push(note.notes);
+    if (note.custom) {
+      const cf = formatCustomFields(note.custom);
+      if (cf) bodyParts.push(cf);
+    }
+    await supabase.from("company_activities").insert({
+      tenant_id: tenantId,
+      name: note.subject || `Nova interação via ${sourceLabel}`,
+      description: bodyParts.join("\n\n") || note.subject || "",
+      team: "sales",
+      lead_id: leadId,
+      task_type: "note",
+      priority: "medium",
+      scheduled_at: new Date().toISOString(),
+      completed: true,
+      metadata: {
+        source: "receive-lead",
+        inbound_note: true,
+        origin_source: sourceLabel,
+        ...(dealId ? { deal_id: dealId } : {}),
+        ...(note.custom ? { custom: note.custom } : {}),
+      },
+    });
+
+    // Guarda o custom também no metadata do lead (última tratativa estruturada)
+    if (note.custom || note.subject) {
+      const { data: freshLead } = await supabase
+        .from("leads").select("metadata").eq("id", leadId).maybeSingle();
+      const md = (freshLead?.metadata && typeof freshLead.metadata === "object") ? freshLead.metadata : {};
+      await supabase.from("leads").update({
+        metadata: {
+          ...md,
+          ultima_tratativa: {
+            subject: note.subject,
+            ...(note.custom ? { custom: note.custom } : {}),
+            at: new Date().toISOString(),
+          },
+        },
+      }).eq("id", leadId);
+    }
+  } catch (e) {
+    console.warn("[receive-lead] inbound note insert failed (non-fatal):", e);
+  }
+}
+
 /** Normaliza capital_disponivel pra valor numerico pra comparação */
 function capitalToNumber(capital: string | null): number {
   if (!capital) return 0;
@@ -427,7 +515,7 @@ Deno.serve(async (req: Request) => {
         // Portais de carro: reconversão costuma ser interesse em OUTRO anúncio —
         // atualiza o veículo de interesse no metadata (merge, preserva o resto).
         const reconvVehicle = String(
-          (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? ""
+          (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? (raw as RawPayload).custom?.carro ?? ""
         ).trim() || null;
         if (reconvVehicle) {
           try {
@@ -599,6 +687,12 @@ Deno.serve(async (req: Request) => {
           origin,
           raw_payload: raw,
         });
+
+        // Nota da tratativa na timeline (subject/notes/custom do payload — Co-pilot etc)
+        await registerInboundNote(
+          supabase, tenantId, existingLead.id, reconversionDealId, raw,
+          parsed.source || parsed.utm_source || origin
+        );
 
         // Create task for sales rep (appears in focus mode)
         if (currentSalesRepId) {
@@ -938,7 +1032,7 @@ Deno.serve(async (req: Request) => {
     }
     const leadName = buildFallbackName();
     const portalVehicle = String(
-      (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? ""
+      (raw as RawPayload).veiculo ?? (raw as RawPayload).vehicle ?? (raw as RawPayload).carro ?? (raw as RawPayload).custom?.carro ?? ""
     ).trim() || null;
     const { data: newLead, error: leadError } = await supabase
       .from("leads")
@@ -1195,6 +1289,12 @@ Deno.serve(async (req: Request) => {
       origin,
       raw_payload: raw,
     });
+
+    // 8b. Nota da tratativa na timeline (subject/notes/custom do payload — Co-pilot etc)
+    await registerInboundNote(
+      supabase, tenantId, newLead.id, dealId, raw,
+      parsed.source || parsed.utm_source || origin
+    );
 
     // 9. Log distribution
     await supabase.from("lead_distribution_log").insert({
