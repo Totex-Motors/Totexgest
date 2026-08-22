@@ -55,7 +55,7 @@ const BLANK_FORM = {
   km: "",
   placa: "",
   condicao: "" as "" | "otimo" | "bom" | "regular" | "ruim",
-  modalidade: "" as "" | "troca" | "compra" | "intermediacao" | "consignacao" | "anuncio_trafego",
+  modalidade: "" as "" | "troca" | "compra" | "intermediacao" | "consignacao" | "anuncio_trafego" | "express" | "vitrine",
   valor_pedido: "",
   valor_avaliado: "",
   observacoes: "",
@@ -67,6 +67,8 @@ const MODALIDADE_LABEL: Record<string, string> = {
   intermediacao: "Intermediação",
   consignacao: "Consignação",
   anuncio_trafego: "Anúncio c/ tráfego",
+  express: "Venda Express",
+  vitrine: "Venda Vitrine",
 };
 
 export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
@@ -180,6 +182,8 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
                 <SelectItem value="intermediacao">Intermediação</SelectItem>
                 <SelectItem value="consignacao">Consignação</SelectItem>
                 <SelectItem value="anuncio_trafego">Anúncio c/ tráfego</SelectItem>
+                <SelectItem value="express">Venda Express</SelectItem>
+                <SelectItem value="vitrine">Venda Vitrine</SelectItem>
               </SelectContent>
             </Select>
           </div>

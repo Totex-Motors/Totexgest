@@ -476,7 +476,7 @@ export function PipelineBoardContent() {
   const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || modalidadeFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
 
   const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "IA de Qualificação", _sem_portal: "Sem portal" };
-  const MODALIDADE_FILTER_LABELS: Record<string, string> = { troca: "Troca", compra: "Compra", intermediacao: "Intermediação", consignacao: "Consignação", anuncio_trafego: "Anúncio c/ tráfego", _com_veiculo: "Com veículo" };
+  const MODALIDADE_FILTER_LABELS: Record<string, string> = { troca: "Troca", compra: "Compra", intermediacao: "Intermediação", consignacao: "Consignação", anuncio_trafego: "Anúncio c/ tráfego", express: "Venda Express", vitrine: "Venda Vitrine", _com_veiculo: "Com veículo" };
 
   // Count active advanced filters (excludes search, sort, view - those are always visible)
   const activeAdvancedFilters = useMemo(() => {
@@ -786,6 +786,8 @@ export function PipelineBoardContent() {
                         <SelectItem value="intermediacao">Intermediação</SelectItem>
                         <SelectItem value="consignacao">Consignação</SelectItem>
                         <SelectItem value="anuncio_trafego">Anúncio c/ tráfego</SelectItem>
+                        <SelectItem value="express">Venda Express</SelectItem>
+                        <SelectItem value="vitrine">Venda Vitrine</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

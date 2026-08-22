@@ -16,6 +16,8 @@ const MODALIDADES: { key: string; label: string; dot: string }[] = [
   { key: 'intermediacao', label: 'Intermediação', dot: 'bg-sky-500' },
   { key: 'consignacao', label: 'Consignação', dot: 'bg-violet-500' },
   { key: 'anuncio_trafego', label: 'Anúncio c/ tráfego', dot: 'bg-rose-500' },
+  { key: 'express', label: 'Venda Express', dot: 'bg-cyan-500' },
+  { key: 'vitrine', label: 'Venda Vitrine', dot: 'bg-fuchsia-500' },
 ];
 
 interface Row {

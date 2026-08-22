@@ -169,7 +169,7 @@ function parseAgendamentoISO(custom: RawPayload | null): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-const TRADE_IN_MODALIDADES = new Set(["troca", "compra", "intermediacao", "consignacao", "anuncio_trafego"]);
+const TRADE_IN_MODALIDADES = new Set(["troca", "compra", "intermediacao", "consignacao", "anuncio_trafego", "express", "vitrine"]);
 
 /** Grava/atualiza o "Veículo na Troca/Compra" (trade_in_vehicles) a partir do
  *  custom do payload. Best-effort. Um registro por lead (atualiza o mais recente). */
