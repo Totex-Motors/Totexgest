@@ -155,9 +155,79 @@ function formatCustomFields(custom: RawPayload): string {
   return lines.join("\n");
 }
 
-/** Registra a tratativa como nota na timeline do lead (company_activities) e
- *  guarda o custom no metadata do lead (ultima_tratativa). Best-effort: nunca
- *  quebra o fluxo de recebimento. Roda em lead novo E reconversão. */
+/** Monta o timestamp (ISO UTC) de um agendamento a partir de data (YYYY-MM-DD)
+ *  + horario (HH:MM), assumindo fuso de Brasília (-03:00). Retorna null se inválido. */
+function parseAgendamentoISO(custom: RawPayload | null): string | null {
+  if (!custom) return null;
+  const data = typeof custom.data === "string" ? custom.data.trim() : "";
+  const horario = typeof custom.horario === "string" ? custom.horario.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return null;
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(horario);
+  const hh = hm ? hm[1].padStart(2, "0") : "09";
+  const mm = hm ? hm[2] : "00";
+  const d = new Date(`${data}T${hh}:${mm}:00-03:00`);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+const TRADE_IN_MODALIDADES = new Set(["troca", "compra", "intermediacao", "consignacao", "anuncio_trafego"]);
+
+/** Grava/atualiza o "Veículo na Troca/Compra" (trade_in_vehicles) a partir do
+ *  custom do payload. Best-effort. Um registro por lead (atualiza o mais recente). */
+// deno-lint-ignore no-explicit-any
+async function upsertTradeInFromCustom(supabase: any, tenantId: string, leadId: string, dealId: string | null, custom: RawPayload) {
+  const carro = typeof custom.carro === "string" ? custom.carro.trim() : "";
+  if (!carro) return;
+  const toNum = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  };
+  const anoNum = toNum(custom.ano);
+  // custom.modalidade do Co-pilot (express/vitrine) NÃO é a modalidade do card
+  // (troca/compra/...); só grava na coluna se for um valor válido do enum.
+  const modalidade = typeof custom.modalidade === "string" && TRADE_IN_MODALIDADES.has(custom.modalidade)
+    ? custom.modalidade : null;
+  const obsParts: string[] = [];
+  if (typeof custom.modalidade === "string" && !modalidade) obsParts.push(`Modalidade de venda: ${custom.modalidade}`);
+  if (custom.combustivel) obsParts.push(`Combustível: ${custom.combustivel}`);
+  if (toNum(custom.fipe) !== null) obsParts.push(`FIPE: ${Number(custom.fipe).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`);
+  if (toNum(custom.margem) !== null) obsParts.push(`Margem: ${Number(custom.margem).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`);
+  if (custom.loja) obsParts.push(`Loja: ${custom.loja}`);
+
+  const row: RawPayload = {
+    tenant_id: tenantId,
+    lead_id: leadId,
+    ...(dealId ? { deal_id: dealId } : {}),
+    marca: typeof custom.marca === "string" ? custom.marca : null,
+    modelo: typeof custom.modelo === "string" ? custom.modelo : carro,
+    ano: anoNum,
+    modalidade,
+    valor_avaliado: toNum(custom.valor_proposto),
+    valor_pedido: toNum(custom.fipe),
+    observacoes: obsParts.join(" · ") || carro,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    // Atualiza o registro existente do lead; se não houver, insere.
+    const { data: existing } = await supabase
+      .from("trade_in_vehicles").select("id").eq("lead_id", leadId)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (existing?.id) {
+      await supabase.from("trade_in_vehicles").update(row).eq("id", existing.id);
+    } else {
+      await supabase.from("trade_in_vehicles").insert(row);
+    }
+  } catch (e) {
+    console.warn("[receive-lead] trade_in upsert falhou (non-fatal):", e);
+  }
+}
+
+/** Registra a tratativa na timeline do lead (company_activities). Se for
+ *  agendamento com data/horário, cria como COMPROMISSO (task_type=meeting,
+ *  scheduled_at no futuro); senão, como nota. Também: grava o veículo do custom
+ *  no card de Troca/Compra e seta o valor do deal = valor_proposto. Best-effort:
+ *  nunca quebra o fluxo. Roda em lead novo E reconversão. */
 // deno-lint-ignore no-explicit-any
 async function registerInboundNote(supabase: any, tenantId: string, leadId: string, dealId: string | null, raw: RawPayload, sourceLabel: string) {
   const note = extractInboundNote(raw);
@@ -169,24 +239,43 @@ async function registerInboundNote(supabase: any, tenantId: string, leadId: stri
       const cf = formatCustomFields(note.custom);
       if (cf) bodyParts.push(cf);
     }
+
+    // Item 3 — agendamento vira compromisso na agenda (task_type=meeting, futuro)
+    const isAgendamento = note.custom?.tipo === "agendamento";
+    const agendaISO = isAgendamento ? parseAgendamentoISO(note.custom) : null;
+
     await supabase.from("company_activities").insert({
       tenant_id: tenantId,
       name: note.subject || `Nova interação via ${sourceLabel}`,
       description: bodyParts.join("\n\n") || note.subject || "",
       team: "sales",
       lead_id: leadId,
-      task_type: "note",
-      priority: "medium",
-      scheduled_at: new Date().toISOString(),
-      completed: true,
+      task_type: agendaISO ? "meeting" : "note",
+      priority: agendaISO ? "high" : "medium",
+      scheduled_at: agendaISO || new Date().toISOString(),
+      completed: agendaISO ? false : true,
       metadata: {
         source: "receive-lead",
         inbound_note: true,
         origin_source: sourceLabel,
+        ...(agendaISO ? { agendamento: true } : {}),
         ...(dealId ? { deal_id: dealId } : {}),
         ...(note.custom ? { custom: note.custom } : {}),
       },
     });
+
+    // Item 2 — veículo do custom no card Troca/Compra + valor do deal
+    if (note.custom?.carro) {
+      await upsertTradeInFromCustom(supabase, tenantId, leadId, dealId, note.custom);
+    }
+    const valorProposto = note.custom ? Number(note.custom.valor_proposto) : NaN;
+    if (dealId && !isNaN(valorProposto) && valorProposto > 0) {
+      try {
+        await supabase.from("deals")
+          .update({ original_price: valorProposto, negotiated_price: valorProposto })
+          .eq("id", dealId);
+      } catch (e) { console.warn("[receive-lead] deal valor update falhou:", e); }
+    }
 
     // Guarda o custom também no metadata do lead (última tratativa estruturada)
     if (note.custom || note.subject) {
