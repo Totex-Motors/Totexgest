@@ -1080,6 +1080,18 @@ export const useUpdateTask = () => {
       queryClient.invalidateQueries({ queryKey: ['pipeline-stages'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
 
+      // Disparar meeting_no_show quando a interação é marcada como "não
+      // compareceu" (Fase 2 do funil): as regras movem pra No-show, criam
+      // follow-up e alertam.
+      if (task.status === 'no_show' && AUTOMOTIVE_INTERACTION_TYPES.includes(task.task_type) && task.lead_id) {
+        triggerAutomationRules({
+          trigger_type: 'meeting_no_show',
+          task_id: task.id,
+          task_type: task.task_type,
+          lead_id: task.lead_id,
+        });
+      }
+
       // Notificação meeting_rescheduled quando data de call/meeting muda
       if (
         ['call', 'meeting'].includes(task.task_type) &&
