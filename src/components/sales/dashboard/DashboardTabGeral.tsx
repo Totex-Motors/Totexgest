@@ -37,6 +37,7 @@ import {
 } from './shared';
 import { useSessionState } from './shared';
 import { VehicleIntakeCard } from './VehicleIntakeCard';
+import { InteractionMetricsCard } from './InteractionMetricsCard';
 
 // Activity targets (hardcoded phase 1)
 const DAILY_TARGETS = {
@@ -538,10 +539,13 @@ export function DashboardTabGeral({ filters, dateRange }: Props) {
         </Card>
       </div>
 
-      {/* Row 5: Captacao de Veiculos (BI de modalidades) */}
+      {/* Row 5: BI da concessionaria — captacao de veiculos + interacoes */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-5">
           <VehicleIntakeCard dateRange={dateRange} />
+        </div>
+        <div className="lg:col-span-7">
+          <InteractionMetricsCard dateRange={dateRange} />
         </div>
       </div>
 
