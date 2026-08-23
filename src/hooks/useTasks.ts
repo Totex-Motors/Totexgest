@@ -741,6 +741,12 @@ async function autoTransferDealToCloser(leadId: string) {
   }
 }
 
+// Tipos de interação da concessionária que disparam os gatilhos de automação
+// meeting_scheduled/meeting_completed (Fase 2 do funil). As regras filtram por
+// task_types específicos; aqui só decidimos quais tipos "acionam" o motor.
+// Inclui os legados (call/meeting) pra não quebrar automações antigas.
+const AUTOMOTIVE_INTERACTION_TYPES = ['call', 'meeting', 'video_call', 'visit', 'trade_eval', 'photo_session', 'proposal'];
+
 // Notification helper (fire-and-forget)
 async function notifyTaskEvent(eventType: 'task_created' | 'task_completed', task: Task) {
   try {
@@ -845,7 +851,7 @@ export const useCreateTask = () => {
 
       // Auto-assign SDR: when a meeting/call task is created, fill sdr_id with the CREATOR (not the assignee)
       const sdrId = data.created_by_id || data.responsavel_id;
-      if (['call', 'meeting'].includes(input.task_type) && input.lead_id && sdrId) {
+      if (AUTOMOTIVE_INTERACTION_TYPES.includes(input.task_type) && input.lead_id && sdrId) {
         await autoAssignSdrOnDeal(input.lead_id, sdrId);
       }
 
@@ -858,8 +864,8 @@ export const useCreateTask = () => {
         has_scheduled_date: !!data.scheduled_at,
       });
 
-      // Disparar meeting_scheduled se for tarefa de reunião/call com data
-      if (['call', 'meeting'].includes(data.task_type) && data.scheduled_at && data.lead_id) {
+      // Disparar meeting_scheduled se for interação agendada com data
+      if (AUTOMOTIVE_INTERACTION_TYPES.includes(data.task_type) && data.scheduled_at && data.lead_id) {
         triggerAutomationRules({
           trigger_type: 'meeting_scheduled',
           task_id: data.id,
@@ -1279,8 +1285,8 @@ export const useCompleteTask = () => {
         has_scheduled_date: !!data.scheduled_at,
       });
 
-      // Disparar meeting_completed se for reunião finalizada com sucesso
-      if (data.completed && data.status === 'completed' && ['call', 'meeting'].includes(data.task_type) && data.lead_id) {
+      // Disparar meeting_completed se for interação finalizada com sucesso
+      if (data.completed && data.status === 'completed' && AUTOMOTIVE_INTERACTION_TYPES.includes(data.task_type) && data.lead_id) {
         triggerAutomationRules({
           trigger_type: 'meeting_completed',
           task_id: data.id,
