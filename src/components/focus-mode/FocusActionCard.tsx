@@ -8,8 +8,18 @@ import { Input } from '@/components/ui/input';
 import {
   Phone, MessageSquare, Calendar, Eye, Building2, Mail, Target,
   Clock, AlertTriangle, SkipForward, CheckCircle2, Video,
-  Globe, DollarSign, TrendingUp, Megaphone,
+  Globe, DollarSign, TrendingUp, Megaphone, Car, ClipboardCheck, Camera,
 } from 'lucide-react';
+
+// Metadados por tipo de interação (concessionária) pro card de preparo do Foco.
+const PREP_META: Record<string, { label: string; icon: any; presencial: boolean }> = {
+  video_call: { label: 'Chamada de vídeo', icon: Video, presencial: false },
+  visit: { label: 'Visita / Test drive', icon: Car, presencial: true },
+  trade_eval: { label: 'Avaliação da troca', icon: ClipboardCheck, presencial: true },
+  photo_session: { label: 'Sessão de fotos', icon: Camera, presencial: true },
+  call: { label: 'Ligação', icon: Phone, presencial: false },
+  meeting: { label: 'Visita / Vídeo', icon: Video, presencial: true },
+};
 import { useCall } from '@/contexts/CallContext';
 import { useFocusMode } from '@/contexts/FocusModeContext';
 import { useCreateTask, type CreateTaskInput } from '@/hooks/useTasks';
@@ -155,20 +165,30 @@ export const FocusActionCard = ({ item }: FocusActionCardProps) => {
     completeItem();
   };
 
-  // Meeting Prep view
+  // Meeting Prep view — específico por tipo de interação (Fase 4 do funil)
   if (item.type === 'meeting_prep') {
+    const meta = PREP_META[task?.task_type as string] || { label: 'Atendimento', icon: Calendar, presencial: false };
+    const PrepIcon = meta.icon;
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center gap-3 mb-4 p-4 bg-teal-500/10 border border-teal-500/20 rounded-xl">
-          <AlertTriangle className="h-5 w-5 text-teal-500 flex-shrink-0" />
+          <PrepIcon className="h-5 w-5 text-teal-500 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-teal-500">Reunião {item.urgency}!</p>
-            <p className="text-sm text-muted-foreground">{item.title} - {item.subtitle}</p>
+            <p className="font-semibold text-teal-500">{meta.label} {item.urgency}!</p>
+            <p className="text-sm text-muted-foreground">
+              {item.title}{meta.presencial ? ' · presencial na loja' : ''}
+            </p>
           </div>
           <div className="ml-auto flex gap-2">
             {task?.meeting_link && (
               <Button size="sm" variant="outline" onClick={() => window.open(ensureHttps(task.meeting_link), '_blank')}>
                 <Video className="h-4 w-4 mr-1" /> Entrar
+              </Button>
+            )}
+            {/* Presencial: confirmar presença do cliente por WhatsApp */}
+            {meta.presencial && (
+              <Button size="sm" variant="outline" onClick={handleWhatsApp}>
+                <MessageSquare className="h-4 w-4 mr-1" /> Confirmar
               </Button>
             )}
             <Button size="sm" onClick={handleCall}>

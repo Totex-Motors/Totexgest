@@ -198,6 +198,16 @@ export function DashboardTabGeral({ filters, dateRange }: Props) {
         )}
       </div>
 
+      {/* Row 1.5: BI da concessionaria — comparecimento (KPI-chave) + captacao */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-7">
+          <InteractionMetricsCard dateRange={dateRange} />
+        </div>
+        <div className="lg:col-span-5">
+          <VehicleIntakeCard dateRange={dateRange} />
+        </div>
+      </div>
+
       {/* Row 2: Forecast + Funil Pipeline */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Projecao do Mes */}
@@ -537,16 +547,6 @@ export function DashboardTabGeral({ filters, dateRange }: Props) {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      {/* Row 5: BI da concessionaria — captacao de veiculos + interacoes */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-5">
-          <VehicleIntakeCard dateRange={dateRange} />
-        </div>
-        <div className="lg:col-span-7">
-          <InteractionMetricsCard dateRange={dateRange} />
-        </div>
       </div>
 
       {/* Won Deals Drill-Down Sheet (shared by Faturado and Ticket Medio) */}

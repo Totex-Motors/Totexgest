@@ -99,20 +99,24 @@ const PREFS_KEY = "agenda-v2-prefs";
 
 // Types that occupy time blocks on the grid (appointments)
 // Calls only occupy time if they have a meeting_link (Meet vinculado)
-const APPOINTMENT_TYPES = new Set(["meeting", "onboarding"]);
+// Interações agendadas que ocupam horário na grade (presenciais + vídeo).
+const APPOINTMENT_TYPES = new Set(["meeting", "onboarding", "video_call", "visit", "trade_eval", "photo_session"]);
 const isAppointment = (t: { task_type: string; meeting_link?: string | null }) =>
   APPOINTMENT_TYPES.has(t.task_type) || (t.task_type === "call" && !!t.meeting_link);
-// All filterable types for the grid filter bar
-// 100% automotivo: sem "Onboarding" (função descontinuada — tarefas antigas
-// desse tipo aparecem junto com Visitas/Vídeo) e rótulos em português.
+// Barra de filtros da grade — tipos de interação da concessionária.
 const GRID_FILTER_TYPES = [
   { key: "call", label: "Ligações", dotColor: "bg-blue-500" },
-  { key: "meeting", label: "Visitas/Vídeo", dotColor: "bg-indigo-500" },
+  { key: "video_call", label: "Chamada de vídeo", dotColor: "bg-indigo-500" },
+  { key: "visit", label: "Visita/Test drive", dotColor: "bg-orange-500" },
+  { key: "proposal", label: "Proposta", dotColor: "bg-violet-500" },
+  { key: "trade_eval", label: "Avaliação", dotColor: "bg-rose-500" },
+  { key: "photo_session", label: "Fotos", dotColor: "bg-fuchsia-500" },
   { key: "whatsapp", label: "WhatsApp", dotColor: "bg-green-500" },
-  { key: "email", label: "Email", dotColor: "bg-purple-500" },
   { key: "follow_up", label: "Follow-up", dotColor: "bg-yellow-500" },
   { key: "internal", label: "Interno", dotColor: "bg-gray-400" },
 ] as const;
+// Tipos novos (Fase 4): garantem visibilidade mesmo com preferência antiga salva.
+const NEW_GRID_TYPE_KEYS = ["video_call", "visit", "proposal", "trade_eval", "photo_session"];
 
 interface AgendaPrefs {
   viewMode: ViewMode;
@@ -262,7 +266,12 @@ export function AgendaViewContent() {
 
   // ── Grid type filter (week/day views) — persisted ──────────
   const [activeGridTypes, _setActiveGridTypes] = useState<Set<string>>(
-    () => new Set(savedPrefs.activeGridTypes ?? GRID_FILTER_TYPES.map(t => t.key))
+    () => {
+      const base = new Set(savedPrefs.activeGridTypes ?? GRID_FILTER_TYPES.map(t => t.key));
+      // Tipos novos nunca foram desligados de propósito — garante que apareçam.
+      NEW_GRID_TYPE_KEYS.forEach(k => base.add(k));
+      return base;
+    }
   );
   const setActiveGridTypes = useCallback((next: Set<string>) => {
     _setActiveGridTypes(next);
