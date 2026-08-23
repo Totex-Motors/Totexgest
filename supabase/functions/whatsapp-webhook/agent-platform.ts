@@ -11,8 +11,12 @@
  * Instâncias SEM deployment V2 ativo nunca casam → legado intacto.
  */
 
+import { loopGuardBlocks, lastOutboundWasFallback } from "../_shared/agent-loop-guard.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const FALLBACK_TEXT = "Desculpa, não consegui processar agora.";
 
 interface InstanceLike {
   id: string;
@@ -113,6 +117,13 @@ export async function tryHandleViaAgentPlatform(args: {
   //     resposta só. Sem isso, cada mensagem chega como uma invocação SEPARADA do webhook
   //     (isolates diferentes) → 3 msgs = 3 respostas robotizadas. O debounce in-memory do
   //     runner não resolve (não compartilha estado entre isolates) — daí ser via banco.
+  // Trava anti-loop: se o agente já respondeu demais nesse número numa janela curta
+  // (ex.: ping-pong com outro robô), pausa a sessão e não responde.
+  if (await loopGuardBlocks(supabase, { leadId, sessionId, tenantId, phone: senderDigits })) {
+    console.log("[wpp-v2] trava anti-loop ativa — sem resposta");
+    return true;
+  }
+
   let messageToSend = text;
   if (leadId) {
     const deb = await debounceInbound(supabase, leadId, messageId, sessionId);
@@ -185,7 +196,14 @@ export async function tryHandleViaAgentPlatform(args: {
   // 6. Envia resposta via UAZAPI quebrada em bolhas curtas (mais natural no WhatsApp),
   //    com um pequeno delay entre elas. Remove antes o raciocínio interno (<thinking>)
   //    que o modelo às vezes emite no texto antes de chamar uma tool.
-  const finalText = stripThinking(fullText) || "Desculpa, não consegui processar agora.";
+  const cleaned = stripThinking(fullText);
+  // Não repete o fallback em sequência (alimentava loop com outro robô): se o
+  // agente não gerou texto e a última msg nossa já foi o fallback, fica quieto.
+  if (!cleaned && await lastOutboundWasFallback(supabase, leadId, FALLBACK_TEXT)) {
+    console.log("[wpp-v2] fallback repetido — fica quieto");
+    return true;
+  }
+  const finalText = cleaned || FALLBACK_TEXT;
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendUazapi(inst, senderDigits, parts[i]);
