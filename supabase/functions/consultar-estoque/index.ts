@@ -42,6 +42,34 @@ function brl(v: unknown): string | null {
 const norm = (s: string) =>
   String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
+/** Foto principal do veículo (isPrimary primeiro, senão por ordem). */
+function primaryFoto(v: any): string | null {
+  if (!Array.isArray(v?.images)) return null;
+  return [...v.images]
+    .sort((a, b) => (b?.isPrimary ? 1 : 0) - (a?.isPrimary ? 1 : 0) || (a?.order ?? 0) - (b?.order ?? 0))
+    .map((i) => i?.url).filter(Boolean)[0] || null;
+}
+
+/** Shape resumido do veículo pro agente — inclui foto e link prontos pro card. */
+function toResumo(v: any, base: string) {
+  return {
+    vehicle_id: v.id,
+    titulo: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+    ano: v.year ?? null,
+    preco: brl(v.price),
+    km: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null,
+    cor: v.color ?? null,
+    cambio: v.transmission ?? null,
+    combustivel: v.fuel ?? null,
+    cidade: v.city ?? null,
+    estado: v.state ?? null,
+    loja: v.dealership?.name ?? null,
+    loja_telefone: v.dealership?.phone ?? null,
+    foto: primaryFoto(v),
+    link: `${base}/veiculo/${v.id}`,
+  };
+}
+
 /**
  * A API do marketplace casa por SUBSTRING (ex: search=gol traz "Golf"). Aqui exigimos que
  * cada palavra (>=3 letras) do que o cliente pediu apareça como PALAVRA INTEIRA no título —
@@ -83,20 +111,50 @@ Deno.serve(async (req: Request) => {
     const cfgUrl = await getIntegrationKey(supabase, "TOTEX_MARKETPLACE_API_URL");
     const base = (cfgUrl || DEFAULT_BASE).replace(/\/$/, "");
 
-    // Escopo por loja (multi-tenant): se o chamador é um usuário do CRM cuja
-    // loja tem mapping no marketplace, filtra o estoque pra ela. Chamadas do
-    // agente (service key, sem tenant no JWT) e tenants sem mapping (Stand,
-    // porta única) veem o estoque CONJUNTO — comportamento intencional.
-    const callerTenant = getTenantIdFromRequest(req);
+    // Foco no carro escaneado: se veio vehicle_id, devolve SÓ aquele veículo (com
+    // foto e link, prontos pro card). Usado quando o totem/QR passa o id exato.
+    const vehicleId = String(args.vehicle_id ?? args.vehicleId ?? "").trim();
+    if (vehicleId) {
+      const vres = await fetch(`${base}/api/vehicles/${encodeURIComponent(vehicleId)}`, { headers: { Accept: "application/json" } });
+      if (vres.ok) {
+        const v = await vres.json();
+        return json({ total: 1, mostrando: 1, veiculos: [toResumo(v, base)] });
+      }
+      // não achou por id → cai pro fluxo normal de busca
+    }
+
+    // Escopo por loja: o agente do stand passa 'loja' (a que o cliente escaneou)
+    // pra mostrar SÓ o estoque dela — nunca o de lojas concorrentes da rede.
+    // Fallback: tenant do chamador (usuário do CRM logado). Sem nenhum dos dois,
+    // vê o estoque conjunto (browse humano genérico).
+    const lojaArg = String(args.loja ?? args.dealership ?? "").trim();
     let dealershipId: string | null = null;
-    if (callerTenant) {
-      const { data: mapping } = await supabase
-        .from("marketplace_store_mappings")
-        .select("marketplace_store_id")
-        .eq("tenant_id", callerTenant)
-        .eq("active", true)
-        .maybeSingle();
-      dealershipId = mapping?.marketplace_store_id ?? null;
+    if (lojaArg) {
+      const alvo = norm(lojaArg);
+      const { data: tRows } = await supabase.from("tenants").select("id, name");
+      const t = (tRows || []).find((x: any) => {
+        const n = norm(x.name || "");
+        return n && (n.includes(alvo) || alvo.includes(n));
+      });
+      if (t) {
+        const { data: m } = await supabase
+          .from("marketplace_store_mappings")
+          .select("marketplace_store_id")
+          .eq("tenant_id", (t as any).id).eq("active", true).maybeSingle();
+        dealershipId = m?.marketplace_store_id ?? null;
+      }
+    }
+    if (!dealershipId) {
+      const callerTenant = getTenantIdFromRequest(req);
+      if (callerTenant) {
+        const { data: mapping } = await supabase
+          .from("marketplace_store_mappings")
+          .select("marketplace_store_id")
+          .eq("tenant_id", callerTenant)
+          .eq("active", true)
+          .maybeSingle();
+        dealershipId = mapping?.marketplace_store_id ?? null;
+      }
     }
 
     const qs = new URLSearchParams();
@@ -149,20 +207,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const veiculos = list.map((v) => ({
-      vehicle_id: v.id,
-      titulo: [v.brand, v.model, v.version].filter(Boolean).join(" "),
-      ano: v.year ?? null,
-      preco: brl(v.price),
-      km: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null,
-      cor: v.color ?? null,
-      cambio: v.transmission ?? null,
-      combustivel: v.fuel ?? null,
-      cidade: v.city ?? null,
-      estado: v.state ?? null,
-      loja: v.dealership?.name ?? null,
-      loja_telefone: v.dealership?.phone ?? null,
-    }));
+    const veiculos = list.map((v) => toResumo(v, base));
 
     // Refina pelo termo pedido (palavra inteira) — evita "Golf" quando pediram "Gol".
     const termo = modelo || busca;
