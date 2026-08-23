@@ -215,32 +215,10 @@ async function executeAction(
           .eq("id", dealId);
       }
 
-      // Atualizar lead também (pipeline_stage_id + etapa_funil + sales_stage)
-      if (event.lead_id) {
-        // Mapear nome do stage para etapa_funil
-        const STAGE_TO_ETAPA: Record<string, string> = {
-          'Novo': 'novo',
-          'Em Contato': 'em_contato',
-          'Qualificado': 'qualificado',
-          'Call Agendada': 'call_agendada',
-          'No-show': 'no_show',
-          'Call Realizada': 'call_realizada',
-          'Em Fechamento': 'em_fechamento',
-          'Ganho': 'ganho',
-          'Perdido': 'perdido',
-        };
-        const etapaFunil = STAGE_TO_ETAPA[targetStage.name] || targetStage.name.toLowerCase().replace(/\s+/g, '_');
-
-        await supabase
-          .from("leads")
-          .update({
-            pipeline_stage_id: config.target_stage_id,
-            etapa_funil: etapaFunil,
-            sales_stage: etapaFunil,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", event.lead_id);
-      }
+      // O lead é sincronizado automaticamente pelo trigger sync_lead_from_deal
+      // (AFTER UPDATE ON deals), que copia pipeline_stage_id/sales_rep_id do deal
+      // pro lead. Não atualizamos o lead aqui pra não referenciar colunas que não
+      // existem (ex.: etapa_funil) e falhar a atualização inteira em silêncio.
 
       return { moved_deals: dealIds.length, target_stage: targetStage.name };
     }
