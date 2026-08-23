@@ -12,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Phone, Video, MessageSquare, Mail, Target, Clock, Users, Calendar,
   CheckCircle2, Circle, AlertCircle, ChevronRight, ExternalLink, Users2,
-  Play, Loader2, MoreVertical, Trash2, Repeat, X
+  Play, Loader2, MoreVertical, Trash2, Repeat, X,
+  Car, FileText, ClipboardCheck, Camera
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -47,9 +48,14 @@ interface TaskListProps {
 
 const taskTypeConfig: Record<string, { icon: any; color: string; label: string }> = {
   call: { icon: Phone, color: 'text-blue-500 bg-blue-500/10', label: 'Ligação' },
+  video_call: { icon: Video, color: 'text-indigo-500 bg-indigo-500/10', label: 'Chamada de vídeo' },
+  visit: { icon: Car, color: 'text-orange-500 bg-orange-500/10', label: 'Visita / Test drive' },
+  proposal: { icon: FileText, color: 'text-violet-500 bg-violet-500/10', label: 'Proposta / Simulação' },
+  trade_eval: { icon: ClipboardCheck, color: 'text-rose-500 bg-rose-500/10', label: 'Avaliação da troca' },
+  photo_session: { icon: Camera, color: 'text-fuchsia-500 bg-fuchsia-500/10', label: 'Sessão de fotos' },
   whatsapp: { icon: MessageSquare, color: 'text-green-500 bg-green-500/10', label: 'WhatsApp' },
   email: { icon: Mail, color: 'text-purple-500 bg-purple-500/10', label: 'Email' },
-  meeting: { icon: Video, color: 'text-indigo-500 bg-indigo-500/10', label: 'Visita/Vídeo' },
+  meeting: { icon: Video, color: 'text-indigo-500 bg-indigo-500/10', label: 'Visita / Vídeo' },
   onboarding: { icon: Target, color: 'text-teal-500 bg-teal-500/10', label: 'Onboarding' },
   follow_up: { icon: Clock, color: 'text-yellow-500 bg-yellow-500/10', label: 'Follow-up' },
   checkin: { icon: Users, color: 'text-cyan-500 bg-cyan-500/10', label: 'Check-in' },

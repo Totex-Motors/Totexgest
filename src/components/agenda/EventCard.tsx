@@ -1,5 +1,5 @@
 ﻿import { cn } from "@/lib/utils";
-import { Phone, Video, MessageSquare, Mail, Clock, Building2, Settings2, Calendar, Lock } from "lucide-react";
+import { Phone, Video, MessageSquare, Mail, Clock, Building2, Settings2, Calendar, Lock, Car, FileText, ClipboardCheck, Camera } from "lucide-react";
 
 export type EventCardType = "task" | "block" | "google";
 
@@ -18,6 +18,11 @@ interface EventCardProps {
 
 const TASK_ICONS: Record<string, React.ElementType> = {
   call: Phone,
+  video_call: Video,
+  visit: Car,
+  proposal: FileText,
+  trade_eval: ClipboardCheck,
+  photo_session: Camera,
   meeting: Video,
   whatsapp: MessageSquare,
   email: Mail,
@@ -28,6 +33,11 @@ const TASK_ICONS: Record<string, React.ElementType> = {
 
 const TASK_STYLES: Record<string, string> = {
   call: "bg-blue-50 dark:bg-blue-950/60 border-l-blue-500 text-blue-900 dark:text-blue-200",
+  video_call: "bg-indigo-50 dark:bg-indigo-950/60 border-l-indigo-500 text-indigo-900 dark:text-indigo-200",
+  visit: "bg-orange-50 dark:bg-orange-950/60 border-l-orange-500 text-orange-900 dark:text-orange-200",
+  proposal: "bg-violet-50 dark:bg-violet-950/60 border-l-violet-500 text-violet-900 dark:text-violet-200",
+  trade_eval: "bg-rose-50 dark:bg-rose-950/60 border-l-rose-500 text-rose-900 dark:text-rose-200",
+  photo_session: "bg-fuchsia-50 dark:bg-fuchsia-950/60 border-l-fuchsia-500 text-fuchsia-900 dark:text-fuchsia-200",
   meeting: "bg-indigo-50 dark:bg-indigo-950/60 border-l-indigo-500 text-indigo-900 dark:text-indigo-200",
   whatsapp: "bg-green-50 dark:bg-green-950/60 border-l-green-500 text-green-900 dark:text-green-200",
   email: "bg-purple-50 dark:bg-purple-950/60 border-l-purple-500 text-purple-900 dark:text-purple-200",

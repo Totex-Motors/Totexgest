@@ -79,7 +79,7 @@ export const useFocusQueue = (salesRepId: string | undefined) => {
         .select('*')
         .eq('responsavel_id', salesRepId)
         .eq('completed', false)
-        .in('task_type', ['call', 'meeting'])
+        .in('task_type', ['call', 'meeting', 'video_call', 'visit', 'trade_eval', 'photo_session'])
         .gte('scheduled_at', now.toISOString())
         .lte('scheduled_at', in10min)
         .order('scheduled_at', { ascending: true });
@@ -100,7 +100,7 @@ export const useFocusQueue = (salesRepId: string | undefined) => {
               id: `meeting-${task.id}`,
               leadId: lead.id,
               title: lead.name || task.name,
-              subtitle: lead.company_name || 'Preparação para reunião',
+              subtitle: lead.company_name || task.name || 'Preparar atendimento',
               score: lead.sales_score,
               urgency: formatUrgency(task.scheduled_at, 'future'),
               data: { task, lead },

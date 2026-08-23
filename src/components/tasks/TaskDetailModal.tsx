@@ -25,7 +25,8 @@ import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "@
 import {
   Calendar as CalendarIcon, Clock, Phone, Video, MessageSquare, Mail, Users, Target,
   Loader2, Trash2, CheckCircle2, Edit2, X, ExternalLink, Building2, CalendarPlus, UserPlus,
-  Sparkles, ChevronDown, ChevronUp, FileText, Plus, AlertTriangle, Bot, Repeat, RotateCcw
+  Sparkles, ChevronDown, ChevronUp, FileText, Plus, AlertTriangle, Bot, Repeat, RotateCcw,
+  Car, ClipboardCheck, Camera
 } from "lucide-react";
 
 // Adiciona timezone de Brasília para evitar problemas de conversão UTC
@@ -56,14 +57,16 @@ interface TaskDetailModalProps {
 
 const taskTypes = [
   { value: 'call', label: 'Ligação', icon: Phone },
+  { value: 'video_call', label: 'Chamada de vídeo', icon: Video },
+  { value: 'visit', label: 'Visita / Test drive', icon: Car },
+  { value: 'proposal', label: 'Proposta / Simulação', icon: FileText },
+  { value: 'trade_eval', label: 'Avaliação da troca', icon: ClipboardCheck },
+  { value: 'photo_session', label: 'Sessão de fotos', icon: Camera },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
-  { value: 'email', label: 'Email', icon: Mail },
-  { value: 'meeting', label: 'Visita/Vídeo', icon: Video },
-  { value: 'onboarding', label: 'Onboarding', icon: Target },
   { value: 'follow_up', label: 'Follow-up', icon: Clock },
-  { value: 'checkin', label: 'Check-in', icon: Users },
-  { value: 'support', label: 'Suporte', icon: MessageSquare },
   { value: 'internal', label: 'Interna', icon: CalendarIcon },
+  // legado (não criável, ainda renderiza): meeting, onboarding, checkin, support, email
+  { value: 'meeting', label: 'Visita / Vídeo', icon: Video },
 ];
 
 const teams = [

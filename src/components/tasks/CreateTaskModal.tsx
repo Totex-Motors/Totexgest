@@ -42,6 +42,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Repeat,
+  Car,
+  FileText,
+  ClipboardCheck,
+  Camera,
 } from "lucide-react";
 import { cn, ensureHttps } from "@/lib/utils";
 
@@ -73,26 +77,31 @@ interface CreateTaskModalProps {
   };
 }
 
+// Tipos de interação da concessionária (Fase 1 do funil automotivo).
+// 'meeting'/'onboarding'/'checkin' descontinuados — tarefas antigas seguem
+// renderizando, só não dá mais pra criar novas.
 const taskTypes = [
   { value: 'call', label: 'Ligação', icon: Phone },
-  { value: 'meeting', label: 'Visita/Vídeo', icon: Video },
+  { value: 'video_call', label: 'Chamada de vídeo', icon: Video },
+  { value: 'visit', label: 'Visita / Test drive', icon: Car },
+  { value: 'proposal', label: 'Proposta / Simulação', icon: FileText },
+  { value: 'trade_eval', label: 'Avaliação da troca', icon: ClipboardCheck },
+  { value: 'photo_session', label: 'Sessão de fotos', icon: Camera },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
-  { value: 'email', label: 'Email', icon: Mail },
   { value: 'follow_up', label: 'Follow-up', icon: Clock },
-  // 'onboarding' e 'checkin' descontinuados (CRM 100% automotivo) — tarefas
-  // antigas desses tipos seguem renderizando, só não dá mais pra criar novas.
   { value: 'internal', label: 'Interna', icon: CalendarIcon },
   { value: 'other', label: 'Outro...', icon: MoreHorizontal },
 ];
 
 const defaultTitleByType: Record<string, string> = {
   call: 'Ligação',
-  meeting: 'Visita/Vídeo IA na Prática',
+  video_call: 'Chamada de vídeo — apresentar veículo',
+  visit: 'Visita / Test drive',
+  proposal: 'Proposta / Simulação',
+  trade_eval: 'Avaliação do veículo na troca',
+  photo_session: 'Sessão de fotos do veículo',
   whatsapp: 'Mensagem WhatsApp',
-  email: 'Email',
   follow_up: 'Follow-up',
-  onboarding: 'Onboarding',
-  checkin: 'Check-in',
   internal: 'Tarefa interna',
   other: '',
 };
@@ -101,14 +110,15 @@ function getFirstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0];
 }
 
-// Tipos que podem ter transcrição
-const transcriptionTypes = ['call', 'meeting', 'onboarding'];
+// Tipos que podem ter transcrição (áudio/vídeo que passa pelo sistema)
+const transcriptionTypes = ['call', 'video_call', 'meeting'];
 
-// Tipos que podem ter link de reunião
-const meetingTypes = ['call', 'meeting', 'onboarding'];
+// Tipos que podem ter link de vídeo (Google Meet) — presenciais não precisam
+const meetingTypes = ['call', 'video_call', 'meeting'];
 
-// Tipos que bloqueiam agenda (reuniões e onboarding ocupam horário; calls só com Meet)
-const conflictCheckTypes = ['meeting', 'onboarding'];
+// Tipos que ocupam horário na agenda (bloqueiam conflito): interações agendadas
+// com o cliente — chamada de vídeo, visita/test drive, avaliação, sessão de fotos
+const conflictCheckTypes = ['video_call', 'visit', 'trade_eval', 'photo_session', 'meeting'];
 
 // Durações disponíveis
 const durations = [
@@ -965,9 +975,12 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, defaultValues, 
                                     "absolute left-9 right-1 rounded px-1.5 py-0.5 text-[10px] truncate border-l-2",
                                     item.type === "block" && "bg-zinc-800 border-l-zinc-500 text-zinc-300",
                                     item.type === "google" && "bg-blue-950/60 border-l-blue-400 text-blue-200",
-                                    item.type === "task" && item.taskType === "meeting" && "bg-indigo-950/60 border-l-indigo-400 text-indigo-200",
+                                    item.type === "task" && (item.taskType === "meeting" || item.taskType === "video_call") && "bg-indigo-950/60 border-l-indigo-400 text-indigo-200",
                                     item.type === "task" && item.taskType === "call" && "bg-blue-950/60 border-l-blue-400 text-blue-200",
-                                    item.type === "task" && item.taskType === "onboarding" && "bg-teal-950/60 border-l-teal-400 text-teal-200",
+                                    item.type === "task" && item.taskType === "visit" && "bg-orange-950/60 border-l-orange-400 text-orange-200",
+                                    item.type === "task" && item.taskType === "trade_eval" && "bg-rose-950/60 border-l-rose-400 text-rose-200",
+                                    item.type === "task" && item.taskType === "photo_session" && "bg-fuchsia-950/60 border-l-fuchsia-400 text-fuchsia-200",
+                                    item.type === "task" && item.taskType === "proposal" && "bg-violet-950/60 border-l-violet-400 text-violet-200",
                                     isConflict && "ring-1 ring-red-500/50"
                                   )}
                                   style={{
