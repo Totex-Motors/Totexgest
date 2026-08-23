@@ -12,8 +12,12 @@
  * GATED por config.agent_platform_v2_enabled — off = sempre false = legado.
  */
 
+import { loopGuardBlocks, lastOutboundWasFallback } from "../_shared/agent-loop-guard.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const FALLBACK_TEXT = "Desculpa, não consegui processar agora.";
 
 export async function tryHandleViaAgentPlatformCloud(args: {
   supabase: any;
@@ -91,6 +95,13 @@ export async function tryHandleViaAgentPlatformCloud(args: {
     sessionId = ns?.id;
   }
 
+  // 4.1 Trava anti-loop: se o agente já respondeu demais nesse número numa janela
+  //     curta (ex.: ping-pong com outro robô), pausa a sessão e não responde.
+  if (await loopGuardBlocks(supabase, { leadId, sessionId, tenantId, phone: senderDigits })) {
+    console.log("[cloud-v2] trava anti-loop ativa — sem resposta");
+    return true;
+  }
+
   // 4.5 Debounce via banco (latest-wins): agrupa as mensagens rápidas do cliente numa
   //     resposta só. Cada msg chega como uma invocação SEPARADA do webhook (isolates
   //     diferentes) → 3 msgs = 3 respostas robotizadas. Por isso o debounce é via banco.
@@ -164,7 +175,14 @@ export async function tryHandleViaAgentPlatformCloud(args: {
 
   // 6. Envia resposta via Cloud API em bolhas curtas, com delay (mais natural).
   //    Remove antes o raciocínio interno (<thinking>) que vaza no texto antes de uma tool.
-  const finalText = stripThinking(fullText) || "Desculpa, não consegui processar agora.";
+  const cleaned = stripThinking(fullText);
+  // Não repete o fallback em sequência (alimentava loop com outro robô): se o
+  // agente não gerou texto e a última msg nossa já foi o fallback, fica quieto.
+  if (!cleaned && await lastOutboundWasFallback(supabase, leadId, FALLBACK_TEXT)) {
+    console.log("[cloud-v2] fallback repetido — fica quieto");
+    return true;
+  }
+  const finalText = cleaned || FALLBACK_TEXT;
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendCloud(senderDigits, parts[i], tenantId, leadId);
