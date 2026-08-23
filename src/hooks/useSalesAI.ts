@@ -10,7 +10,20 @@ async function callEdgeFunction<T>(functionName: string, body: Record<string, an
   });
 
   if (error) {
-    throw error;
+    // O supabase-js entrega só "Edge Function returned a non-2xx status code".
+    // Nossas functions devolvem { error, message } no corpo — extrai a mensagem
+    // amigável (ex.: "Cadastre a chave da Anthropic...") pra mostrar no toast.
+    let friendly = error.message;
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') {
+        const bodyJson = await ctx.json();
+        friendly = bodyJson?.message || bodyJson?.error || friendly;
+      }
+    } catch {
+      /* mantém error.message */
+    }
+    throw new Error(friendly);
   }
 
   return data as T;

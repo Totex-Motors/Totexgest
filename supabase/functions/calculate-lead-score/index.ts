@@ -66,6 +66,19 @@ Deno.serve(async (req: Request) => {
     // Chave DO tenant do lead (fallback global). O lojista paga a própria IA.
     const anthropicKey = (await getIntegrationKey(supabase, "ANTHROPIC_API_KEY", lead.tenant_id));
 
+    // Sem chave de IA da loja → erro claro e acionável (em vez de um 500 genérico
+    // "non-2xx"). Cada loja cadastra a própria chave.
+    if (!anthropicKey) {
+      return new Response(
+        JSON.stringify({
+          error: "Chave de IA não configurada para esta loja",
+          message: "Cadastre a chave da Anthropic em Configurações > Integrações > API Keys para calcular o score com IA.",
+          code: "missing_ai_key",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // 2. Buscar mensagens WhatsApp (últimas 50)
     const { data: whatsappMessages } = await supabase
       .from("whatsapp_messages")
