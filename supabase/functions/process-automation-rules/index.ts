@@ -16,6 +16,7 @@ interface AutomationRule {
   is_active: boolean;
   team: string;
   priority: number;
+  tenant_id?: string | null;
 }
 
 interface EventContext {
@@ -55,6 +56,17 @@ Deno.serve(async (req: Request) => {
       return await processDaysInStage(supabase);
     }
 
+    // Resolve o tenant (loja) do evento pra escopar as regras. Sem isso, uma
+    // regra de uma loja rodaria pros eventos de todas (follow-up/alerta duplicados).
+    let eventTenantId: string | null = null;
+    if (event.lead_id) {
+      const { data } = await supabase.from("leads").select("tenant_id").eq("id", event.lead_id).maybeSingle();
+      eventTenantId = data?.tenant_id ?? null;
+    } else if (event.deal_id) {
+      const { data } = await supabase.from("deals").select("tenant_id").eq("id", event.deal_id).maybeSingle();
+      eventTenantId = data?.tenant_id ?? null;
+    }
+
     // 1. Buscar regras ativas para este trigger
     const { data: rules, error: rulesError } = await supabase
       .from("sales_automation_rules")
@@ -87,8 +99,13 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
+        // Escopo por loja: regra só roda no tenant dela (regra sem tenant = global)
+        if (rule.tenant_id && eventTenantId && rule.tenant_id !== eventTenantId) {
+          continue;
+        }
+
         // 3. Executar ação
-        const result = await executeAction(supabase, rule, event);
+        const result = await executeAction(supabase, rule, event, eventTenantId);
         results.push({ rule_id: rule.id, rule_name: rule.name, action: rule.action_type, success: true, ...result });
       } catch (err) {
         console.error(`Error executing rule ${rule.id}:`, err);
@@ -144,7 +161,8 @@ function matchesConditions(rule: AutomationRule, event: EventContext): boolean {
 async function executeAction(
   supabase: any,
   rule: AutomationRule,
-  event: EventContext
+  event: EventContext,
+  eventTenantId: string | null = null
 ): Promise<Record<string, any>> {
   const config = rule.action_config || {};
 
@@ -253,6 +271,7 @@ async function executeAction(
           name: template.name,
           task_type: template.task_type || "follow_up",
           lead_id: leadId,
+          tenant_id: eventTenantId,
           team: "sales",
           status: "pending",
           completed: false,
@@ -264,7 +283,8 @@ async function executeAction(
     }
 
     case "send_notification": {
-      if (!config.type || !config.message) return { skipped: "type ou message não configurados" };
+      const msg = config.message || config.description;
+      if (!config.type || !msg) return { skipped: "type ou message não configurados" };
 
       // Buscar dados do lead para a notificação
       let leadId = event.lead_id;
@@ -284,14 +304,20 @@ async function executeAction(
           .eq("id", leadId)
           .single();
 
-        // Criar alerta em sales_alerts
+        const clienteNome = lead?.name || "Lead";
+        const titulo = (config.title || config.type).replace("{{cliente}}", clienteNome);
+        const descricao = msg.replace("{{cliente}}", clienteNome);
+
+        // Criar alerta em sales_alerts (colunas: title/description, sem 'message')
         await supabase
           .from("sales_alerts")
           .insert({
             lead_id: leadId,
             alert_type: config.type,
-            message: config.message.replace("{{cliente}}", lead?.name || "Lead"),
-            priority: 5,
+            title: titulo,
+            description: descricao,
+            priority: config.priority || 5,
+            tenant_id: eventTenantId,
           });
       }
 
@@ -469,9 +495,14 @@ async function processDaysInStage(supabase: any): Promise<Response> {
     // Buscar deals abertos que estão na mesma stage desde antes da cutoff
     let query = supabase
       .from("deals")
-      .select("id, lead_id, pipeline_stage_id, updated_at")
+      .select("id, lead_id, pipeline_stage_id, updated_at, tenant_id")
       .not("status", "in", "(won,lost)")
       .lt("updated_at", cutoffDate.toISOString());
+
+    // Escopo por loja: regra com tenant só afeta deals do mesmo tenant
+    if (rule.tenant_id) {
+      query = query.eq("tenant_id", rule.tenant_id);
+    }
 
     // Filtrar por stages específicas se configurado
     if (rule.trigger_conditions?.stage_ids?.length > 0) {
@@ -502,7 +533,7 @@ async function processDaysInStage(supabase: any): Promise<Response> {
           stage_id: deal.pipeline_stage_id,
         };
 
-        await executeAction(supabase, rule, event);
+        await executeAction(supabase, rule, event, deal.tenant_id ?? null);
         affected++;
       } catch (err) {
         console.error(`Error processing deal ${deal.id} for rule ${rule.id}:`, err);
