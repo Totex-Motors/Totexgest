@@ -22,6 +22,7 @@ import { usePipelines } from "@/hooks/usePipelineConfig";
 // Webinar configs foi removido junto com o m\u00f3dulo de eventos.
 const useWebinarConfigs = () => ({ data: [] as Array<{ id: string; name: string }> });
 import { useMoveDealStage, useTransferDealPipeline, useDeleteDeal } from "@/hooks/useSalesDeals";
+import { useLeadGlobalSearch } from "@/hooks/useSalesLeads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -180,6 +181,7 @@ export function PipelineBoardContent() {
   const { teamMember, isSuperAdmin } = useAuth();
   const [viewFilter, setViewFilter] = useSessionState<string>("pipeline_viewFilter", "all");
   const [searchQuery, setSearchQuery] = useSessionState<string>("pipeline_searchQuery", "");
+  const { data: globalSearchHits = [] } = useLeadGlobalSearch(searchQuery);
   const [urgencyFilter, setUrgencyFilter] = useSessionState<string>("pipeline_urgencyFilter", "all");
   const [revenueFilter, setRevenueFilter] = useSessionState<string>("pipeline_revenueFilter", "all");
   const [activityFilter, setActivityFilter] = useSessionState<string>("pipeline_activityFilter", "all");
@@ -673,6 +675,26 @@ export function PipelineBoardContent() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+              )}
+              {/* Busca global: acha o lead mesmo sem negociação ou de outro pipeline */}
+              {searchQuery.trim().length >= 2 && globalSearchHits.length > 0 && (
+                <div className="absolute z-50 mt-1 w-[300px] max-h-[340px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                  <div className="px-3 py-1.5 text-xs font-medium text-slate-500 border-b border-slate-100">
+                    Leads encontrados (busca global)
+                  </div>
+                  {globalSearchHits.map((hit) => (
+                    <button
+                      key={hit.id}
+                      onClick={() => navigate(`/comercial/leads/${hit.id}`)}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                    >
+                      <div className="text-sm font-medium text-slate-800 truncate">{hit.name || hit.phone || "Lead"}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {[hit.phone, hit.email].filter(Boolean).join(" · ") || "—"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 

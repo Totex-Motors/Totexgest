@@ -314,6 +314,32 @@ export const useUpdateLeadPipelineStage = () => {
         await syncDealsForLead(pid);
       }
 
+      // Auto-criar negociação se o lead não tem nenhuma neste pipeline. Sem isso,
+      // leads de importação/canais sem deal ficam invisíveis no board mesmo com
+      // etapa definida. Só pra etapas normais (não ganho/perdido).
+      if (pipelineId && !isWon && !isLost) {
+        const { data: existingDeals } = await supabase
+          .from('deals')
+          .select('id')
+          .eq('lead_id', leadId)
+          .eq('pipeline_id', pipelineId)
+          .limit(1);
+        if (!existingDeals || existingDeals.length === 0) {
+          const price = Number((data as any)?.metadata?.vehicle?.price) || 0;
+          await supabase.from('deals').insert({
+            lead_id: leadId,
+            tenant_id: (data as any).tenant_id,
+            pipeline_id: pipelineId,
+            pipeline_stage_id: stageId,
+            sales_rep_id: (data as any).sales_rep_id ?? null,
+            original_price: price,
+            negotiated_price: price,
+            status: 'open',
+            notes: 'Negociação criada ao mover o lead para uma etapa.',
+          });
+        }
+      }
+
       return data as SalesLead;
     },
     onSuccess: (data) => {
@@ -323,6 +349,34 @@ export const useUpdateLeadPipelineStage = () => {
       queryClient.invalidateQueries({ queryKey: ['pipeline-stages'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-deals'] });
       queryClient.invalidateQueries({ queryKey: ['contact-deals'] });
+    },
+  });
+};
+
+// Busca global de leads (todos os pipelines, com ou sem negociação) — pro
+// pipeline achar um lead mesmo sem deal ou de outro pipeline. RLS escopa por loja.
+export interface LeadSearchHit {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+}
+export const useLeadGlobalSearch = (query: string) => {
+  const term = (query || '').trim();
+  return useQuery({
+    queryKey: ['lead-global-search', term],
+    enabled: term.length >= 2,
+    staleTime: 10_000,
+    queryFn: async (): Promise<LeadSearchHit[]> => {
+      const digits = term.replace(/\D/g, '');
+      const isPhone = digits.length >= 3 && digits.length / term.length > 0.5;
+      let q = supabase.from('leads').select('id, name, phone, email').limit(15);
+      q = isPhone
+        ? q.ilike('phone', `%${digits}%`)
+        : q.or(`name.ilike.%${term}%,email.ilike.%${term}%`);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []) as LeadSearchHit[];
     },
   });
 };
