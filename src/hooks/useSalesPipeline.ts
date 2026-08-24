@@ -74,13 +74,16 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
           lead:leads!deals_lead_id_fkey(
             id, name, phone, email, sales_score,
             utm_source, utm_campaign, utm_content, sales_rep_id,
-            company_name, webinar_config_id, source
+            company_name, webinar_config_id, source,
+            instagram_profile_id, acao_de_hoje, metadata
           ),
           product:products!deals_product_id_fkey(id, name),
           sales_rep:team_members!deals_sales_rep_id_fkey(id, name)
         `)
         .not('pipeline_stage_id', 'is', null)
-        .order('negotiated_price', { ascending: false });
+        // Ordena por mais recente (não por preço): com teto, o critério define
+        // QUAIS deals sobrevivem — recência não some cards de menor valor do board.
+        .order('created_at', { ascending: false });
 
       if (pipelineId) {
         dealsQuery = dealsQuery.eq('pipeline_id', pipelineId);
@@ -105,7 +108,7 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         dealsQuery = dealsQuery.in('id', dealIdsFiltered);
       }
 
-      const { data: deals, error: dealsError } = await dealsQuery.limit(1000);
+      const { data: deals, error: dealsError } = await dealsQuery.limit(5000);
       if (dealsError) throw dealsError;
 
       const leadIds = [...new Set((deals || []).map((d: any) => d.lead_id).filter(Boolean))] as string[];

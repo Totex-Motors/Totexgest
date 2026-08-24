@@ -416,7 +416,7 @@ export const useMoveDealStage = () => {
       // Get stage info to check if it's won/lost
       const { data: stage } = await supabase
         .from('sales_pipeline_stages')
-        .select('id, pipeline_id, is_won, is_lost')
+        .select('id, pipeline_id, is_won, is_lost, name')
         .eq('id', stageId)
         .single();
 
@@ -454,15 +454,18 @@ export const useMoveDealStage = () => {
       if (error) throw error;
       if (!data) throw new Error('Sem permissão para mover este lead ou deal não encontrado.');
 
-      // Sync lead's pipeline_stage_id with deal's stage
+      // Sync lead com a etapa do deal — os MESMOS campos que a tela do lead
+      // grava (pipeline_stage_id + sales_stage/etapa_funil), pra board e listas
+      // não divergirem depois de arrastar o card.
       if (data?.lead_id) {
-        await supabase
-          .from('leads')
-          .update({
-            pipeline_stage_id: stageId,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', data.lead_id);
+        const leadUpdate: Record<string, unknown> = {
+          pipeline_stage_id: stageId,
+          updated_at: new Date().toISOString(),
+        };
+        const derivedSalesStage = stage?.is_won ? 'fechado' : stage?.is_lost ? 'perdido' : undefined;
+        if (derivedSalesStage) leadUpdate.sales_stage = derivedSalesStage;
+        if (stage?.name) leadUpdate.etapa_funil = stage.name;
+        await supabase.from('leads').update(leadUpdate).eq('id', data.lead_id);
       }
 
       // Check for pipeline transitions
@@ -513,6 +516,7 @@ export const useMoveDealStage = () => {
       queryClient.invalidateQueries({ queryKey: ['pipeline-deals'] });
       queryClient.invalidateQueries({ queryKey: ['deals-by-stage'] });
       queryClient.invalidateQueries({ queryKey: ['sales-dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['contact-deals'] });
 
       // Disparar notificação de mudança de etapa (se não for won/lost - esses têm triggers próprios)
       if (data.status !== 'won' && data.status !== 'lost') {
@@ -748,7 +752,8 @@ export const useWinDeal = () => {
             .select('id')
             .eq('pipeline_id', currentStage.pipeline_id)
             .eq('is_won', true)
-            .single();
+            .limit(1)
+            .maybeSingle();
           wonStage = stage;
         }
       }
@@ -1191,7 +1196,8 @@ export const useLoseDeal = () => {
             .select('id')
             .eq('pipeline_id', currentStage.pipeline_id)
             .eq('is_lost', true)
-            .single();
+            .limit(1)
+            .maybeSingle();
           lostStage = stage;
         }
       }
