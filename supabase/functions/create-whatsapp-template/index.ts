@@ -102,18 +102,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // MULTI-TENANT: instância Cloud API DO TENANT
+    // MULTI-TENANT: instância Cloud API DO TENANT.
+    // Cloud API não tem "conexão" (não existe QR Code): o que habilita a criação
+    // do template é ter token. Filtrar por status derrubava a criação sempre que
+    // a instância ficava marcada como `disconnected`.
     const { data: instance } = await supabase
       .from("whatsapp_instances")
       .select("id, business_account_id, api_key, status")
       .eq("tenant_id", tenantId)
       .eq("provider", "meta_cloud")
-      .in("status", ["connected", "active"])
+      .not("api_key", "is", null)
       .limit(1)
       .maybeSingle();
 
     if (!instance?.api_key) {
-      return jsonRes({ error: "Nenhuma instância Cloud API conectada para este tenant" }, 404);
+      return jsonRes({ error: "Nenhuma instância Cloud API configurada para este tenant" }, 404);
     }
 
     // WABA ID ausente (instância criada antes do multi-número): resolve na Meta
