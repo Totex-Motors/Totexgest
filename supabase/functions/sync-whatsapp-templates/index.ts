@@ -36,13 +36,17 @@ Deno.serve(async (req) => {
     const tenantId = (user?.app_metadata as any)?.tenant_id;
     if (!tenantId) return jsonRes({ error: "missing tenant" }, 401);
 
-    // MULTI-TENANT: filtra instâncias do tenant
+    // MULTI-TENANT: filtra instâncias do tenant.
+    // Cloud API não tem "conexão" (não existe QR Code): o que habilita a sync é
+    // ter WABA + token. Filtrar por status deixava o sync fora do ar sempre que
+    // a instância ficava marcada como `disconnected`.
     const { data: instance } = await supabase
       .from("whatsapp_instances")
       .select("id, business_account_id, api_key, status")
       .eq("tenant_id", tenantId)
       .eq("provider", "meta_cloud")
-      .in("status", ["connected", "active"])
+      .not("business_account_id", "is", null)
+      .not("api_key", "is", null)
       .limit(1)
       .maybeSingle();
 
@@ -62,6 +66,7 @@ Deno.serve(async (req) => {
 
     const templates = data.data || [];
     let upserted = 0;
+    const failures: string[] = [];
 
     for (const t of templates) {
       const body = (t.components || []).find((c: any) => c.type === "BODY");
@@ -80,17 +85,23 @@ Deno.serve(async (req) => {
             language: t.language,
             category: t.category,
             status: t.status,
-            rejection_reason: t.rejected_reason || null,
+            rejected_reason: t.rejected_reason || null,
             components: t.components || [],
             variables_count: variables,
+            last_synced_at: new Date().toISOString(),
           },
           { onConflict: "tenant_id,name,language" }
         );
 
-      if (!error) upserted++;
+      if (error) {
+        console.error(`[sync-whatsapp-templates] falha no upsert de ${t.name}:`, error.message);
+        failures.push(`${t.name}: ${error.message}`);
+      } else {
+        upserted++;
+      }
     }
 
-    return jsonRes({ success: true, total: templates.length, upserted });
+    return jsonRes({ success: true, total: templates.length, upserted, failures });
   } catch (err: any) {
     console.error("[sync-whatsapp-templates]", err);
     return jsonRes({ error: err.message }, 500);

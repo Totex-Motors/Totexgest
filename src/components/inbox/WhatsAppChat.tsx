@@ -737,17 +737,29 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   // Carregar templates aprovados quando janela fechada
   useEffect(() => {
     if (!selectedInstanceIsCloudAPI || !windowClosed) return;
+    if (!teamMember?.tenant_id) return;
     const loadTemplates = async () => {
-      const { data } = await supabase
-        .from('whatsapp_templates')
+      const { data, error } = await supabase
+        .from('whatsapp_cloud_templates')
         .select('*')
+        // MULTI-TENANT: templates são por tenant (cada WABA tem os seus)
+        .eq('tenant_id', teamMember.tenant_id)
         .eq('status', 'APPROVED')
-        .eq('source', 'platform')
         .order('name');
+      if (error) {
+        console.error('[WhatsAppChat] erro ao carregar templates', error);
+        toast({
+          title: 'Erro ao carregar templates',
+          description: error.message,
+          variant: 'destructive',
+        });
+        setTemplates([]);
+        return;
+      }
       setTemplates(data || []);
     };
     loadTemplates();
-  }, [selectedInstanceIsCloudAPI, windowClosed]);
+  }, [selectedInstanceIsCloudAPI, windowClosed, teamMember?.tenant_id]);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -929,6 +941,14 @@ export const WhatsAppChat: React.FC<WhatsAppChatProps> = ({
   // Instância é da API oficial (Cloud)? Aceita as duas marcações usadas no sistema:
 // metadata.type='cloud_api' (chat/inbox) e metadata.provider='whatsapp_cloud' /
 // provider='meta_cloud' (multi-número v3 / instâncias antigas sem o type).
+// Corpo do template. Na Cloud API o texto vive em components[].BODY.text;
+// `body_text` é o formato antigo, mantido como fallback.
+const templateBody = (template: any): string => {
+  if (!template) return '';
+  const body = (template.components || []).find((c: any) => c?.type === 'BODY');
+  return body?.text || template.body_text || '';
+};
+
 const isCloudMeta = (metadata: any): boolean => {
   const m = (metadata ?? {}) as Record<string, any>;
   return m.type === 'cloud_api' || m.provider === 'whatsapp_cloud' || m.provider === 'meta_cloud' || !!m.phone_number_id;
@@ -945,13 +965,16 @@ const isCloudAPI = (instance: any): boolean => {
     try {
       const resolvedPhone = await resolveWhatsAppPhone();
       const firstName = contactName?.split(' ')[0] || contactPhone || '';
+      // Template sem variável não aceita parameters — a Meta rejeita (#132000)
+      const hasVariables = /\{\{\s*1\s*\}\}/.test(templateBody(template));
 
       const { data, error } = await supabase.functions.invoke('send-whatsapp-cloud', {
         body: {
           action: 'send_template',
           phone: resolvedPhone,
           template_name: template.name,
-          template_params: [firstName],
+          template_language: template.language || 'pt_BR',
+          ...(hasVariables ? { template_params: [firstName] } : {}),
           lead_id: leadId,
           sent_by: 'human', sent_by_name: senderName,
         },
@@ -2304,7 +2327,7 @@ const isCloudAPI = (instance: any): boolean => {
                 {(() => {
                   const filtered = templates.filter(t =>
                     !templateSearch || t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
-                    (t.body_text || '').toLowerCase().includes(templateSearch.toLowerCase())
+                    templateBody(t).toLowerCase().includes(templateSearch.toLowerCase())
                   );
                   return filtered.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">Nenhum template encontrado</p>
@@ -2321,7 +2344,7 @@ const isCloudAPI = (instance: any): boolean => {
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2">
-                        {(t.body_text || '').replace(/\{\{1\}\}/g, contactName?.split(' ')[0] || 'Nome')}
+                        {templateBody(t).replace(/\{\{1\}\}/g, contactName?.split(' ')[0] || 'Nome')}
                       </p>
                     </button>
                   ));
@@ -2342,7 +2365,7 @@ const isCloudAPI = (instance: any): boolean => {
               <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
                 <p className="text-sm font-medium mb-1 capitalize text-green-800 dark:text-green-300">{selectedTemplate.name.replace(/_/g, ' ')}</p>
                 <p className="text-sm whitespace-pre-line">
-                  {(selectedTemplate.body_text || '').replace(/\{\{1\}\}/g, contactName?.split(' ')[0] || 'Nome')}
+                  {templateBody(selectedTemplate).replace(/\{\{1\}\}/g, contactName?.split(' ')[0] || 'Nome')}
                 </p>
               </div>
               <AlertDialogFooter>
