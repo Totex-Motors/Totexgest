@@ -17,11 +17,16 @@ serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Buscar todas as instancias com api_key (token UAZAPI)
+    // Buscar as instancias UAZAPI (com api_key = token UAZAPI e api_url pra pollar).
+    // Instância Cloud API NÃO entra: ela não tem endpoint de status da UAZAPI, e
+    // o poll falhava marcando ela como `disconnected` — o que a escondia da lista
+    // de instâncias de envio no inbox.
     const { data: instances, error } = await supabase
       .from('whatsapp_instances')
       .select('id, name, status, api_key, api_url')
-      .not('api_key', 'is', null);
+      .neq('provider', 'meta_cloud')
+      .not('api_key', 'is', null)
+      .not('api_url', 'is', null);
 
     if (error || !instances?.length) {
       console.log('[SyncStatus] No instances found or error:', error?.message);
