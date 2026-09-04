@@ -206,8 +206,9 @@ Regras:
 // ==================== SEND TEMPLATE ====================
 
 async function sendTemplate(body: any, phone: string, cfg: CloudApiCfg, supabase?: any) {
-  const { template_name, template_params, lead_id } = body;
+  const { template_name, template_params, template_language, lead_id } = body;
   const templateName = template_name || "primeiro_contato_qualificacao";
+  const languageCode = template_language || "pt_BR";
 
   // Sempre normalizar nome via IA — extrai primeiro nome real de qualquer input
   if (template_params && template_params.length > 0) {
@@ -222,7 +223,7 @@ async function sendTemplate(body: any, phone: string, cfg: CloudApiCfg, supabase
     type: "template",
     template: {
       name: templateName,
-      language: { code: "pt_BR" },
+      language: { code: languageCode },
     },
   };
 
@@ -418,14 +419,16 @@ async function getOfficialInstanceId(supabase: any): Promise<string | null> {
 }
 
 async function buildTemplateText(supabase: any, templateName: string, params?: string[]): Promise<string> {
-  // Buscar texto da tabela (fonte única de verdade)
+  // Buscar texto da tabela sincronizada com a Meta (fonte única de verdade).
+  // O corpo vive em components[].BODY.text.
   const { data: tpl } = await supabase
-    .from('whatsapp_templates')
-    .select('body_text')
+    .from('whatsapp_cloud_templates')
+    .select('components')
     .eq('name', templateName)
     .maybeSingle();
 
-  let text = tpl?.body_text || `[Template: ${templateName}]`;
+  const bodyComponent = (tpl?.components || []).find((c: any) => c?.type === 'BODY');
+  let text = bodyComponent?.text || `[Template: ${templateName}]`;
   if (params) {
     params.forEach((p, i) => {
       text = text.replace(`{{${i + 1}}}`, p);
