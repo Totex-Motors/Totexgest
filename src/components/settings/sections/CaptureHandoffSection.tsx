@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAllTeamMembers } from "@/hooks/useAllTeamMembers";
+import { useAllTeamMembers } from "@/hooks/useTeamMembers";
 import {
   DEFAULT_HANDOFF_CONFIG,
   useCaptureHandoffConfig,
