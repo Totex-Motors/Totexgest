@@ -244,6 +244,25 @@ async function runSla(sb: any) {
       out.push({ lead: lead.id, action: "escalated", waiting, sent });
     }
   }
+  // Follow-ups: 3 dias em "Contato feito" sem avaliação agendada → tarefa + aviso no grupo
+  const { data: stale } = await sb.rpc("capture_stale_followups", { p_days: 3 });
+  const staleList = (stale || []) as Row[];
+  if (staleList.length) {
+    const byTenant = new Map<string, Row[]>();
+    for (const s of staleList) byTenant.set(s.tenant_id, [...(byTenant.get(s.tenant_id) || []), s]);
+    for (const [tenantId, items] of byTenant) {
+      if (!channels.has(tenantId)) channels.set(tenantId, await loadChannel(sb, tenantId));
+      const ch = channels.get(tenantId)!;
+      if (ch.apiUrl && ch.apiKey && ch.groupJid && ch.notifyGroup) {
+        const txt = `📌 *Follow-up da captação* — sem avaliação agendada:\n` +
+          items.map((s) => `• ${s.lead} — ${s.rep} · ${s.dias} dias em "Contato feito"`).join("\n") +
+          `\n\nTarefa criada pra cada um. Agenda a avaliação ou move pra Nutrição/Perdido.`;
+        await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, txt);
+      }
+      out.push({ tenant: tenantId, action: "stale_followups", count: items.length });
+    }
+  }
+
   return { checked: (leads || []).length, actions: out };
 }
 
