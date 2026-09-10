@@ -13,6 +13,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -34,7 +35,7 @@ async function notify(supabase: Supa, tenantId: string, text: string): Promise<v
     if (!jid) return; // sem grupo configurado — silencioso por design
     const { data: inst } = await supabase
       .from("whatsapp_instances")
-      .select("api_url, api_key")
+      .select("id, api_url, api_key, provider, group_only")
       .eq("tenant_id", tenantId)
       .eq("status", "connected")
       .eq("provider", "uazapi")
@@ -43,6 +44,8 @@ async function notify(supabase: Supa, tenantId: string, text: string): Promise<v
     if (!inst?.api_key) return;
     const base = inst.api_url || (await getIntegrationKey(supabase, "UAZAPI_ADMIN_URL", tenantId));
     if (!base) return;
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(supabase, inst, jid, "instagram-crons/refresh-token", text))) return;
     await fetch(`${String(base).replace(/\/$/, "")}/send/text`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", token: inst.api_key },

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +27,8 @@ interface WhatsAppInstance {
   name: string;
   api_key: string;
   api_url: string;
+  provider?: string | null;
+  group_only?: boolean | null;
 }
 
 interface EventContext {
@@ -161,12 +164,18 @@ function replaceTemplateVariables(template: string, context: EventContext): stri
  * Envia mensagem WhatsApp via UAZAPI
  */
 async function sendWhatsApp(
+  supabase: any,
   instance: WhatsAppInstance,
   targetNumber: string,
   message: string
 ): Promise<boolean> {
   try {
     const apiUrl = `${instance.api_url}/send/text`;
+
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(supabase, instance, targetNumber, "process-notification-event", message))) {
+      return false;
+    }
 
     const response = await fetch(apiUrl, {
       method: "POST",
@@ -308,7 +317,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: instance, error: instanceError } = await supabase
         .from("whatsapp_instances")
-        .select("id, name, api_key, api_url")
+        .select("id, name, api_key, api_url, provider, group_only")
         .eq("id", rule.action_instance_id)
         .eq("status", "connected")
         .single();
@@ -364,7 +373,7 @@ Deno.serve(async (req: Request) => {
         .replace(/\n{3,}/g, '\n\n');
 
       // Enviar mensagem
-      const sent = await sendWhatsApp(instance as WhatsAppInstance, targetNumber, message);
+      const sent = await sendWhatsApp(supabase, instance as WhatsAppInstance, targetNumber, message);
 
       if (sent) {
         results.sent++;

@@ -18,6 +18,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { getTenantIdFromRequest } from "../_shared/tenant.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -196,12 +197,17 @@ Deno.serve(async (req) => {
     // Camada 2: service role lê as credenciais (nunca expostas ao browser)
     const { data: instance, error: instErr } = await serviceClient
       .from("whatsapp_instances")
-      .select("api_url, api_key, webhook_url, metadata")
+      .select("id, api_url, api_key, webhook_url, metadata, provider, group_only")
       .eq("id", instanceId)
       .single();
     if (instErr || !instance) {
       return json({ ok: false, error: "Instância não encontrada" }, 404);
     }
+
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal.
+    // Objeto mínimo pro guarda decidir localmente (sem ida extra ao banco).
+    const waInstance = { id: instanceId, provider: instance.provider, group_only: instance.group_only };
+    const BLOCKED_MSG = "Bloqueado: número não oficial (UAZAPI) só envia em grupos/canais. Use o número oficial (API Cloud).";
 
     const metadata = (instance.metadata as Record<string, unknown>) || {};
     const apiUrl = String(instance.api_url || instance.webhook_url || metadata.uazapi_url || "").replace(/\/$/, "");
@@ -236,6 +242,9 @@ Deno.serve(async (req) => {
         if (!payload.number || !payload.text) {
           return json({ ok: false, error: "number e text são obrigatórios" }, 400);
         }
+        if (!(await uazapiTargetAllowed(serviceClient, waInstance, String(payload.number), "uazapi-proxy/send_text", String(payload.text)))) {
+          return json({ ok: false, error: BLOCKED_MSG }, 403);
+        }
         return await callUazapi(`${apiUrl}/send/text`, {
           method: "POST",
           headers: jsonHeaders,
@@ -248,6 +257,9 @@ Deno.serve(async (req) => {
         if (!payload.number || !payload.type || !payload.file) {
           return json({ ok: false, error: "number, type e file são obrigatórios" }, 400);
         }
+        if (!(await uazapiTargetAllowed(serviceClient, waInstance, String(payload.number), "uazapi-proxy/send_media", payload.text ? String(payload.text) : null))) {
+          return json({ ok: false, error: BLOCKED_MSG }, 403);
+        }
         return await callUazapi(`${apiUrl}/send/media`, {
           method: "POST",
           headers: jsonHeaders,
@@ -259,6 +271,9 @@ Deno.serve(async (req) => {
         const payload = pick(params, ["number", "pixType", "pixKey", "pixName"]);
         if (!payload.number || !payload.pixType || !payload.pixKey) {
           return json({ ok: false, error: "number, pixType e pixKey são obrigatórios" }, 400);
+        }
+        if (!(await uazapiTargetAllowed(serviceClient, waInstance, String(payload.number), "uazapi-proxy/send_pix_button", null))) {
+          return json({ ok: false, error: BLOCKED_MSG }, 403);
         }
         return await callUazapi(`${apiUrl}/send/pix-button`, {
           method: "POST",

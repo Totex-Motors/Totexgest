@@ -6,6 +6,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +24,8 @@ interface Instance {
   id: string;
   api_key: string;
   api_url: string;
+  provider?: string | null;
+  group_only?: boolean | null;
 }
 
 interface ScheduledMessage {
@@ -38,7 +41,7 @@ interface ScheduledMessage {
 async function getInstance(instance_id: string): Promise<Instance | null> {
   const { data } = await supabase
     .from("whatsapp_instances")
-    .select("id, api_key, api_url")
+    .select("id, api_key, api_url, provider, group_only")
     .eq("id", instance_id)
     .single();
   return (data as Instance) || null;
@@ -84,6 +87,12 @@ async function sendViaUAZAPI(instance: Instance, msg: ScheduledMessage) {
       break;
     default:
       throw new Error(`message_type inválido: ${msg.message_type}`);
+  }
+
+  // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal.
+  // Bloqueado → erro tratado pelo processOne (marca a mensagem como falha).
+  if (!(await uazapiTargetAllowed(supabase, instance, msg.target_jid, "process-scheduled-messages", (body.text as string) ?? null))) {
+    throw new Error("Bloqueado: número não oficial (UAZAPI) só envia em grupos/canais. Use o número oficial (API Cloud).");
   }
 
   const res = await fetch(`${instance.api_url}${path}`, {

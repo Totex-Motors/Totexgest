@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -472,7 +473,7 @@ async function sendNotification(supabase: any, rule: NotificationRule, task: Tas
   // Buscar instância WhatsApp
   let instanceQuery = supabase
     .from('whatsapp_instances')
-    .select('id, name, api_key, api_url')
+    .select('id, name, api_key, api_url, provider, group_only')
     .eq('status', 'connected');
 
   if (rule.action_instance_id) {
@@ -492,6 +493,15 @@ async function sendNotification(supabase: any, rule: NotificationRule, task: Tas
 
   try {
     const apiUrl = `${instance.api_url}/send/text`;
+
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(supabase, instance, formattedNumber, 'process-notification-rules', message))) {
+      const errorMsg = 'Bloqueado: número não oficial (UAZAPI) só envia em grupos/canais. Use o número oficial (API Cloud).';
+      console.warn(`🚫 ${errorMsg}`);
+      await logNotification(supabase, rule, task?.id || null, 'failed', errorMsg);
+      return false;
+    }
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {

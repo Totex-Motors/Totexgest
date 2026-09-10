@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,8 @@ interface WhatsAppInstance {
   name: string;
   api_key: string;
   api_url: string;
+  provider?: string | null;
+  group_only?: boolean | null;
 }
 
 function formatPhone(phone: string): string {
@@ -33,11 +36,19 @@ function formatPhone(phone: string): string {
 }
 
 async function sendWhatsApp(
+  supabase: any,
   instance: WhatsAppInstance,
   phone: string,
   message: string
 ): Promise<boolean> {
   try {
+    const number = formatPhone(phone);
+
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(supabase, instance, number, "check-pending-meetings", message))) {
+      return false;
+    }
+
     const response = await fetch(`${instance.api_url}/send/text`, {
       method: "POST",
       headers: {
@@ -46,7 +57,7 @@ async function sendWhatsApp(
         token: instance.api_key,
       },
       body: JSON.stringify({
-        number: formatPhone(phone),
+        number,
         text: message,
       }),
     });
@@ -78,7 +89,7 @@ Deno.serve(async (req: Request) => {
     // Buscar instância CAROL
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
-      .select("id, name, api_key, api_url")
+      .select("id, name, api_key, api_url, provider, group_only")
       .eq("id", CAROL_INSTANCE_ID)
       .eq("status", "connected")
       .single();
@@ -222,7 +233,7 @@ Deno.serve(async (req: Request) => {
         `• *Reagendar* — se mudou a data\n\n` +
         `_Não deixa isso acumular_ 🚨`;
 
-      const sent = await sendWhatsApp(instance, teamMember.phone, message);
+      const sent = await sendWhatsApp(supabase, instance, teamMember.phone, message);
 
       if (sent) {
         results.notified++;

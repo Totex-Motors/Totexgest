@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { uazapiTargetAllowed } from '../_shared/wa-policy.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,8 +72,21 @@ async function executeGroupAction(action: string, participants: string[]): Promi
   return response.json()
 }
 
-// Enviar mensagem de texto
-async function sendTextMessage(number: string, text: string): Promise<void> {
+// Enviar mensagem de texto. Retorna false se a política bloquear o envio.
+async function sendTextMessage(number: string, text: string): Promise<boolean> {
+  // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal.
+  // Aqui só temos o token — resolve a instância pelo api_key; se não achar,
+  // trata como UAZAPI sem id (o guarda bloqueia número particular).
+  const { data: inst } = await supabase
+    .from('whatsapp_instances')
+    .select('id, provider, group_only')
+    .eq('api_key', UAZAPI_TOKEN)
+    .maybeSingle()
+  const waInstance = inst || { id: null, provider: 'uazapi', group_only: true }
+  if (!(await uazapiTargetAllowed(supabase, waInstance, number, 'whatsapp-group', text))) {
+    return false
+  }
+
   await fetch(`${UAZAPI_URL}/send/text`, {
     method: 'POST',
     headers: {
@@ -81,6 +95,7 @@ async function sendTextMessage(number: string, text: string): Promise<void> {
     },
     body: JSON.stringify({ number, text }),
   })
+  return true
 }
 
 serve(async (req: Request) => {
@@ -298,15 +313,21 @@ https://chat.whatsapp.com/${inviteCode}
 
 Esse convite expira em ${inviteExpires}.`
 
-      await sendTextMessage(formattedNumber, inviteMessage)
-      console.log(`Convite enviado para ${memberName}: https://chat.whatsapp.com/${inviteCode}`)
+      const inviteSent = await sendTextMessage(formattedNumber, inviteMessage)
+      if (inviteSent) {
+        console.log(`Convite enviado para ${memberName}: https://chat.whatsapp.com/${inviteCode}`)
+      } else {
+        console.warn(`Convite NÃO enviado para ${memberName} (bloqueado pela política UAZAPI só-grupos): https://chat.whatsapp.com/${inviteCode}`)
+      }
 
       return new Response(JSON.stringify({
         success: true,
-        invite_sent: true,
+        invite_sent: inviteSent,
         invite_code: inviteCode,
         invite_expires: participantResult.AddRequest.Expiration,
-        message: `Convite enviado para ${memberName} via WhatsApp. Expira em ${inviteExpires}.`
+        message: inviteSent
+          ? `Convite enviado para ${memberName} via WhatsApp. Expira em ${inviteExpires}.`
+          : `Convite gerado, mas NÃO enviado: número não oficial (UAZAPI) só envia em grupos/canais. Link: https://chat.whatsapp.com/${inviteCode} (expira em ${inviteExpires}).`
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

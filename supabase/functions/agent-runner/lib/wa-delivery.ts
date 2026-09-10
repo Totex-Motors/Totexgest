@@ -17,6 +17,7 @@
  * é preenchido pelo send-whatsapp-cloud / fluxo UAZAPI normal).
  */
 import { getIntegrationKey } from "../../_shared/config.ts";
+import { uazapiTargetAllowed } from "../../_shared/wa-policy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -38,11 +39,11 @@ export async function deliverFollowupWhatsApp(opts: DeliverOpts): Promise<void> 
   if (!text || !digits) return;
 
   // Carrega a instância (credenciais só aqui no servidor)
-  let instance: { id: string; api_url: string | null; api_key: string | null; metadata: Record<string, unknown> | null } | null = null;
+  let instance: { id: string; api_url: string | null; api_key: string | null; metadata: Record<string, unknown> | null; provider?: string | null; group_only?: boolean | null } | null = null;
   if (instanceId) {
     const { data } = await db
       .from("whatsapp_instances")
-      .select("id, api_url, api_key, metadata")
+      .select("id, api_url, api_key, metadata, provider, group_only")
       .eq("id", instanceId)
       .maybeSingle();
     instance = data;
@@ -53,6 +54,10 @@ export async function deliverFollowupWhatsApp(opts: DeliverOpts): Promise<void> 
 
   // ─── UAZAPI: sem janela — texto livre direto ───
   if (instance && !isCloud && instance.api_url && instance.api_key) {
+    // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(db, instance, digits, "agent-runner/wa-delivery", text))) {
+      return;
+    }
     try {
       const res = await fetch(`${String(instance.api_url).replace(/\/$/, "")}/send/text`, {
         method: "POST",

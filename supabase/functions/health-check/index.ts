@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -167,10 +168,14 @@ async function checkWhatsAppInstances(supabase: any): Promise<string[]> {
 
 // ==================== SEND ALERT ====================
 
-async function sendWhatsAppAlert(message: string, instances: any[]) {
+async function sendWhatsAppAlert(supabase: any, message: string, instances: any[]) {
   // Tentar enviar por qualquer instância conectada (fallback se CAROL estiver offline)
   for (const inst of instances) {
     try {
+      // Regra inviolável: UAZAPI (não oficial) só envia pra grupo/canal
+      if (!(await uazapiTargetAllowed(supabase, inst, GROUP_JID, "health-check", message))) {
+        continue;
+      }
       const res = await fetch(`${UAZAPI_URL}/send/text`, {
         method: "POST",
         headers: { "Content-Type": "application/json", token: inst.api_key },
@@ -248,12 +253,12 @@ Deno.serve(async (req) => {
     // Buscar instâncias conectadas pra enviar o alerta (fallback)
     const { data: connectedInstances } = await supabase
       .from("whatsapp_instances")
-      .select("name, api_key")
+      .select("id, name, api_key, provider, group_only")
       .eq("status", "connected")
       .not("teams", "eq", "{}");
 
     const alert = `🚨 *ALERTA SISTEMA*\n\n${failures.join("\n\n")}\n\n⏰ ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`;
-    await sendWhatsAppAlert(alert, connectedInstances || []);
+    await sendWhatsAppAlert(supabase, alert, connectedInstances || []);
     console.error("Health check failures:", failures);
   } else {
     console.log("✅ All checks passed (functions + WhatsApp instances)");
