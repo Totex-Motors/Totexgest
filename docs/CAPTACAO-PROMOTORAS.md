@@ -84,11 +84,33 @@ nunca muda); o segundo é quem atende (especialista, pode mudar).
 6. Como promotora, no console: `supabase.from('leads').select('*')` → só os
    dela; `insert`/`update` direto → erro de RLS.
 
+## Fase 4 — Handoff (entregue)
+
+Fluxo: captura → score → **rodízio** de especialista → **tarefa** (`company_activities`,
+tipo `call`, prioridade por temperatura) → **aviso WhatsApp** (especialista + grupo)
+→ **1º contato** detectado (WhatsApp enviado ao lead ou tarefa concluída) → **SLA**
+(cron 10 min: re-avisa; 2× SLA escala) → **retorno pra promotora** (`capture_lead_events`).
+
+| Peça | Onde |
+|---|---|
+| Config por tenant | `capture_handoff_config` — UI em Configurações › Comercial › **Captação (promotoras)** |
+| Rodízio | `capture_pick_specialist()` — lista configurada ou todos os vendedores ativos |
+| Handoff | `capture_handoff(lead_id)` — chamado por `create_capture_lead`; grava `leads.handoff_*`, `metadata.handoff` |
+| Aviso | edge function `capture-handoff` (`mode=notify`), disparada do banco via pg_net |
+| SLA | cron `capture-sla` → `capture-handoff` (`mode=sla`): `sla_breached` → `escalated` |
+| 1º contato | triggers em `whatsapp_messages` (is_from_me) e `company_activities` (completed) → `first_contact_at` |
+| Retorno | `capture_lead_events` (handoff / contacted / stage / won / lost / reassigned) — tela Hoje ("Retornos") e Meus Leads (linha do tempo) |
+
+Canal de aviso: usa a instância UAZAPI + grupo configurados; vazio = herda de
+`operation_alert_config` (Torre de Controle). Cloud API (número oficial) não serve
+pra isso — exige template.
+
+Funil: o handoff usa o funil do tenant cujo nome começa com "Capta" (na Totex, o
+**Captação Tamboré** já existente). Estágio `is_won` = "carro captado".
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.
-- Fase 4: funil dedicado por padrão + handoff automático (tarefa + alerta pro
-  especialista, SLA, retorno pra promotora).
 - Fase 5: `performance_goals` (metas reais no lugar do placeholder 8/dia, 40/semana),
   painel do gestor, ranking.
 - Fase 6: `script_cards` / `training_progress` no banco + roleplay com IA.

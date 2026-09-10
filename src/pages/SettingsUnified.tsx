@@ -18,6 +18,7 @@ import {
   Headphones,
   Star,
   Users,
+  HandCoins,
   Phone,
   Percent,
   Bell,
@@ -46,6 +47,7 @@ import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSe
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
+import { CaptureHandoffSection } from "@/components/settings/sections/CaptureHandoffSection";
 import { NotificationRulesBuilder } from "@/components/settings/NotificationRulesBuilder";
 import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConfig";
 
@@ -201,6 +203,12 @@ const navigationSections: NavSection[] = [
         label: "Automações",
         icon: Zap,
         description: "Regras automáticas: quando um lead muda de etapa, dispare WhatsApp, crie tarefa, notifique o gestor, etc.",
+      },
+      {
+        id: "captacao",
+        label: "Captação (promotoras)",
+        icon: HandCoins,
+        description: "Handoff dos leads captados pelas promotoras: quem recebe (rodízio), SLA por temperatura, escalonamento e canal de aviso.",
       },
     ],
   },
@@ -492,6 +500,8 @@ function SettingsContent({ section }: { section: string }) {
       return <SuperAdminTenantsSection />;
     case "superadmin-destinos":
       return <StandHandoffSection />;
+    case "captacao":
+      return <CaptureHandoffSection />;
 
     default:
       return <ModulesSection />;

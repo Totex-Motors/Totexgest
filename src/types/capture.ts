@@ -84,8 +84,38 @@ export interface CaptureLead {
   seller_qualification: SellerQualification | null;
   stage_name: string | null;
   stage_position: number | null;
+  stage_is_won: boolean;
+  stage_is_lost: boolean;
   sales_rep_name: string | null;
+  /** Fase 4: estado do handoff pro especialista */
+  handoff_status: CaptureHandoffStatus | null;
+  handoff_at: string | null;
+  first_contact_at: string | null;
   vehicle: SellerVehicle | null;
+}
+
+export type CaptureHandoffStatus =
+  | "pending" | "notified" | "contacted" | "sla_breached" | "escalated" | "unassigned" | "skipped";
+
+export const HANDOFF_STATUS_LABEL: Record<CaptureHandoffStatus, string> = {
+  pending: "Aguardando especialista",
+  notified: "Especialista avisado",
+  contacted: "Contatado",
+  sla_breached: "Atrasado (SLA)",
+  escalated: "Escalado pro gestor",
+  unassigned: "Sem especialista",
+  skipped: "Sem handoff",
+};
+
+export interface CaptureHandoffResult {
+  assigned: boolean;
+  specialist_id?: string;
+  specialist_name?: string;
+  task_id?: string;
+  temperatura?: CaptureTemperatura;
+  sla_minutes?: number;
+  status?: CaptureHandoffStatus;
+  reason?: string;
 }
 
 /** Payload do create_capture_lead (Quick Capture) */
@@ -114,6 +144,7 @@ export interface CreateCaptureLeadResult {
   duplicate: boolean;
   score: number;
   temperatura: CaptureTemperatura;
+  handoff?: CaptureHandoffResult;
 }
 
 export interface CaptureHomeStats {
@@ -125,6 +156,9 @@ export interface CaptureHomeStats {
   pendentes_complemento?: number;
   handoff_pendente?: number;
   em_atendimento?: number;
+  contatados_semana?: number;
+  captados_mes?: number;
+  retornos_nao_lidos?: number;
 }
 
 /** Espelho em TS da regra de score do banco (compute_capture_score) — pra preview ao vivo no form. */

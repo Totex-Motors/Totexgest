@@ -187,10 +187,24 @@ export default function CaptureNewLead() {
           </Badge>
           <span className="text-sm text-muted-foreground">Score {done.score}/100</span>
         </div>
+        {done.handoff?.assigned ? (
+          <p className="text-sm">
+            🤝 Passado pra <strong>{done.handoff.specialist_name?.split(" ")[0] ?? "especialista"}</strong>
+            {done.temperatura !== "frio" && done.handoff.sla_minutes
+              ? <> — contato em até <strong>{done.handoff.sla_minutes} min</strong>.</>
+              : <> — entrou em nutrição.</>}
+          </p>
+        ) : done.handoff?.reason === "no_specialist" ? (
+          <p className="text-xs text-amber-700">Nenhum especialista configurado — avise o gestor (Configurações › Captação).</p>
+        ) : null}
         <Card className="text-left bg-muted/40">
           <CardContent className="pt-4 pb-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Diga agora</p>
-            <p className="text-sm leading-relaxed">“{closing.text}”</p>
+            <p className="text-sm leading-relaxed">
+              “{done.handoff?.assigned && done.handoff.specialist_name
+                ? closing.text.replace("nosso especialista", `${done.handoff.specialist_name.split(" ")[0]}, nosso especialista,`)
+                : closing.text}”
+            </p>
           </CardContent>
         </Card>
         <div className="grid gap-2">
