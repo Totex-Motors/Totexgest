@@ -108,6 +108,18 @@ pra isso — exige template.
 Funil: o handoff usa o funil do tenant cujo nome começa com "Capta" (na Totex, o
 **Captação Tamboré** já existente). Estágio `is_won` = "carro captado".
 
+**Funil único + automações** (`20260910180000_captacao_funil_automacoes.sql`):
+o Kanban é por **deals**, então `capture_handoff` cria um deal por lead captado
+(`deals.metadata.captacao = true`); `deals.pipeline_stage_id` é a fonte da verdade
+e o trigger `sync_lead_from_deal` espelha em `leads`. Etapas do Captação Tamboré:
+Nova Captação → Contato feito → Avaliação agendada → Veio na loja / fotos →
+Proposta → Nutrição (não agendou) → Ganho | Perdido. `capture_move_stage(lead,
+'Padrão%')` move só pra frente, por nome (funciona em qualquer tenant que use os
+mesmos nomes). Gatilhos: 1º contato → "Contato%"; tarefa trade_eval/visit/meeting/
+video_call com data → "Avalia%"; concluída (trade_eval/visit/photo_session) →
+"Veio%"; tarefa proposal → "Proposta%"; `capture_stale_followups(3)` (cron do SLA)
+cria follow-up + avisa o grupo após 3 dias em "Contato feito" sem avaliação.
+
 **Resumo da Captação** (grupo "CRM Captação Tamboré", mesmo canal da Torre de
 Controle): cron `capture-summary` de hora em hora → `capture-handoff` `mode=summary`
 posta nas horas de `capture_handoff_config.summary_hours` (default 13h e 19h BRT).
