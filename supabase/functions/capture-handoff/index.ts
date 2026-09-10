@@ -106,9 +106,23 @@ async function sendCloudTemplate(sb: any, tenantId: string, toNumber: string, te
   const phoneNumberId = inst?.phone_number_id || inst?.metadata?.phone_number_id;
   if (!inst?.api_key || !phoneNumberId) return { sent: false, reason: "sem instância Cloud API configurada" };
 
-  const { data: tpl } = await sb.from("whatsapp_cloud_templates")
-    .select("status, language").eq("tenant_id", tenantId).eq("name", templateName).maybeSingle();
+  let { data: tpl } = await sb.from("whatsapp_cloud_templates")
+    .select("id, status, language, meta_waba_id").eq("tenant_id", tenantId).eq("name", templateName).maybeSingle();
   if (!tpl) return { sent: false, reason: `template "${templateName}" não cadastrado` };
+  // Ainda não aprovado no CRM? Pergunta pra Meta (a aprovação chega sem ninguém clicar "sincronizar").
+  if (String(tpl.status).toUpperCase() !== "APPROVED" && tpl.meta_waba_id) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${tpl.meta_waba_id}/message_templates?name=${encodeURIComponent(templateName)}&fields=status`, {
+        headers: { Authorization: `Bearer ${inst.api_key}` },
+      });
+      const j = await r.json().catch(() => ({}));
+      const live = j?.data?.[0]?.status;
+      if (live && live !== tpl.status) {
+        await sb.from("whatsapp_cloud_templates").update({ status: live, last_synced_at: new Date().toISOString() }).eq("id", tpl.id);
+        tpl = { ...tpl, status: live };
+      }
+    } catch { /* fica com o status do banco */ }
+  }
   if (String(tpl.status).toUpperCase() !== "APPROVED") return { sent: false, reason: `template "${templateName}" ainda ${tpl.status}` };
 
   try {
