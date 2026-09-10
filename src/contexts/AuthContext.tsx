@@ -7,7 +7,8 @@ export interface TeamMember {
   tenant_id: string;
   email: string;
   name: string;
-  role: 'admin' | 'cs' | 'comercial' | 'closer' | 'sdr' | 'geral' | 'user';
+  /** promotora = captação de veículos em campo (workspace /captacao, sem CRM completo) */
+  role: 'admin' | 'cs' | 'comercial' | 'closer' | 'sdr' | 'geral' | 'user' | 'promotora';
   team: 'cs' | 'comercial' | 'marketing' | 'suporte' | 'admin' | null;
   phone: string | null;
   avatar_url: string | null;
@@ -35,6 +36,8 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isCS: boolean;
   isComercial: boolean;
+  /** Promotora de captação: só enxerga /captacao (RoleRoute + RLS restritiva no banco) */
+  isPromotora: boolean;
   canAccessSettings: boolean;
   canAccessHR: boolean;
   /** tenant do usuário logado (team_members.tenant_id) — null enquanto carrega */
@@ -291,6 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = teamMember?.role === 'admin';
   const isCS = teamMember?.role === 'cs' || teamMember?.team === 'cs';
   const isComercial = teamMember?.role === 'comercial' || teamMember?.role === 'closer' || teamMember?.role === 'sdr' || teamMember?.team === 'comercial';
+  const isPromotora = teamMember?.role === 'promotora';
   const canAccessSettings = teamMember?.role === 'admin' || teamMember?.role === 'comercial';
   const canAccessHR = teamMember?.role !== 'closer' && teamMember?.role !== 'sdr';
 
@@ -309,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin,
       isCS,
       isComercial,
+      isPromotora,
       canAccessSettings,
       canAccessHR,
       tenantId: teamMember?.tenant_id ?? null,

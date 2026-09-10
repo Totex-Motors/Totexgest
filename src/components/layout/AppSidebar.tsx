@@ -31,6 +31,7 @@ import {
   Upload,
   Lightbulb,
   Instagram,
+  HandCoins,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -101,6 +102,8 @@ const sections: NavSection[] = [
       { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
       { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
+      // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
+      { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins },
     ],
   },
   {
