@@ -94,8 +94,52 @@ async function sendUazapi(sb: any, ch: Channel, number: string, text: string, me
   }
 }
 
+// ─── Privado = SÓ API OFICIAL (Cloud API) com template aprovado ──────────────
+// Fora da janela de 24h a Meta só aceita template; e a UAZAPI nunca fala no
+// privado (regra inviolável). Devolve { sent, reason }.
+// deno-lint-ignore no-explicit-any
+async function sendCloudTemplate(sb: any, tenantId: string, toNumber: string, templateName: string, params: string[]): Promise<{ sent: boolean; reason?: string }> {
+  const { data: inst } = await sb.from("whatsapp_instances")
+    .select("id, api_key, phone_number_id, metadata")
+    .eq("tenant_id", tenantId).eq("provider", "meta_cloud").not("api_key", "is", null)
+    .limit(1).maybeSingle();
+  const phoneNumberId = inst?.phone_number_id || inst?.metadata?.phone_number_id;
+  if (!inst?.api_key || !phoneNumberId) return { sent: false, reason: "sem instância Cloud API configurada" };
+
+  const { data: tpl } = await sb.from("whatsapp_cloud_templates")
+    .select("status, language").eq("tenant_id", tenantId).eq("name", templateName).maybeSingle();
+  if (!tpl) return { sent: false, reason: `template "${templateName}" não cadastrado` };
+  if (String(tpl.status).toUpperCase() !== "APPROVED") return { sent: false, reason: `template "${templateName}" ainda ${tpl.status}` };
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${inst.api_key}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: toNumber,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: tpl.language || "pt_BR" },
+          components: params.length ? [{ type: "body", parameters: params.map((p) => ({ type: "text", text: p })) }] : [],
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.error) {
+      console.error("[capture-handoff] cloud template erro:", JSON.stringify(data).slice(0, 300));
+      return { sent: false, reason: data?.error?.message || `HTTP ${res.status}` };
+    }
+    return { sent: true };
+  } catch (e) {
+    return { sent: false, reason: (e as Error).message };
+  }
+}
+
 interface Channel {
   instanceId: string | null;
+  specialistTemplate: string;
   apiUrl: string | null;
   apiKey: string | null;
   groupJid: string | null;
@@ -120,9 +164,10 @@ async function loadChannel(sb: any, tenantId: string): Promise<Channel> {
   }
   return {
     instanceId,
+    specialistTemplate: cfg?.specialist_template_name || "captacao_lead_especialista",
     apiUrl, apiKey,
     groupJid: cfg?.whatsapp_group_jid || op?.whatsapp_group_jid || null,
-    notifySpecialist: cfg?.notify_specialist ?? false,
+    notifySpecialist: cfg?.notify_specialist ?? true,
     notifyGroup: cfg?.notify_group ?? (op?.whatsapp_enabled ?? true),
     slaQuente: cfg?.sla_minutes_quente ?? 30,
     slaMorno: cfg?.sla_minutes_morno ?? 240,
@@ -174,7 +219,7 @@ async function notify(sb: any, leadId: string, force = false) {
   const sla = temp === "quente" ? ch.slaQuente : ch.slaMorno;
   const summary = leadSummary(lead, vehicle, promo);
 
-  let sentSpecialist = false, sentGroup = false;
+  let sentSpecialist = false, sentGroup = false, specialistReason: string | undefined;
   if (ch.apiUrl && ch.apiKey) {
     const m = mentionOf(spec);
     // Grupo com @menção do especialista (canal principal — não tem risco de ban)
@@ -182,12 +227,23 @@ async function notify(sb: any, leadId: string, force = false) {
       const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} → ${m.text}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*. A tarefa já está no seu CRM.`;
       sentGroup = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
     }
-    // Privado só se o gestor ligar de propósito (desligado por padrão — risco de banimento)
-    const specNumber = toWaNumber(spec?.phone);
-    if (ch.notifySpecialist && specNumber) {
-      const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} — ${firstName(spec?.name)}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*.`;
-      sentSpecialist = await sendUazapi(sb, ch,specNumber, txt);
-    }
+  }
+  // Privado do especialista: SÓ pelo número oficial (Cloud API) com template aprovado.
+  // A UAZAPI nunca fala no privado (regra inviolável).
+  const specNumber = toWaNumber(spec?.phone);
+  if (ch.notifySpecialist && specNumber) {
+    const q = lead.seller_qualification || {};
+    const veic = [vehicle?.description || [vehicle?.brand, vehicle?.model].filter(Boolean).join(" ") || "veículo", vehicle?.year_model].filter(Boolean).join(" ");
+    const r = await sendCloudTemplate(sb, lead.tenant_id, specNumber, ch.specialistTemplate, [
+      firstName(spec?.name) || "especialista",
+      `${lead.name} ${fmtPhone(lead.phone)}`,
+      veic,
+      PRAZO_LABEL[q.prazo_venda] || "—",
+      String(sla),
+    ]);
+    sentSpecialist = r.sent;
+    specialistReason = r.reason;
+    if (!r.sent) console.warn("[capture-handoff] privado não enviado:", r.reason);
   }
 
   await sb.from("leads").update({
@@ -195,11 +251,11 @@ async function notify(sb: any, leadId: string, force = false) {
     metadata: {
       ...(lead.metadata || {}),
       handoff: { ...handoff, notified_at: new Date().toISOString(), sent_specialist: sentSpecialist, sent_group: sentGroup,
-                 channel_ok: !!(ch.apiUrl && ch.apiKey) },
+                 specialist_reason: specialistReason ?? null, channel_ok: !!(ch.apiUrl && ch.apiKey) },
     },
   }).eq("id", leadId);
 
-  return { ok: true, sentSpecialist, sentGroup, channel: !!(ch.apiUrl && ch.apiKey) };
+  return { ok: true, sentSpecialist, specialistReason, sentGroup, channel: !!(ch.apiUrl && ch.apiKey) };
 }
 
 // ─── sla ─────────────────────────────────────────────────────────────────────
@@ -233,7 +289,7 @@ async function runSla(sb: any) {
         const m = mentionOf(spec);
         const txt = `⏰ *SLA estourado* — ${m.text}, o lead *${lead.name}* (${fmtPhone(lead.phone)}) da captação está há *${waiting} min* sem 1º contato. Chama ele agora?`;
         if (ch.notifyGroup && ch.groupJid) sent = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
-        if (ch.notifySpecialist && m.number) await sendUazapi(sb, ch,m.number, txt);
+        // (privado só por template oficial — o SLA fica no grupo com @menção)
       }
       await sb.from("leads").update({
         handoff_status: "sla_breached",

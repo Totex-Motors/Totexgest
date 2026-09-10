@@ -164,10 +164,15 @@ export function CaptureHandoffSection() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <Label>Avisar também no privado do especialista</Label>
-              <p className="text-xs text-amber-700">⚠️ Mensagem direta pela API não oficial pode banir o número. Deixe desligado.</p>
+              <Label>Avisar também no privado do especialista (número OFICIAL, template)</Label>
+              <p className="text-xs text-muted-foreground">Vai pelo Cloud API com template aprovado pela Meta. A API não oficial nunca manda no privado.</p>
             </div>
             <Switch checked={form.notify_specialist} onCheckedChange={(v) => setForm({ ...form, notify_specialist: v })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Nome do template (Cloud API)</Label>
+            <Input value={form.specialist_template_name} onChange={(e) => setForm({ ...form, specialist_template_name: e.target.value.trim() })} placeholder="captacao_lead_especialista" />
+            <p className="text-xs text-muted-foreground">Variáveis na ordem: 1 nome do especialista · 2 cliente + telefone · 3 carro · 4 prazo · 5 minutos do SLA. Só envia quando o template estiver APROVADO.</p>
           </div>
           <div className="flex items-center justify-between">
             <div>

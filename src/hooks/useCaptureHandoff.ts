@@ -23,18 +23,21 @@ export interface CaptureHandoffConfig {
   /** Resumo da captação no grupo — horas (BRT) em que posta */
   summary_enabled: boolean;
   summary_hours: number[];
+  /** Template Cloud API do aviso privado do especialista */
+  specialist_template_name: string;
 }
 
 export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
   summary_enabled: true,
   summary_hours: [13, 19],
+  specialist_template_name: "captacao_lead_especialista",
   enabled: true,
   specialist_member_ids: [],
   last_assigned_member_id: null,
   sla_minutes_quente: 30,
   sla_minutes_morno: 240,
   escalate_to_member_id: null,
-  notify_specialist: false,
+  notify_specialist: true,
   notify_group: true,
   whatsapp_instance_id: null,
   whatsapp_group_jid: null,
