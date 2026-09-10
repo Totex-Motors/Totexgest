@@ -108,6 +108,17 @@ pra isso — exige template.
 Funil: o handoff usa o funil do tenant cujo nome começa com "Capta" (na Totex, o
 **Captação Tamboré** já existente). Estágio `is_won` = "carro captado".
 
+## Gamificação — Prêmios por meta (entregue)
+
+| Peça | Onde |
+|---|---|
+| Catálogo | `capture_rewards` (nome, descrição, imagem, critério, meta, estoque, ativo) — UI em Configurações › Comercial › **Prêmios da captação** ("Gerenciar Prêmios" + "Novo Prêmio") |
+| Critérios | `leads_semana` (padrão), `pontos_semana` (10/lead + 20/quente), `leads_mes` — semana/mês no fuso SP |
+| Progresso | RPC `capture_reward_progress()` → tela Hoje (prêmio em destaque no card da meta) e Perfil (todos, com barra) |
+| Resgate | RPC `claim_capture_reward(id)` valida meta + estoque no servidor, 1 resgate por promotora/prêmio/período; gestor marca "Entregue" na mesma tela |
+| Imagens | bucket público `capture-rewards` (upload no dialog) ou URL; o Outback está em `public/rewards/outback-vale-presente.jpg` |
+| Seed | "Voucher Outback R$ 100,00" — 40 leads na semana, estoque 25 (tenant Totex Motors) |
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.
