@@ -14,6 +14,7 @@ import { useSignedUrl } from '@/hooks/useSignedUrl';
 import { useConversationMessages } from '@/hooks/useWhatsAppInbox';
 import { WhatsAppMessage, WhatsAppReaction } from '@/hooks/useWhatsAppEngagement';
 import { supabase } from '@/lib/supabase';
+import { assertWaTargetAllowed } from '@/lib/waPolicy';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { MaterialsLibraryModal } from '@/components/sales/MaterialsLibraryModal';
@@ -1329,6 +1330,8 @@ const isCloudAPI = (instance: any): boolean => {
         await sendViaCloudAPI({ action: 'send_text', phone: resolvedPhone, text: messageText });
       } else {
         // UAZAPI: envio direto
+        // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+        await assertWaTargetAllowed(instance.id, resolvedPhone, 'inbox', messageText);
         const metadata = instance.metadata as Record<string, any> || {};
         const uazapiUrl = instance.api_url || metadata.uazapi_url;
 
@@ -1479,6 +1482,8 @@ const isCloudAPI = (instance: any): boolean => {
         await sendViaCloudAPI({ action: 'send_audio', phone: resolvedPhone, media_url: mediaUrl });
       } else {
         // UAZAPI: envio direto via base64
+        // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+        await assertWaTargetAllowed(instance.id, resolvedPhone, 'inbox', '[Áudio]');
         const base64Audio = await blobToBase64(audioBlob);
         const metadata = instance.metadata as Record<string, any> || {};
         const uazapiUrl = instance.api_url || metadata.uazapi_url;
@@ -1637,6 +1642,11 @@ const isCloudAPI = (instance: any): boolean => {
       const metadata = instance.metadata as Record<string, any> || {};
       const uazapiUrl = instance.api_url || metadata.uazapi_url;
 
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+      if (!useCloudAPI) {
+        await assertWaTargetAllowed(instance.id, resolvedPhone, 'inbox', message.trim() || `[${stagedFiles.length} arquivo(s)]`);
+      }
+
       let successCount = 0;
       let errorCount = 0;
 
@@ -1735,7 +1745,7 @@ const isCloudAPI = (instance: any): boolean => {
       return;
     }
 
-    // UAZAPI: envio direto via base64
+    // UAZAPI: envio direto via base64 (política já checada em handleSendMaterial)
     const metadata = instance.metadata as Record<string, any> || {};
     const uazapiUrl = instance.api_url || metadata.uazapi_url;
 
@@ -1797,6 +1807,11 @@ const isCloudAPI = (instance: any): boolean => {
     try {
       const instance = await getInstance();
       const resolvedPhone = await resolveWhatsAppPhone();
+
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+      if (!isCloudAPI(instance)) {
+        await assertWaTargetAllowed(instance.id, resolvedPhone, 'inbox', `[Material] ${materialsToSend.map(m => m.name).join(', ')}`);
+      }
 
       let successCount = 0;
       let errorCount = 0;

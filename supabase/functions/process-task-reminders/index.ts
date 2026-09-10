@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,6 +35,8 @@ interface WhatsAppInstance {
   name: string;
   api_key: string;
   api_url: string;
+  provider?: string | null;
+  group_only?: boolean | null;
 }
 
 /**
@@ -65,7 +68,10 @@ function formatDateTime(dateString: string): { date: string; time: string } {
 /**
  * Envia mensagem WhatsApp via UAZAPI
  */
-async function sendWhatsApp(instance: WhatsAppInstance, phone: string, message: string): Promise<boolean> {
+async function sendWhatsApp(supabase: any, instance: WhatsAppInstance, phone: string, message: string): Promise<boolean> {
+  const number = formatPhone(phone);
+  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+  if (!(await uazapiTargetAllowed(supabase, instance, number, "process-task-reminders", message))) return false;
   try {
     const apiUrl = `${instance.api_url}/send/text`;
 
@@ -77,7 +83,7 @@ async function sendWhatsApp(instance: WhatsAppInstance, phone: string, message: 
         "token": instance.api_key,
       },
       body: JSON.stringify({
-        number: formatPhone(phone),
+        number,
         text: message,
       }),
     });
@@ -147,7 +153,7 @@ Deno.serve(async (req: Request) => {
     // Buscar instância CAROL
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
-      .select("id, name, api_key, api_url")
+      .select("id, name, api_key, api_url, provider, group_only")
       .eq("id", CAROL_INSTANCE_ID)
       .eq("status", "connected")
       .single();
@@ -231,7 +237,7 @@ Deno.serve(async (req: Request) => {
       const orgName = (task as any).organization?.name;
       const message = generateReminderMessage(task, leadName, orgName);
 
-      const sent = await sendWhatsApp(instance, teamMember.phone, message);
+      const sent = await sendWhatsApp(supabase, instance, teamMember.phone, message);
 
       if (sent) {
         results.sent++;
@@ -248,7 +254,7 @@ Deno.serve(async (req: Request) => {
               .single();
 
             if (participant?.phone) {
-              await sendWhatsApp(instance, participant.phone, message);
+              await sendWhatsApp(supabase, instance, participant.phone, message);
             }
           }
         }
@@ -327,7 +333,7 @@ Deno.serve(async (req: Request) => {
       message += `⏰ Era para ${time}\n\n`;
       message += `_Essa tarefa é CRUCIAL e precisa ser feita HOJE. Não deixe passar!_`;
 
-      const sent = await sendWhatsApp(instance, member.phone, message);
+      const sent = await sendWhatsApp(supabase, instance, member.phone, message);
 
       if (sent) {
         criticalResults.sent++;

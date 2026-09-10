@@ -47,6 +47,10 @@ interface WhatsAppInstance {
   api_url: string;
   webhook_url: string;
   metadata: any;
+  /** 'uazapi' (não oficial — só grupos/canais) | 'meta_cloud' (API oficial) */
+  provider?: string | null;
+  /** Política WA: uazapi só envia pra grupo/canal (a regra é por provider; campo só informativo) */
+  group_only?: boolean | null;
 }
 
 interface InstanceStatus {
@@ -121,7 +125,7 @@ export function WhatsAppInstancesSection() {
     setLoading(true);
     const [instRes, membersRes] = await Promise.all([
       // api_key fica fora do select — o browser não precisa (e não deve) vê-la
-      supabase.from("whatsapp_instances").select("id, name, phone_number, teams, status, api_url, webhook_url, metadata").order("created_at", { ascending: false }),
+      supabase.from("whatsapp_instances").select("id, name, phone_number, teams, status, api_url, webhook_url, metadata, provider, group_only").order("created_at", { ascending: false }),
       supabase.from("team_members").select("id, name, email, team, role, whatsapp_instance_id, is_active").eq("is_active", true).order("name"),
     ]);
     setInstances(instRes.data || []);
@@ -346,6 +350,15 @@ export function WhatsAppInstancesSection() {
                         >
                           {online ? "● Conectado" : "Desconectado"}
                         </Badge>
+                        {inst.provider !== "meta_cloud" && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-normal text-muted-foreground"
+                            title="Número não oficial (UAZAPI): só envia em grupos e canais"
+                          >
+                            Só grupos
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground">{team ? teamLabel[team] || team : ""}</span>
                       </div>
 

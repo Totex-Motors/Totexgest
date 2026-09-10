@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { assertWaTargetAllowed } from "@/lib/waPolicy";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -309,6 +310,9 @@ export function NotificationRulesBuilder() {
           targetNumber = "55" + targetNumber;
         }
       }
+
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+      await assertWaTargetAllowed(formData.action_instance_id, targetNumber, "notification_rule_test", testMessage);
 
       // Enviar via UAZAPI - formato correto
       const apiUrl = `${instanceData.api_url}/send/text`;

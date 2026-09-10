@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -892,7 +893,7 @@ Deno.serve(async (req: Request) => {
                 if (franchiseCampaign.whatsapp_instance_id) {
                   const { data: instance } = await supabase
                     .from("whatsapp_instances")
-                    .select("id, api_key, api_url")
+                    .select("id, api_key, api_url, provider, group_only")
                     .eq("id", franchiseCampaign.whatsapp_instance_id)
                     .eq("status", "connected")
                     .maybeSingle();
@@ -910,16 +911,19 @@ Deno.serve(async (req: Request) => {
                       .replace("{{seller_name}}", currentSalesRepName || "");
 
                     const franchiseePhone = franchisee.phone.replace(/[^0-9]/g, "");
-                    try {
-                      const resp = await fetch(`${instance.api_url}/send/text`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "Accept": "application/json", "token": instance.api_key },
-                        body: JSON.stringify({ number: franchiseePhone, text: msg }),
-                      });
-                      whatsappSent = resp.ok;
-                      if (!resp.ok) console.error("[receive-lead] Reconversion franchise WhatsApp error:", await resp.text());
-                    } catch (wppErr) {
-                      console.error("[receive-lead] Reconversion franchise WhatsApp fetch error:", wppErr);
+                    // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+                    if (await uazapiTargetAllowed(supabase, instance, franchiseePhone, "receive-lead", msg)) {
+                      try {
+                        const resp = await fetch(`${instance.api_url}/send/text`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Accept": "application/json", "token": instance.api_key },
+                          body: JSON.stringify({ number: franchiseePhone, text: msg }),
+                        });
+                        whatsappSent = resp.ok;
+                        if (!resp.ok) console.error("[receive-lead] Reconversion franchise WhatsApp error:", await resp.text());
+                      } catch (wppErr) {
+                        console.error("[receive-lead] Reconversion franchise WhatsApp fetch error:", wppErr);
+                      }
                     }
                   }
                 }
@@ -1534,7 +1538,7 @@ Deno.serve(async (req: Request) => {
               if (franchiseCampaign.whatsapp_instance_id) {
                 const { data: instance } = await supabase
                   .from("whatsapp_instances")
-                  .select("id, api_key, api_url")
+                  .select("id, api_key, api_url, provider, group_only")
                   .eq("id", franchiseCampaign.whatsapp_instance_id)
                   .eq("status", "connected")
                   .maybeSingle();
@@ -1554,25 +1558,28 @@ Deno.serve(async (req: Request) => {
 
                   // Send via UAZAPI
                   const franchiseePhone = franchisee.phone.replace(/[^0-9]/g, "");
-                  try {
-                    const resp = await fetch(`${instance.api_url}/send/text`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "token": instance.api_key,
-                      },
-                      body: JSON.stringify({
-                        number: franchiseePhone,
-                        text: msg,
-                      }),
-                    });
-                    whatsappSent = resp.ok;
-                    if (!resp.ok) {
-                      console.error("[receive-lead] Franchise WhatsApp error:", await resp.text());
+                  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+                  if (await uazapiTargetAllowed(supabase, instance, franchiseePhone, "receive-lead", msg)) {
+                    try {
+                      const resp = await fetch(`${instance.api_url}/send/text`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Accept": "application/json",
+                          "token": instance.api_key,
+                        },
+                        body: JSON.stringify({
+                          number: franchiseePhone,
+                          text: msg,
+                        }),
+                      });
+                      whatsappSent = resp.ok;
+                      if (!resp.ok) {
+                        console.error("[receive-lead] Franchise WhatsApp error:", await resp.text());
+                      }
+                    } catch (wppErr) {
+                      console.error("[receive-lead] Franchise WhatsApp fetch error:", wppErr);
                     }
-                  } catch (wppErr) {
-                    console.error("[receive-lead] Franchise WhatsApp fetch error:", wppErr);
                   }
                 }
               }

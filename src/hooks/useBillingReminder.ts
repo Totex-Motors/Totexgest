@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { assertWaTargetAllowed } from '@/lib/waPolicy';
 
 const DEFAULT_TEMPLATE = `Ola {{primeiro_nome}}! 👋
 
@@ -86,7 +87,7 @@ export function useSendBillingReminder() {
       // 2. Fetch CAROL instance
       const { data: instance, error: instError } = await supabase
         .from('whatsapp_instances' as any)
-        .select('api_url, api_key')
+        .select('id, api_url, api_key')
         .ilike('name', '%carol%')
         .eq('status', 'connected')
         .limit(1)
@@ -110,6 +111,10 @@ export function useSendBillingReminder() {
       const apiUrl = (instance as any).api_url as string;
       const apiKey = (instance as any).api_key as string;
       const headers = { 'Content-Type': 'application/json', token: apiKey };
+
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE).
+      // Cobre o texto e o botão PIX abaixo (mesmo destino).
+      await assertWaTargetAllowed((instance as any).id as string, phone, 'billing_reminder', message);
 
       // 5. Send text message
       const textResponse = await fetch(`${apiUrl}/send/text`, {

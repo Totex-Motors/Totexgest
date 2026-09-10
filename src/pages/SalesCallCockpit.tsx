@@ -16,6 +16,7 @@ import { useCockpitQueue, generateNotAnsweredMessages, generateFollowUpTask, ALL
 import { useCallHistory } from '@/hooks/useWavoip';
 import { useCreateTask, useCompleteTask } from '@/hooks/useTasks';
 import { supabase } from '@/lib/supabase';
+import { assertWaTargetAllowed } from '@/lib/waPolicy';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -466,6 +467,8 @@ Se houver histórico de conversa com o lead, use algo da conversa para personali
 
       // Send both messages sequentially (DB insert handled by whatsapp-webhook echo)
       const messages = [msg1, msg2].filter(m => m.trim());
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+      await assertWaTargetAllowed(instance.id, phone, 'cockpit', messages[0]);
       for (let i = 0; i < messages.length; i++) {
         const response = await fetch(`${uazapiUrl}/send/text`, {
           method: 'POST',
@@ -507,6 +510,8 @@ Se houver histórico de conversa com o lead, use algo da conversa para personali
       if (phone.length <= 11) phone = '55' + phone;
 
       const text = chatMessage.trim();
+      // REGRA INVIOLÁVEL: número não oficial só fala em grupo/canal (lança WA_POLICY_MESSAGE)
+      await assertWaTargetAllowed(instance.id, phone, 'cockpit', text);
       const response = await fetch(`${uazapiUrl}/send/text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'token': instance.api_key },

@@ -18,6 +18,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,13 +116,23 @@ async function upsertTradeIn(
   } catch (e) { console.error("[stand-handoff] upsertTradeIn err:", (e as Error).message); }
 }
 
-async function sendUazapi(apiUrl: string, apiKey: string, target: string, text: string): Promise<boolean> {
-  const base = (apiUrl || "").replace(/\/$/, "");
-  if (!base) { console.error("[stand-handoff] api_url vazio"); return false; }
+interface StandInstance {
+  id: string;
+  api_url: string;
+  api_key: string;
+  provider?: string | null;
+  group_only?: boolean | null;
+}
+
+async function sendUazapi(supabase: any, instance: StandInstance | null, target: string, text: string): Promise<boolean> {
+  const base = (instance?.api_url || "").replace(/\/$/, "");
+  if (!base || !instance) { console.error("[stand-handoff] api_url vazio"); return false; }
+  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+  if (!(await uazapiTargetAllowed(supabase, instance, target, "stand-handoff", text))) return false;
   try {
     const res = await fetch(`${base}/send/text`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "token": apiKey || "" },
+      headers: { "Content-Type": "application/json", "token": instance.api_key || "" },
       body: JSON.stringify({ number: target, text }),
     });
     return res.ok;
@@ -296,11 +307,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // 2. Instância do stand (host + token p/ enviar)
-    let apiUrl = "", apiKey = "";
+    let apiUrl = "";
+    let standInstance: StandInstance | null = null;
     if (standInstanceId) {
       const { data: inst } = await supabase
-        .from("whatsapp_instances").select("api_url, api_key").eq("id", standInstanceId).maybeSingle();
-      apiUrl = inst?.api_url || ""; apiKey = inst?.api_key || "";
+        .from("whatsapp_instances").select("id, api_url, api_key, provider, group_only").eq("id", standInstanceId).maybeSingle();
+      apiUrl = inst?.api_url || "";
+      standInstance = inst ? { ...inst, api_url: apiUrl, api_key: inst.api_key || "" } : null;
     }
 
     // 3. Monta o resumo formatado
@@ -343,7 +356,7 @@ Deno.serve(async (req: Request) => {
       const header = shouldForward
         ? `✅ *Lead qualificado — repassado${ownerLabel ? ` p/ ${ownerLabel}` : ""}*`
         : `🌱 *Lead qualificado — em nutrição (${tempLabel[temperatura || ""] || "frio"}), não repassado*`;
-      result.sent_to_group = await sendUazapi(apiUrl, apiKey, standGroupJid, `${header}\n\n${summaryText}`);
+      result.sent_to_group = await sendUazapi(supabase, standInstance, standGroupJid, `${header}\n\n${summaryText}`);
     }
 
     // 5. (removido) Não avisamos a loja por WhatsApp — o lead chega direto no CRM dela (passo 6).

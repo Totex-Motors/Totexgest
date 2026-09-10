@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -298,7 +299,7 @@ async function processCampaign(
     // MULTI-TENANT: instância do tenant
     const { data: instance } = await supabase
       .from('whatsapp_instances')
-      .select('api_key, api_url, name, provider, phone_number_id')
+      .select('id, api_key, api_url, name, provider, phone_number_id, group_only')
       .eq('id', selectedInstanceId)
       .eq('tenant_id', tenantId)
       .single();
@@ -390,6 +391,11 @@ async function processCampaign(
         const apiUrl = instance.api_url;
         if (!apiUrl) {
           throw new Error('whatsapp_instances.api_url não configurada para esta instância UAZAPI');
+        }
+        // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular.
+        // Lança erro → catch abaixo marca o campaign_lead como failed sem derrubar o batch.
+        if (!(await uazapiTargetAllowed(supabase, instance, formattedPhone, 'campaign-processor', resolvedMessage))) {
+          throw new Error('Bloqueado pela política UAZAPI: API não oficial só envia para grupos/canais');
         }
         sendResp = await fetch(`${apiUrl}/send/text`, {
           method: 'POST',

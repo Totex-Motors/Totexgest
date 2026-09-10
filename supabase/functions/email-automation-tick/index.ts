@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -325,12 +326,13 @@ async function executeNode(
           // Pega instância ativa DO TENANT
           const { data: instance } = await supabase
             .from("whatsapp_instances")
-            .select("api_url, api_key")
+            .select("id, api_url, api_key, provider, group_only")
             .eq("tenant_id", tenantId)
             .eq("status", "connected")
             .limit(1)
             .maybeSingle();
-          if (instance) {
+          // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+          if (instance && await uazapiTargetAllowed(supabase, instance, lead.phone, "email-automation-tick", text)) {
             try {
               await fetch(`${instance.api_url}/send/text`, {
                 method: "POST",

@@ -15,6 +15,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { requireIntegrationKey } from "../_shared/config.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,13 +51,23 @@ function normalizePhone(raw: string): string {
   return d;
 }
 
-async function sendUazapi(apiUrl: string, apiKey: string, number: string, text: string): Promise<void> {
-  const base = (apiUrl || "").replace(/\/$/, "");
+interface StandInstance {
+  id: string;
+  api_url: string;
+  api_key: string;
+  provider?: string | null;
+  group_only?: boolean | null;
+}
+
+async function sendUazapi(supabase: any, instance: StandInstance, number: string, text: string): Promise<void> {
+  const base = (instance?.api_url || "").replace(/\/$/, "");
   if (!base) { console.error("[stand-intake] sendUazapi: api_url vazio"); return; }
+  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+  if (!(await uazapiTargetAllowed(supabase, instance, number, "stand-intake", text))) return;
   try {
     await fetch(`${base}/send/text`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "token": apiKey || "" },
+      headers: { "Content-Type": "application/json", "token": instance.api_key || "" },
       body: JSON.stringify({ number, text }),
     });
   } catch (e) { console.error("[stand-intake] sendUazapi err:", (e as Error).message); }
@@ -127,7 +138,7 @@ Deno.serve(async (req: Request) => {
     // 3. Resolve instância do stand (host + token + valida tenant)
     const { data: instance } = await supabase
       .from("whatsapp_instances")
-      .select("id, api_url, api_key, tenant_id")
+      .select("id, api_url, api_key, tenant_id, provider, group_only")
       .eq("id", cfg.stand_instance_id)
       .maybeSingle();
     if (!instance?.api_url || !instance?.api_key) {
@@ -201,7 +212,7 @@ Regras: só preencha matched_tenant_id se houver correspondência clara com uma 
 
     // 6. Sem telefone → pede no grupo e para
     if (!customerPhone || customerPhone.length < 12) {
-      await sendUazapi(instance.api_url, instance.api_key, groupJid,
+      await sendUazapi(supabase, instance, groupJid,
         "🤖 Não consegui identificar o telefone do cliente. Pode mandar de novo com nome e número? Ex: \"Raphael (11969827881), interesse na BMW Z4, loja Quest\".");
       return json({ ignored: true, reason: "no_phone" });
     }
@@ -239,7 +250,7 @@ Regras: só preencha matched_tenant_id se houver correspondência clara com uma 
       .eq("slug", cfg.stand_agent_slug)
       .maybeSingle();
     if (!agent) {
-      await sendUazapi(instance.api_url, instance.api_key, groupJid,
+      await sendUazapi(supabase, instance, groupJid,
         "🤖 Lead registrado, mas o agente do stand não está configurado. Avise o suporte.");
       return json({ error: "agente do stand não encontrado" }, 400);
     }
@@ -304,7 +315,7 @@ Regras: só preencha matched_tenant_id se houver correspondência clara com uma 
     const confirm = statusLine +
       (carInterest ? `\n🚗 Interesse: ${carInterest}` : "") +
       (ownerDest ? `\n🏠 Loja dona: ${ownerDest.name}` : (extracted.store_mentioned ? `\n⚠️ Loja "${extracted.store_mentioned}" sem destino cadastrado — vou qualificar mesmo assim.` : ""));
-    await sendUazapi(instance.api_url, instance.api_key, groupJid, confirm);
+    await sendUazapi(supabase, instance, groupJid, confirm);
 
     return json({ success: true, lead_id: leadId, session_id: sessionId, matched_tenant_id: matchedTenantId });
   } catch (err) {

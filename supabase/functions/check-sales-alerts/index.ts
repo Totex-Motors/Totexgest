@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,9 +46,12 @@ function hoursAgo(dateStr: string): number {
 }
 
 async function sendGroupMessage(
-  instance: { api_url: string; api_key: string },
+  supabase: any,
+  instance: { id?: string; api_url: string; api_key: string; provider?: string | null; group_only?: boolean | null },
   text: string
 ): Promise<boolean> {
+  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+  if (!(await uazapiTargetAllowed(supabase, instance, GROUP_JID, "check-sales-alerts", text))) return false;
   try {
     const res = await fetch(`${instance.api_url}/send/text`, {
       method: "POST",
@@ -74,7 +78,7 @@ async function sendGroupMessage(
 async function getWhatsAppInstance(supabase: any) {
   const { data } = await supabase
     .from("whatsapp_instances")
-    .select("id, api_key, api_url")
+    .select("id, api_key, api_url, provider, group_only")
     .eq("status", "connected")
     .limit(1)
     .single();
@@ -214,7 +218,7 @@ async function checkNoFollowup(supabase: any, instance: any, quote: { quote: str
         `⚡ Prioridade MÁXIMA — entre em contato AGORA!`,
       ].join("\n");
 
-      if (await sendGroupMessage(instance, appendQuoteAndMeta(msgBase, quote))) {
+      if (await sendGroupMessage(supabase, instance, appendQuoteAndMeta(msgBase, quote))) {
         messagesSent++;
       }
     }
@@ -399,7 +403,7 @@ async function checkOverdueTasks(supabase: any, instance: any, quote: { quote: s
       ].join("\n");
     }
 
-    if (await sendGroupMessage(instance, appendQuoteAndMeta(msgBase, quote))) {
+    if (await sendGroupMessage(supabase, instance, appendQuoteAndMeta(msgBase, quote))) {
       messagesSent++;
     }
   }
@@ -496,7 +500,7 @@ async function checkUnconfirmedMeetings(supabase: any, instance: any, quote: { q
           `📞 Ligue para confirmar! (Tentativa ${attempts}/3)`,
         ].join("\n");
 
-        if (await sendGroupMessage(instance, appendQuoteAndMeta(msgBase, quote))) {
+        if (await sendGroupMessage(supabase, instance, appendQuoteAndMeta(msgBase, quote))) {
           messagesSent++;
         }
       }
@@ -569,7 +573,7 @@ async function checkUnconfirmedMeetings(supabase: any, instance: any, quote: { q
       ].join("\n");
     }
 
-    if (await sendGroupMessage(instance, appendQuoteAndMeta(msgBase2, quote))) {
+    if (await sendGroupMessage(supabase, instance, appendQuoteAndMeta(msgBase2, quote))) {
       messagesSent++;
     }
   }

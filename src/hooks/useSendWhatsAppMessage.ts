@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { callUazapi } from "@/lib/uazapiProxy";
+import { instanceCanSendTo, WA_POLICY_MESSAGE } from "@/lib/waPolicy";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
@@ -15,6 +16,8 @@ export interface WhatsAppInstanceLite {
   phone_number_id?: string | null;
   status?: string | null;
   pipeline_ids?: string[] | null;
+  /** Política WA: uazapi só envia pra grupo/canal (true por padrão no banco) */
+  group_only?: boolean | null;
 }
 
 interface SendTextInput {
@@ -153,7 +156,7 @@ function normalizePhone(raw: string): string {
 async function getInstance(instanceId: string, tenantId: string): Promise<WhatsAppInstanceLite> {
   const { data, error } = await supabase
     .from("whatsapp_instances")
-    .select("id, name, provider, phone_number_id, status")
+    .select("id, name, provider, phone_number_id, status, group_only")
     .eq("tenant_id", tenantId)
     .eq("id", instanceId)
     .maybeSingle();
@@ -190,14 +193,25 @@ export function useSendWhatsAppText() {
         return data;
       }
 
+      // REGRA INVIOLÁVEL: número não oficial (UAZAPI) só fala em grupo/canal.
+      // Checagem local antes de bater no proxy (o servidor também bloqueia).
+      if (!instanceCanSendTo(instance, phone)) {
+        throw new Error(WA_POLICY_MESSAGE);
+      }
+
       // UAZAPI (via edge uazapi-proxy — api_key nunca chega ao browser)
       const proxyRes = await callUazapi("send_text", instance.id, {
         number: normalizePhone(phone),
         text,
       });
       if (!proxyRes.ok) {
-        const errBody = JSON.stringify(proxyRes.data ?? {});
-        throw new Error(`UAZAPI erro: ${proxyRes.status} ${errBody}`);
+        // O proxy responde { ok:false, error } quando bloqueia pela política ou a UAZAPI falha —
+        // repassa a mensagem legível pro usuário (o caller mostra em toast).
+        const d = (proxyRes.data ?? {}) as Record<string, any>;
+        const readable = typeof d.error === "string" ? d.error
+          : typeof d.message === "string" ? d.message
+          : null;
+        throw new Error(readable || `UAZAPI erro: ${proxyRes.status} ${JSON.stringify(d)}`);
       }
       const result = proxyRes.data;
 

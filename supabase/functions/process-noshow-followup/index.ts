@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -163,7 +164,7 @@ serve(async (req) => {
     // 2. Buscar instância WhatsApp ativa
     const { data: instance } = await supabase
       .from("whatsapp_instances")
-      .select("id, name, api_key, api_url")
+      .select("id, name, api_key, api_url, provider, group_only")
       .eq("status", "connected")
       .limit(1)
       .single();
@@ -221,6 +222,13 @@ serve(async (req) => {
         // Enviar via UAZAPI
         const phone = formatPhone(lead.phone);
         const apiUrl = `${instance.api_url}/send/text`;
+
+        // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+        if (!(await uazapiTargetAllowed(supabase, instance, phone, "process-noshow-followup", message))) {
+          console.warn(`[NoShow] ⛔ Envio bloqueado pela política UAZAPI para ${lead.name}`);
+          errors++;
+          continue;
+        }
 
         const response = await fetch(apiUrl, {
           method: "POST",

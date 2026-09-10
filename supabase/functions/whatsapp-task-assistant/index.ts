@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { requireIntegrationKey } from "../_shared/config.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,8 @@ interface WhatsAppInstance {
   id: string;
   api_key: string;
   api_url: string;
+  provider?: string | null;
+  group_only?: boolean | null;
 }
 
 // ==================== PROMPT TÉCNICO (FIXO - NÃO EDITÁVEL) ====================
@@ -225,10 +228,13 @@ function buildSystemPrompt(customPersonalityPrompt?: string): string {
  * Envia mensagem para o grupo via UAZAPI
  */
 async function sendGroupMessage(
+  supabase: any,
   instance: WhatsAppInstance,
   groupJid: string,
   message: string
 ): Promise<boolean> {
+  // REGRA INVIOLÁVEL: UAZAPI só fala em grupo/canal — bloqueia número particular
+  if (!(await uazapiTargetAllowed(supabase, instance, groupJid, "whatsapp-task-assistant", message))) return false;
   try {
     const apiUrl = `${instance.api_url}/send/text`;
 
@@ -1175,7 +1181,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: instance } = await supabase
       .from("whatsapp_instances")
-      .select("id, api_key, api_url")
+      .select("id, api_key, api_url, provider, group_only")
       .eq("id", group.instance_id)
       .single();
 
@@ -1308,7 +1314,7 @@ Deno.serve(async (req: Request) => {
 
       // Enviar resposta no grupo
       if (responseMessage && instance) {
-        await sendGroupMessage(instance, remoteJid, responseMessage);
+        await sendGroupMessage(supabase, instance, remoteJid, responseMessage);
       }
 
     } catch (aiError: any) {
@@ -1318,6 +1324,7 @@ Deno.serve(async (req: Request) => {
 
       if (instance) {
         await sendGroupMessage(
+          supabase,
           instance,
           remoteJid,
           `❌ Ops, deu ruim: ${errorMsg}`
