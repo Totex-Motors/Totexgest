@@ -1,0 +1,95 @@
+# Captação de Veículos — papel `promotora` + workspace `/captacao`
+
+Entrega da **Fase 1 (segurança) + Fase 2 (workspace)** do plano
+"Captação Promotoras / Franquias". Branch de revisão — **nada foi deployado**.
+
+## O que é
+
+Nova operação: promotoras em campo (ex.: Shopping Tamboré) captam **proprietários
+que querem vender/intermediar o carro**. É o oposto do fluxo atual do stand
+(`source = 'stand'` = comprador). Por isso o lead nasce com
+`lead_intent = 'sell_intermediation'` e `source = 'captacao'` — nunca mistura
+com o funil de compra.
+
+## Arquivos
+
+| Camada | Arquivo | O que faz |
+|---|---|---|
+| Banco | `supabase/migrations/20260910100000_captacao_promotoras_base.sql` | helpers, colunas, tabelas, RLS, RPCs |
+| Auth | `src/contexts/AuthContext.tsx` | role `promotora` + `isPromotora` |
+| Rotas | `src/components/auth/RoleRoute.tsx` | guarda por papel (URL direta) |
+| Rotas | `src/App.tsx` | `ProtectedRoute` ganha `scope`; promotora fora de `/captacao` → redirect; rotas `/captacao/*` |
+| Layout | `src/layouts/CaptureLayout.tsx` | mobile-first, bottom-nav 5 itens, sem AppSidebar |
+| Telas | `src/pages/capture/CaptureHome.tsx` | Hoje: meta, CTA, 4 KPIs, pendências, frase do dia, microtreino |
+| Telas | `src/pages/capture/CaptureNewLead.tsx` | Quick Capture (6 campos + passo opcional), dedupe, auto-save |
+| Telas | `src/pages/capture/CaptureMyLeads.tsx` | Meus Leads + detalhe em bottom-sheet |
+| Telas | `src/pages/capture/CaptureTraining.tsx` | Aulas, scripts, quiz (progresso local por enquanto) |
+| Telas | `src/pages/capture/CaptureProfile.tsx` | Meta semanal, pontos, sair |
+| Telas | `src/pages/capture/captureContent.ts` | Scripts/aulas estáticos do MVP |
+| Comp. | `src/components/capture/SellerQualificationCard.tsx` | Qualificação de intermediação (edição) |
+| Hooks | `src/hooks/useCaptureLeads.ts` | React Query sobre as RPCs |
+| Tipos | `src/types/capture.ts` | tipos + espelho TS da regra de score |
+| UI | `src/components/layout/AppSidebar.tsx` | item "Captação (promotoras)" pro gestor |
+| UI | `src/pages/SalesSettings.tsx` | cargo "Promotora (captação)" no cadastro de membros |
+
+## Modelo de dados (migration)
+
+**leads** (novas colunas): `lead_intent`, `captured_by_member_id` (imutável —
+trigger `trg_protect_captured_by`), `captured_at`, `capture_location_id`,
+`capture_campaign_id`, `capture_channel`, `seller_qualification jsonb`.
+
+**Tabelas novas**: `capture_locations`, `capture_campaigns`, `seller_vehicles`
+(veículo do proprietário — não reutiliza `trade_in_vehicles`).
+
+`captured_by_member_id` ≠ `sales_rep_id`: o primeiro é quem originou (promotora,
+nunca muda); o segundo é quem atende (especialista, pode mudar).
+
+## Segurança
+
+- `is_promotora()` / `current_member_id()` (SECURITY DEFINER, como `is_admin`).
+- Policies **RESTRICTIVE** em `leads` e `deals`: para quem não é promotora
+  avaliam `true` (zero impacto no CRM). Para promotora: SELECT só dos próprios
+  leads/deals; INSERT/UPDATE/DELETE direto **negados** — tudo passa por RPC.
+- RPCs (SECURITY DEFINER): `create_capture_lead`, `update_my_capture_lead`,
+  `list_my_capture_leads`, `capture_home_stats`, `ensure_capture_pipeline`
+  (admin), `compute_capture_score`, `capture_temperature`.
+- Frontend: `ProtectedRoute` redireciona promotora pra `/captacao` em qualquer
+  rota do CRM; `RoleRoute` limita quem entra em `/captacao`.
+
+## Score (regra transparente, sem IA)
+
+| Sinal | Pontos |
+|---|---|
+| Quer vender agora / até 30 dias | +30 |
+| Aceita avaliação | +20 |
+| Autoriza contato do especialista | +20 |
+| Veículo + ano + km informados | +15 |
+| É o proprietário | +10 |
+| Observação ≥ 10 chars ou valor em mente | +5 |
+
+70–100 quente · 45–69 morno · <45 frio. Mesma função no banco
+(`compute_capture_score`) e no front (`computeCaptureScore`) pra preview ao vivo.
+
+## Como testar (depois de aplicar a migration)
+
+1. Aplicar `20260910100000_captacao_promotoras_base.sql` (MCP `apply_migration`
+   ou `supabase db push`). Nada destrutivo — só `ADD COLUMN IF NOT EXISTS` /
+   `CREATE IF NOT EXISTS`.
+2. (Admin) rodar `select ensure_capture_pipeline();` logado no tenant, ou
+   deixar pra Fase 4 — sem o funil o lead entra sem `pipeline_stage_id`.
+3. Configurações → Equipe → Membros → novo membro com cargo **Promotora**.
+4. Logar com ela: `/` → cai em `/captacao`. Tentar `/comercial/leads` → volta.
+5. Captar um cliente (6 campos) → conferir em Meus Leads e no CRM
+   (`/comercial/leads`, lead com `source = captacao`).
+6. Como promotora, no console: `supabase.from('leads').select('*')` → só os
+   dela; `insert`/`update` direto → erro de RLS.
+
+## Fora desta entrega (próximas fases)
+
+- Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.
+- Fase 4: funil dedicado por padrão + handoff automático (tarefa + alerta pro
+  especialista, SLA, retorno pra promotora).
+- Fase 5: `performance_goals` (metas reais no lugar do placeholder 8/dia, 40/semana),
+  painel do gestor, ranking.
+- Fase 6: `script_cards` / `training_progress` no banco + roleplay com IA.
+- Fase 7/8: franquias (consolidação super-admin) e agente IA pra intenção de venda.

@@ -958,6 +958,7 @@ export function TeamTab() {
     comercial: "Comercial",
     cs: "CS",
     geral: "Geral",
+    promotora: "Promotora (captação)",
   };
 
   const teamLabels: Record<string, string> = {
@@ -1203,6 +1204,7 @@ export function TeamTab() {
                     <SelectItem value="comercial">Comercial</SelectItem>
                     <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="geral">Geral</SelectItem>
+                    <SelectItem value="promotora">Promotora (captação)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1273,6 +1275,7 @@ export function TeamTab() {
                     <SelectItem value="comercial">Comercial</SelectItem>
                     <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="geral">Geral</SelectItem>
+                    <SelectItem value="promotora">Promotora (captação)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

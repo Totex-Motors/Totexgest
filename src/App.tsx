@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { RoleRoute } from "@/components/auth/RoleRoute";
 import { CallProvider } from "@/contexts/CallContext";
 import { MeetingProvider } from "@/contexts/MeetingContext";
 import { GlobalTranscriptionPanel } from "@/components/meeting/GlobalTranscriptionPanel";
@@ -143,6 +144,14 @@ const OperationTower = React.lazy(() => import("./pages/OperationTower"));
 const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
 const MarketingForms = React.lazy(() => import("./pages/MarketingForms"));
 
+// Captação de veículos (promotoras) — workspace mobile-first separado do CRM
+const CaptureLayout = React.lazy(() => import("./layouts/CaptureLayout"));
+const CaptureHome = React.lazy(() => import("./pages/capture/CaptureHome"));
+const CaptureNewLead = React.lazy(() => import("./pages/capture/CaptureNewLead"));
+const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads"));
+const CaptureTraining = React.lazy(() => import("./pages/capture/CaptureTraining"));
+const CaptureProfile = React.lazy(() => import("./pages/capture/CaptureProfile"));
+
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
 // Unsubscribe público (LGPD) — sem auth
@@ -169,8 +178,13 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, isPasswordRecovery } = useAuth();
+/**
+ * Guarda de SESSÃO. Também segura a promotora dentro do /captacao: qualquer
+ * rota do CRM completo (que não seja `scope="captacao"`) redireciona ela pra
+ * home dela. Esconder item da sidebar não basta — a URL digitada tem que bater aqui.
+ */
+function ProtectedRoute({ children, scope = "crm" }: { children: React.ReactNode; scope?: "crm" | "captacao" }) {
+  const { user, loading, isPasswordRecovery, isPromotora } = useAuth();
 
   if (loading) {
     return (
@@ -187,6 +201,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (scope === "crm" && isPromotora) {
+    return <Navigate to="/captacao" replace />;
   }
 
   return <>{children}</>;
@@ -220,8 +238,28 @@ const AppRoutes = () => {
         </React.Suspense>
       } />
 
-      {/* Home → Dashboard Comercial */}
+      {/* Home → Dashboard Comercial (promotora é redirecionada pra /captacao pelo ProtectedRoute) */}
       <Route path="/" element={<Navigate to="/comercial" replace />} />
+
+      {/* Captação de veículos — promotora (e gestores/admin pra acompanhar). Sem AppSidebar. */}
+      <Route
+        path="/captacao"
+        element={
+          <ProtectedRoute scope="captacao">
+            <RoleRoute allow={["promotora", "admin", "comercial", "closer", "sdr", "geral"]}>
+              <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
+                <CaptureLayout />
+              </React.Suspense>
+            </RoleRoute>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<React.Suspense fallback={<div />}><CaptureHome /></React.Suspense>} />
+        <Route path="novo" element={<React.Suspense fallback={<div />}><CaptureNewLead /></React.Suspense>} />
+        <Route path="leads" element={<React.Suspense fallback={<div />}><CaptureMyLeads /></React.Suspense>} />
+        <Route path="treino" element={<React.Suspense fallback={<div />}><CaptureTraining /></React.Suspense>} />
+        <Route path="perfil" element={<React.Suspense fallback={<div />}><CaptureProfile /></React.Suspense>} />
+      </Route>
 
       {/* Configurações */}
       <Route path="/configuracoes" element={<ProtectedRoute><SettingsUnified /></ProtectedRoute>} />
