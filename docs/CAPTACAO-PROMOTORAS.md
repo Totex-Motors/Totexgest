@@ -108,6 +108,14 @@ pra isso — exige template.
 Funil: o handoff usa o funil do tenant cujo nome começa com "Capta" (na Totex, o
 **Captação Tamboré** já existente). Estágio `is_won` = "carro captado".
 
+**Resumo da Captação** (grupo "CRM Captação Tamboré", mesmo canal da Torre de
+Controle): cron `capture-summary` de hora em hora → `capture-handoff` `mode=summary`
+posta nas horas de `capture_handoff_config.summary_hours` (default 13h e 19h BRT).
+Conteúdo vem de `capture_daily_summary(tenant)`: hoje (total/quentes/mornos/frios/
+contatados), por promotora (hoje · semana · faltam X pro prêmio semanal), leads
+quente/morno sem 1º contato (com atraso), carros captados no mês. Forçar um envio:
+`POST /functions/v1/capture-handoff {"mode":"summary","force":true}`.
+
 ## Gamificação — Prêmios por meta (entregue)
 
 | Peça | Onde |
