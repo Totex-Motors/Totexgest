@@ -19,6 +19,7 @@ import {
   Star,
   Users,
   HandCoins,
+  Gift,
   Phone,
   Percent,
   Bell,
@@ -48,6 +49,7 @@ import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
 import { CaptureHandoffSection } from "@/components/settings/sections/CaptureHandoffSection";
+import { CaptureRewardsSection } from "@/components/settings/sections/CaptureRewardsSection";
 import { NotificationRulesBuilder } from "@/components/settings/NotificationRulesBuilder";
 import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConfig";
 
@@ -209,6 +211,12 @@ const navigationSections: NavSection[] = [
         label: "Captação (promotoras)",
         icon: HandCoins,
         description: "Handoff dos leads captados pelas promotoras: quem recebe (rodízio), SLA por temperatura, escalonamento e canal de aviso.",
+      },
+      {
+        id: "premios",
+        label: "Prêmios da captação",
+        icon: Gift,
+        description: "Gamificação: prêmios por meta (ex.: 40 leads na semana → voucher). A promotora vê o prêmio e o progresso na tela dela.",
       },
     ],
   },
@@ -502,6 +510,8 @@ function SettingsContent({ section }: { section: string }) {
       return <StandHandoffSection />;
     case "captacao":
       return <CaptureHandoffSection />;
+    case "premios":
+      return <CaptureRewardsSection />;
 
     default:
       return <ModulesSection />;

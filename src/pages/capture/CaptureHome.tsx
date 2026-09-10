@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCaptureHomeStats, useCaptureLeads } from "@/hooks/useCaptureLeads";
 import { useCaptureEvents, useMarkCaptureEventsRead, type CaptureEventType } from "@/hooks/useCaptureHandoff";
+import { useCaptureRewardProgress } from "@/hooks/useCaptureRewards";
+import { RewardCard } from "@/components/capture/RewardCard";
 import { Bell, CheckCheck } from "lucide-react";
 import { TEMP_META } from "@/types/capture";
 import { SCRIPT_CARDS, MICRO_LESSONS } from "./captureContent";
@@ -51,6 +53,10 @@ export default function CaptureHome() {
   const recent = useCaptureLeads();
   const events = useCaptureEvents({ unreadOnly: true, limit: 10 });
   const markRead = useMarkCaptureEventsRead();
+  const rewards = useCaptureRewardProgress();
+  // Prêmio em destaque na "Hoje": o mais próximo de ser batido (ou já batido)
+  const featuredReward = [...(rewards.data ?? [])].sort((a, b) =>
+    (b.current_value / b.goal_value) - (a.current_value / a.goal_value))[0];
 
   const hoje = stats.data?.hoje ?? 0;
   const pct = Math.min(100, Math.round((hoje / META_DIARIA_PLACEHOLDER) * 100));
@@ -93,6 +99,11 @@ export default function CaptureHome() {
           <p className="text-[11px] text-muted-foreground mt-1.5">
             {pct >= 100 ? "Meta batida! Continue — cada lead a mais conta pro ranking." : `Faltam ${Math.max(0, META_DIARIA_PLACEHOLDER - hoje)} pra bater a meta.`}
           </p>
+          {featuredReward && (
+            <div className="mt-3">
+              <RewardCard reward={featuredReward} compact />
+            </div>
+          )}
         </CardContent>
       </Card>
 
