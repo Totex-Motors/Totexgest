@@ -297,8 +297,9 @@ AS $$
   SELECT CASE WHEN score >= 70 THEN 'quente' WHEN score >= 45 THEN 'morno' ELSE 'frio' END;
 $$;
 
--- ─── 6) Pipeline "Captação de Veículos" (idempotente, por tenant) ───────────
--- Cria o funil dedicado do tenant do usuário logado, se ainda não existir.
+-- ─── 6) Pipeline de captação (idempotente, por tenant) ──────────────────────
+-- Usa o funil do tenant cujo nome começa com "Capta" (ex.: "Captação Tamboré",
+-- que a Totex já opera) e só cria "Captação de Veículos" se não houver nenhum.
 -- Só admin/superadmin. create_capture_lead usa o funil se ele existir.
 CREATE OR REPLACE FUNCTION public.ensure_capture_pipeline() RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER
@@ -315,7 +316,7 @@ BEGIN
   END IF;
 
   SELECT id INTO v_pipeline FROM sales_pipelines
-  WHERE tenant_id = v_tenant AND name ILIKE 'Captação de Veículos%'
+  WHERE tenant_id = v_tenant AND name ILIKE 'Capta%'
   LIMIT 1;
 
   IF v_pipeline IS NULL THEN
@@ -356,7 +357,7 @@ AS $$
   SELECT s.id
   FROM sales_pipelines p
   JOIN sales_pipeline_stages s ON s.pipeline_id = p.id
-  WHERE p.tenant_id = p_tenant AND p.name ILIKE 'Captação de Veículos%' AND p.is_active
+  WHERE p.tenant_id = p_tenant AND p.name ILIKE 'Capta%' AND p.is_active
   ORDER BY s.position
   LIMIT 1;
 $$;
