@@ -34,7 +34,7 @@ export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
   sla_minutes_quente: 30,
   sla_minutes_morno: 240,
   escalate_to_member_id: null,
-  notify_specialist: true,
+  notify_specialist: false,
   notify_group: true,
   whatsapp_instance_id: null,
   whatsapp_group_jid: null,

@@ -156,12 +156,18 @@ export function CaptureHandoffSection() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label>Avisar o especialista no WhatsApp dele</Label>
-            <Switch checked={form.notify_specialist} onCheckedChange={(v) => setForm({ ...form, notify_specialist: v })} />
+            <div>
+              <Label>Avisar o grupo da operação (com @menção do especialista)</Label>
+              <p className="text-xs text-muted-foreground">Canal recomendado. Coloque os vendedores no grupo — eles recebem o lead marcados pelo @.</p>
+            </div>
+            <Switch checked={form.notify_group} onCheckedChange={(v) => setForm({ ...form, notify_group: v })} />
           </div>
           <div className="flex items-center justify-between">
-            <Label>Avisar o grupo da operação</Label>
-            <Switch checked={form.notify_group} onCheckedChange={(v) => setForm({ ...form, notify_group: v })} />
+            <div>
+              <Label>Avisar também no privado do especialista</Label>
+              <p className="text-xs text-amber-700">⚠️ Mensagem direta pela API não oficial pode banir o número. Deixe desligado.</p>
+            </div>
+            <Switch checked={form.notify_specialist} onCheckedChange={(v) => setForm({ ...form, notify_specialist: v })} />
           </div>
           <div className="flex items-center justify-between">
             <div>
