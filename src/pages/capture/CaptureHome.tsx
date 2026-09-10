@@ -6,6 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCaptureHomeStats, useCaptureLeads } from "@/hooks/useCaptureLeads";
+import { useCaptureEvents, useMarkCaptureEventsRead, type CaptureEventType } from "@/hooks/useCaptureHandoff";
+import { Bell, CheckCheck } from "lucide-react";
 import { TEMP_META } from "@/types/capture";
 import { SCRIPT_CARDS, MICRO_LESSONS } from "./captureContent";
 import { cn } from "@/lib/utils";
@@ -30,10 +32,25 @@ function firstName(name?: string | null) {
   return (name ?? "").trim().split(/\s+/)[0] || "";
 }
 
+const EVENT_ICON: Record<CaptureEventType, string> = {
+  handoff: "🤝", contacted: "📞", stage: "➡️", won: "🏆", lost: "❌", reassigned: "🔁", sla: "⏰", info: "ℹ️",
+};
+
+function relTime(iso: string) {
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (m < 1) return "agora";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h`;
+  return `${Math.floor(h / 24)} d`;
+}
+
 export default function CaptureHome() {
   const { teamMember } = useAuth();
   const stats = useCaptureHomeStats();
   const recent = useCaptureLeads();
+  const events = useCaptureEvents({ unreadOnly: true, limit: 10 });
+  const markRead = useMarkCaptureEventsRead();
 
   const hoje = stats.data?.hoje ?? 0;
   const pct = Math.min(100, Math.round((hoje / META_DIARIA_PLACEHOLDER) * 100));
@@ -41,7 +58,7 @@ export default function CaptureHome() {
   const script = SCRIPT_CARDS[dayIndex % SCRIPT_CARDS.length];
   const lesson = MICRO_LESSONS[dayIndex % MICRO_LESSONS.length];
   const pendencias = [
-    { n: stats.data?.handoff_pendente ?? 0, label: "lead quente aguardando especialista", urgent: true },
+    { n: stats.data?.handoff_pendente ?? 0, label: "lead aguardando o 1º contato do especialista", urgent: true },
     { n: stats.data?.pendentes_complemento ?? 0, label: "lead aguardando complemento (km / autorização)", urgent: false },
   ].filter((p) => p.n > 0);
 
@@ -87,10 +104,38 @@ export default function CaptureHome() {
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <Kpi icon={Users} label="Captados (semana)" value={stats.data?.semana} loading={stats.isLoading} />
-        <Kpi icon={ClipboardCheck} label="Qualificados hoje" value={stats.data?.qualificados_hoje} loading={stats.isLoading} />
+        <Kpi icon={ClipboardCheck} label="Contatados (semana)" value={stats.data?.contatados_semana} loading={stats.isLoading} />
         <Kpi icon={Flame} label="Quentes (semana)" value={stats.data?.quentes_semana} loading={stats.isLoading} accent="text-orange-600" />
-        <Kpi icon={Handshake} label="Em atendimento" value={stats.data?.em_atendimento} loading={stats.isLoading} />
+        <Kpi icon={Handshake} label="Carros captados (mês)" value={stats.data?.captados_mes} loading={stats.isLoading} accent="text-emerald-700" />
       </div>
+
+      {/* Retornos — o que aconteceu com os leads dela */}
+      {(events.data?.length ?? 0) > 0 && (
+        <Card className="border-primary/30">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold flex items-center gap-1.5"><Bell className="h-4 w-4 text-primary" /> Retornos dos seus leads</span>
+              <button type="button" className="text-xs text-muted-foreground flex items-center gap-1" onClick={() => markRead.mutate(undefined)} disabled={markRead.isPending}>
+                <CheckCheck className="h-3.5 w-3.5" /> Lidos
+              </button>
+            </div>
+            <ul className="space-y-2">
+              {events.data!.map((e) => (
+                <li key={e.id}>
+                  <Link to={`/captacao/leads?lead=${e.lead_id}`} className="flex items-start gap-2 text-sm">
+                    <span className="shrink-0">{EVENT_ICON[e.event_type] ?? "•"}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium block truncate">{e.title}</span>
+                      {e.body && <span className="text-xs text-muted-foreground block">{e.body}</span>}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{relTime(e.created_at)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Fila de ação */}
       {pendencias.length > 0 && (

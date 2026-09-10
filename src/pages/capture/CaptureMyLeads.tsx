@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskPhoneBR } from "@/lib/phone";
 import { useCaptureLeads } from "@/hooks/useCaptureLeads";
+import { useLeadCaptureEvents } from "@/hooks/useCaptureHandoff";
 import { SellerQualificationCard } from "@/components/capture/SellerQualificationCard";
-import { TEMP_META, INTENT_LABEL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
+import { TEMP_META, INTENT_LABEL, HANDOFF_STATUS_LABEL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
 
 /**
  * "Meus Leads" — só os leads que a promotora captou (RPC list_my_capture_leads +
@@ -45,11 +46,39 @@ function relDate(iso?: string | null) {
 /** Próxima ação sugerida — regra simples, sem IA nessa fase. */
 function nextAction(l: CaptureLead): { text: string; urgent: boolean } {
   const q = l.seller_qualification ?? {};
-  if (l.sales_rep_name) return { text: `Com ${l.sales_rep_name.split(" ")[0]} — acompanhar`, urgent: false };
+  const rep = l.sales_rep_name?.split(" ")[0];
+  if (l.stage_is_won) return { text: "🏆 Carro captado", urgent: false };
+  if (l.stage_is_lost) return { text: "Perdido", urgent: false };
   if (q.autoriza_contato !== true) return { text: "Pedir autorização de contato", urgent: true };
+  if (l.first_contact_at) return { text: rep ? `${rep} já contatou` : "Contatado", urgent: false };
+  if (l.handoff_status === "sla_breached" || l.handoff_status === "escalated") return { text: `Atrasado — ${rep ?? "especialista"} ainda não chamou`, urgent: true };
+  if (l.handoff_status === "unassigned") return { text: "Sem especialista — avisar gestor", urgent: true };
+  if (rep) return { text: `Aguardando ${rep} chamar`, urgent: l.temperatura === "quente" };
   if (l.vehicle?.km == null) return { text: "Completar KM", urgent: false };
-  if (l.temperatura === "quente") return { text: "Aguardando especialista", urgent: true };
   return { text: "Em nutrição", urgent: false };
+}
+
+function fmtDateTime(iso?: string | null) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function LeadTimeline({ leadId }: { leadId: string }) {
+  const events = useLeadCaptureEvents(leadId);
+  if (!events.data?.length) return null;
+  return (
+    <div className="rounded-md border border-border/60 p-3">
+      <p className="text-xs font-medium text-muted-foreground mb-2">Linha do tempo</p>
+      <ol className="space-y-2">
+        {events.data.map((e) => (
+          <li key={e.id} className="text-xs flex gap-2">
+            <span className="text-muted-foreground shrink-0 tabular-nums">{fmtDateTime(e.created_at)}</span>
+            <span><span className="font-medium">{e.title}</span>{e.body ? <span className="text-muted-foreground"> — {e.body}</span> : null}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
 
 export default function CaptureMyLeads() {
@@ -158,8 +187,17 @@ export default function CaptureMyLeads() {
                 <div className="rounded-md border border-border/60 p-2">
                   <p className="text-muted-foreground flex items-center gap-1"><UserCheck className="h-3 w-3" /> Especialista</p>
                   <p className="font-medium">{selected.sales_rep_name ?? "Ainda não atribuído"}</p>
+                  {selected.first_contact_at ? (
+                    <p className="text-emerald-700">Contatou em {fmtDateTime(selected.first_contact_at)}</p>
+                  ) : selected.handoff_status ? (
+                    <p className={cn(selected.handoff_status === "sla_breached" || selected.handoff_status === "escalated" ? "text-red-600" : "text-muted-foreground")}>
+                      {HANDOFF_STATUS_LABEL[selected.handoff_status]}
+                    </p>
+                  ) : null}
                 </div>
               </div>
+
+              <LeadTimeline leadId={selected.id} />
 
               {selected.phone && (
                 <Button asChild variant="outline" className="w-full h-11">
