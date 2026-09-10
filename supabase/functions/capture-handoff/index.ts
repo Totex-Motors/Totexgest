@@ -9,6 +9,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //              banco (capture_handoff → pg_net). Idempotente por lead.
 //   - sla    : cron 10 min. Lead passado e ainda sem 1º contato: estourou o
 //              SLA → re-avisa o especialista; 2× SLA → escala (gestor + grupo).
+//   - summary: cron de hora em hora. "Resumo da Captação" no grupo da
+//              operação nas horas de capture_handoff_config.summary_hours.
 //
 // Canal: capture_handoff_config.whatsapp_instance_id / whatsapp_group_jid; se
 // vazio, usa o mesmo canal da Torre de Controle (operation_alert_config).
@@ -245,6 +247,88 @@ async function runSla(sb: any) {
   return { checked: (leads || []).length, actions: out };
 }
 
+// ─── summary ─────────────────────────────────────────────────────────────────
+// Resumo da captação no grupo da operação. Cron de hora em hora; posta só nas
+// horas (BRT) de capture_handoff_config.summary_hours e no máximo 1x por hora.
+const TEMP_LABEL: Record<string, string> = { quente: "🔥", morno: "🌤️", frio: "❄️" };
+
+function brtHour(): number {
+  return Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date()));
+}
+
+function formatSummary(d: Row, hour: number): string {
+  const h = d.hoje || {};
+  const lines: string[] = [];
+  lines.push(`📣 *Resumo da Captação — ${String(hour).padStart(2, "0")}:00*`);
+  lines.push("");
+  lines.push(`👥 Hoje: *${h.total ?? 0}* captados (🔥 ${h.quentes ?? 0} · 🌤️ ${h.mornos ?? 0} · ❄️ ${h.frios ?? 0}) · contatados: *${h.contatados ?? 0}*`);
+
+  const promos = (d.promotoras || []) as Row[];
+  if (promos.length) {
+    lines.push("");
+    lines.push("*Por promotora (hoje · semana):*");
+    const weeklyReward = ((d.premios || []) as Row[]).find((p) => p.goal_type === "leads_semana");
+    for (const p of promos) {
+      let meta = "";
+      if (weeklyReward) {
+        const falta = Math.max(0, Number(weeklyReward.goal_value) - Number(p.semana));
+        meta = falta === 0 ? ` · 🏆 bateu a meta do *${weeklyReward.name}*!` : ` · faltam ${falta} p/ ${weeklyReward.name}`;
+      }
+      lines.push(`• ${firstName(p.name)}: ${p.hoje}${p.hoje_quentes ? ` (${p.hoje_quentes}🔥)` : ""} · ${p.semana} na semana${meta}`);
+    }
+  } else {
+    lines.push("");
+    lines.push("Nenhuma captação nesta semana ainda.");
+  }
+
+  const wait = (d.aguardando || []) as Row[];
+  lines.push("");
+  if (wait.length) {
+    lines.push(`⏱️ *Sem 1º contato (${wait.length}):*`);
+    for (const w of wait.slice(0, 8)) {
+      const flag = w.status === "sla_breached" || w.status === "escalated" ? " ⚠️" : "";
+      lines.push(`• ${TEMP_LABEL[w.temperatura] || ""} ${w.lead} — ${w.especialista} · ${waitLabel(Number(w.minutos))}${flag}`);
+    }
+    if (wait.length > 8) lines.push(`• …e mais ${wait.length - 8}`);
+  } else {
+    lines.push("✅ Nenhum lead quente/morno esperando contato.");
+  }
+
+  lines.push("");
+  lines.push(`🚗 Carros captados no mês: *${d.captados_mes ?? 0}*`);
+  return lines.join("\n");
+}
+
+function waitLabel(min: number): string {
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h}h${m}` : `${h}h`;
+}
+
+// deno-lint-ignore no-explicit-any
+async function runSummary(sb: any, force = false) {
+  const hour = brtHour();
+  const { data: cfgs } = await sb.from("capture_handoff_config").select("tenant_id, enabled, summary_enabled, summary_hours, last_summary_at");
+  const out: Row[] = [];
+  for (const cfg of (cfgs || []) as Row[]) {
+    if (!cfg.enabled || !cfg.summary_enabled) continue;
+    const hours = (cfg.summary_hours || []) as number[];
+    if (!force && !hours.includes(hour)) continue;
+    // anti-duplicidade: 1 por hora
+    if (!force && cfg.last_summary_at && Date.now() - new Date(cfg.last_summary_at).getTime() < 50 * 60_000) continue;
+
+    const ch = await loadChannel(sb, cfg.tenant_id);
+    if (!ch.apiUrl || !ch.apiKey || !ch.groupJid) { out.push({ tenant: cfg.tenant_id, skipped: "sem canal/grupo" }); continue; }
+    const { data, error } = await sb.rpc("capture_daily_summary", { p_tenant: cfg.tenant_id });
+    if (error) { out.push({ tenant: cfg.tenant_id, error: error.message }); continue; }
+    const text = formatSummary(data as Row, hour);
+    const sent = await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, text);
+    if (sent) await sb.from("capture_handoff_config").update({ last_summary_at: new Date().toISOString() }).eq("tenant_id", cfg.tenant_id);
+    out.push({ tenant: cfg.tenant_id, sent });
+  }
+  return { hour, results: out };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -255,6 +339,7 @@ Deno.serve(async (req) => {
 
   try {
     if (mode === "sla") return jsonRes(await runSla(sb));
+    if (mode === "summary") return jsonRes(await runSummary(sb, body.force === true));
     if (mode === "notify") {
       const leadId = body.lead_id || url.searchParams.get("lead_id");
       if (!leadId) return jsonRes({ error: "lead_id obrigatório" }, 400);

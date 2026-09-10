@@ -163,6 +163,24 @@ export function CaptureHandoffSection() {
             <Label>Avisar o grupo da operação</Label>
             <Switch checked={form.notify_group} onCheckedChange={(v) => setForm({ ...form, notify_group: v })} />
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Resumo da captação no grupo</Label>
+              <p className="text-xs text-muted-foreground">Por promotora, quentes, quem está sem contato, meta/prêmio da semana.</p>
+            </div>
+            <Switch checked={form.summary_enabled} onCheckedChange={(v) => setForm({ ...form, summary_enabled: v })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Horários do resumo (horas, separadas por vírgula)</Label>
+            <Input
+              value={form.summary_hours.join(", ")}
+              onChange={(e) => setForm({
+                ...form,
+                summary_hours: Array.from(new Set(e.target.value.split(/[,\s]+/).map((s) => Number(s)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 23))),
+              })}
+              placeholder="13, 19"
+            />
+          </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Instância</Label>

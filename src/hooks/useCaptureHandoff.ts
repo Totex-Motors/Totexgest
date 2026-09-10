@@ -20,9 +20,14 @@ export interface CaptureHandoffConfig {
   notify_group: boolean;
   whatsapp_instance_id: string | null;
   whatsapp_group_jid: string | null;
+  /** Resumo da captação no grupo — horas (BRT) em que posta */
+  summary_enabled: boolean;
+  summary_hours: number[];
 }
 
 export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
+  summary_enabled: true,
+  summary_hours: [13, 19],
   enabled: true,
   specialist_member_ids: [],
   last_assigned_member_id: null,
@@ -68,7 +73,7 @@ export function useSaveCaptureHandoffConfig() {
   const qc = useQueryClient();
   const { tenantId } = useAuth();
   return useMutation({
-    mutationFn: async (cfg: Partial<CaptureHandoffConfig>) => {
+    mutationFn: async (cfg: Partial<CaptureHandoffConfig> & { last_summary_at?: string | null }) => {
       const { error } = await supabase
         .from("capture_handoff_config")
         .upsert({ ...cfg, tenant_id: tenantId }, { onConflict: "tenant_id" });
