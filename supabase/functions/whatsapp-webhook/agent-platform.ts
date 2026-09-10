@@ -12,6 +12,7 @@
  */
 
 import { loopGuardBlocks, lastOutboundWasFallback } from "../_shared/agent-loop-guard.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -87,7 +88,7 @@ export async function tryHandleViaAgentPlatform(args: {
     const ok = authorized.some((a) => a && (senderDigits.endsWith(a) || a.endsWith(senderDigits)));
     if (!ok) {
       // Não autorizado: manda msg padrão (se configurada) e marca como TRATADO (não cai no legado)
-      if (cfg.unauthorized_message) await sendUazapi(inst, senderDigits, String(cfg.unauthorized_message));
+      if (cfg.unauthorized_message) await sendUazapi(supabase, inst, senderDigits, String(cfg.unauthorized_message));
       console.log(`[wpp-v2] número ${senderDigits} não autorizado (agente ${match.agent_slug}, modo private)`);
       return true;
     }
@@ -181,7 +182,7 @@ export async function tryHandleViaAgentPlatform(args: {
     }
   } catch (e) {
     console.error("[wpp-v2] agent-runner err:", (e as Error).message);
-    await sendUazapi(inst, senderDigits, "⚠️ Tive um problema técnico. Tenta de novo daqui a pouco?");
+    await sendUazapi(supabase, inst, senderDigits, "⚠️ Tive um problema técnico. Tenta de novo daqui a pouco?");
     return true;
   }
 
@@ -206,7 +207,7 @@ export async function tryHandleViaAgentPlatform(args: {
   const finalText = cleaned || FALLBACK_TEXT;
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
-    await sendUazapi(inst, senderDigits, parts[i]);
+    await sendUazapi(supabase, inst, senderDigits, parts[i]);
     if (i < parts.length - 1) await sleep(700 + Math.floor(Math.random() * 900));
   }
   // Marca o piso do próximo debounce — só as msgs DEPOIS desta resposta serão reagrupadas.
@@ -280,18 +281,21 @@ async function markReplied(supabase: any, sessionId: string | undefined): Promis
 
 function onlyDigits(s: string): string { return String(s).replace(/\D/g, ""); }
 
-async function sendUazapi(instance: InstanceLike, number: string, text: string): Promise<void> {
+async function sendUazapi(supabase: any, instance: InstanceLike, number: string, text: string): Promise<void> {
   // api_url vem da tabela de instâncias — NUNCA hardcode de URL UAZAPI (regra do projeto)
   const base = (instance.api_url || "").replace(/\/$/, "");
   if (!base) {
     console.error("[wpp-v2] sendUazapi: instance.api_url vazio — configure a URL da instância");
     return;
   }
+  const target = onlyDigits(number);
+  // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal (id da instância → política decide no banco)
+  if (!(await uazapiTargetAllowed(supabase, instance.id, target, "whatsapp-webhook:agent-platform", text))) return;
   try {
     await fetch(`${base}/send/text`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "token": instance.api_key || "" },
-      body: JSON.stringify({ number: onlyDigits(number), text }),
+      body: JSON.stringify({ number: target, text }),
     });
   } catch (e) { console.error("[wpp-v2] sendUazapi err:", (e as Error).message); }
 }

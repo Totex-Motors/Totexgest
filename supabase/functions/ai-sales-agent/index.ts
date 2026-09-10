@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -382,6 +383,14 @@ interface WhatsAppInstance {
 }
 
 // ==================== HELPER FUNCTIONS ====================
+
+// Client service-role só pra política de envio (wa-policy) nas funções de envio
+// que não recebem o client no escopo (mídia). Criado uma vez, sob demanda.
+let _policyClient: any = null;
+function getPolicyClient(): any {
+  if (!_policyClient) _policyClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  return _policyClient;
+}
 
 /**
  * Merge settings com defaults para garantir que todos os campos existem
@@ -869,6 +878,11 @@ async function sendWhatsAppImage(
       return res.ok && !data.error;
     }
 
+    // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal (id da instância → política decide no banco)
+    if (!(await uazapiTargetAllowed(getPolicyClient(), instance.id, cleanPhone, "ai-sales-agent:sendWhatsAppImage", null))) {
+      return false;
+    }
+
     const response = await fetch(`${instance.api_url}/send/media`, {
       method: "POST",
       headers: {
@@ -917,6 +931,11 @@ async function sendWhatsAppVideo(
       return res.ok && !data.error;
     }
 
+    // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal (id da instância → política decide no banco)
+    if (!(await uazapiTargetAllowed(getPolicyClient(), instance.id, cleanPhone, "ai-sales-agent:sendWhatsAppVideo", null))) {
+      return false;
+    }
+
     const response = await fetch(`${instance.api_url}/send/media`, {
       method: "POST",
       headers: {
@@ -962,6 +981,11 @@ async function sendWhatsAppAudio(
       const data = await res.json();
       console.log("📤 Áudio enviado (Cloud API):", JSON.stringify(data));
       return res.ok && !data.error;
+    }
+
+    // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal (id da instância → política decide no banco)
+    if (!(await uazapiTargetAllowed(getPolicyClient(), instance.id, cleanPhone, "ai-sales-agent:sendWhatsAppAudio", null))) {
+      return false;
     }
 
     const response = await fetch(`${instance.api_url}/send/media`, {
@@ -1019,6 +1043,10 @@ async function notifyWhatsAppDisconnected(supabase: any, disconnectedInstance: W
 
     // Enviar para grupo TIME - IAP
     const groupJid = '120363421838905056@g.us';
+    // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal
+    if (!(await uazapiTargetAllowed(supabase, carolInstance.id, groupJid, "ai-sales-agent:notifyWhatsAppDisconnected", alertMsg))) {
+      return;
+    }
     await fetch(`${carolInstance.api_url}/send/text`, {
       method: 'POST',
       headers: {
@@ -1105,6 +1133,11 @@ async function sendWhatsAppMessage(
     // ===== UAZAPI (instância não-oficial) =====
     const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     const cleanPhone = phone.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+
+    // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal (id da instância → política decide no banco)
+    if (!(await uazapiTargetAllowed(supabaseClient || getPolicyClient(), instance.id, formattedPhone, "ai-sales-agent:sendWhatsAppMessage", message))) {
+      return { ok: false, error: 'Envio bloqueado pela política: UAZAPI só envia pra grupo/canal' };
+    }
 
     // Simular "digitando..."
     if (simulateTyping) {
@@ -3451,11 +3484,14 @@ async function executeTool(
 
             // Enviar para grupo TIME - IAP
             const groupJid = '120363421838905056@g.us';
-            await fetch(`${carolInstance.api_url}/send/text`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'token': carolInstance.api_key },
-              body: JSON.stringify({ number: groupJid, text: alertMsg }),
-            });
+            // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal
+            if (await uazapiTargetAllowed(supabase, carolInstance.id, groupJid, "ai-sales-agent:notify_human:grupo", alertMsg)) {
+              await fetch(`${carolInstance.api_url}/send/text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'token': carolInstance.api_key },
+                body: JSON.stringify({ number: groupJid, text: alertMsg }),
+              });
+            }
 
             // Enviar para vendedor responsável (privado)
             if (responsavelId) {
@@ -3466,11 +3502,17 @@ async function executeTool(
                 .single();
               if (repMember?.phone) {
                 const privateMsg = `${urgencyEmoji} *${lead.name}* precisa de atendimento AGORA.\n\nMotivo: ${args.reason}\n\nA IA pausou a conversa. Abra o inbox e responda.`;
-                await fetch(`${carolInstance.api_url}/send/text`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'token': carolInstance.api_key },
-                  body: JSON.stringify({ number: `${repMember.phone}@s.whatsapp.net`, text: privateMsg }),
-                });
+                const repJid = `${repMember.phone}@s.whatsapp.net`;
+                // REGRA INVIOLÁVEL: número particular → só passa se a instância for Cloud API / liberada
+                if (await uazapiTargetAllowed(supabase, carolInstance.id, repJid, "ai-sales-agent:notify_human:vendedor", privateMsg)) {
+                  await fetch(`${carolInstance.api_url}/send/text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'token': carolInstance.api_key },
+                    body: JSON.stringify({ number: repJid, text: privateMsg }),
+                  });
+                } else {
+                  console.warn('⚠️ Notificação privada ao vendedor bloqueada pela política (UAZAPI só grupo/canal)');
+                }
               }
             }
           }

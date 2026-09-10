@@ -8,6 +8,7 @@ import { getOrCreateContactWithProfilePic } from "./contacts.ts";
 import { getOrCreateGroup } from "./groups.ts";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1215,6 +1216,11 @@ async function handleConnectionChange(supabase: any, instanceId: string, payload
     const alertMsg = `⚠️ *ALERTA: WhatsApp Desconectado*\n\nInstância *${instanceName}* acabou de desconectar.\n\n📱 Número: ${instance?.phone_number || 'N/A'}\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n_Reconecte em Configurações > WhatsApp_`;
 
     try {
+      // REGRA INVIOLÁVEL: UAZAPI só envia pra grupo/canal
+      if (!(await uazapiTargetAllowed(supabase, alertInstance.id, ALERT_GROUP_JID, "whatsapp-webhook:handleConnectionChange", alertMsg))) {
+        console.warn('[Webhook] Alerta de desconexão bloqueado pela política (UAZAPI só grupo/canal)');
+        return;
+      }
       await fetch(`${baseUrl}/send/text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', token: alertInstance.api_key },
