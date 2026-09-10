@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 // Captação (promotoras) — Fase 4: avisos do handoff e SLA.
 //
@@ -71,14 +72,18 @@ const INTENT_LABEL: Record<string, string> = { vender: "vender", trocar: "trocar
 // Política anti-banimento (validada pelo Marco): a instância NÃO oficial só
 // manda mensagem em GRUPO. Nada de privado pro vendedor — ele é marcado com
 // @menção no grupo da operação. `mentions` = números separados por vírgula.
-async function sendUazapi(apiUrl: string, apiKey: string, number: string, text: string, mentions: string[] = []): Promise<boolean> {
+// deno-lint-ignore no-explicit-any
+async function sendUazapi(sb: any, ch: Channel, number: string, text: string, mentions: string[] = []): Promise<boolean> {
+  if (!ch.apiUrl || !ch.apiKey) return false;
+  // REGRA INVIOLÁVEL: instância não oficial só fala em grupo/canal.
+  if (!(await uazapiTargetAllowed(sb, ch.instanceId, number, "capture-handoff", text))) return false;
   try {
-    const base = apiUrl.replace(/\/+$/, "");
+    const base = ch.apiUrl.replace(/\/+$/, "");
     const body: Row = { number, text };
     if (mentions.length) body.mentions = mentions.join(",");
     const res = await fetch(`${base}/send/text`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "token": apiKey },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "token": ch.apiKey },
       body: JSON.stringify(body),
     });
     if (!res.ok) console.error("[capture-handoff] uazapi", res.status, await res.text().catch(() => ""));
@@ -90,6 +95,7 @@ async function sendUazapi(apiUrl: string, apiKey: string, number: string, text: 
 }
 
 interface Channel {
+  instanceId: string | null;
   apiUrl: string | null;
   apiKey: string | null;
   groupJid: string | null;
@@ -113,6 +119,7 @@ async function loadChannel(sb: any, tenantId: string): Promise<Channel> {
     if (inst && inst.provider !== "meta_cloud") { apiUrl = inst.api_url; apiKey = inst.api_key; }
   }
   return {
+    instanceId,
     apiUrl, apiKey,
     groupJid: cfg?.whatsapp_group_jid || op?.whatsapp_group_jid || null,
     notifySpecialist: cfg?.notify_specialist ?? false,
@@ -173,13 +180,13 @@ async function notify(sb: any, leadId: string, force = false) {
     // Grupo com @menção do especialista (canal principal — não tem risco de ban)
     if (ch.notifyGroup && ch.groupJid) {
       const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} → ${m.text}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*. A tarefa já está no seu CRM.`;
-      sentGroup = await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, txt, m.number ? [m.number] : []);
+      sentGroup = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
     }
     // Privado só se o gestor ligar de propósito (desligado por padrão — risco de banimento)
     const specNumber = toWaNumber(spec?.phone);
     if (ch.notifySpecialist && specNumber) {
       const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} — ${firstName(spec?.name)}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*.`;
-      sentSpecialist = await sendUazapi(ch.apiUrl, ch.apiKey, specNumber, txt);
+      sentSpecialist = await sendUazapi(sb, ch,specNumber, txt);
     }
   }
 
@@ -225,8 +232,8 @@ async function runSla(sb: any) {
         const { data: spec } = await sb.from("team_members").select("name, phone").eq("id", lead.handoff_member_id).maybeSingle();
         const m = mentionOf(spec);
         const txt = `⏰ *SLA estourado* — ${m.text}, o lead *${lead.name}* (${fmtPhone(lead.phone)}) da captação está há *${waiting} min* sem 1º contato. Chama ele agora?`;
-        if (ch.notifyGroup && ch.groupJid) sent = await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, txt, m.number ? [m.number] : []);
-        if (ch.notifySpecialist && m.number) await sendUazapi(ch.apiUrl, ch.apiKey, m.number, txt);
+        if (ch.notifyGroup && ch.groupJid) sent = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
+        if (ch.notifySpecialist && m.number) await sendUazapi(sb, ch,m.number, txt);
       }
       await sb.from("leads").update({
         handoff_status: "sla_breached",
@@ -251,7 +258,7 @@ async function runSla(sb: any) {
       let sent = 0;
       if (ch.apiUrl && ch.apiKey && ch.groupJid) {
         const nums = [...gm, sm].map((x) => x.number).filter(Boolean) as string[];
-        if (await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, txt, nums)) sent = 1;
+        if (await sendUazapi(sb, ch,ch.groupJid, txt, nums)) sent = 1;
       }
       await sb.from("leads").update({
         handoff_status: "escalated",
@@ -273,7 +280,7 @@ async function runSla(sb: any) {
         const txt = `📌 *Follow-up da captação* — sem avaliação agendada:\n` +
           items.map((s) => `• ${s.lead} — ${s.rep} · ${s.dias} dias em "Contato feito"`).join("\n") +
           `\n\nTarefa criada pra cada um. Agenda a avaliação ou move pra Nutrição/Perdido.`;
-        await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, txt);
+        await sendUazapi(sb, ch,ch.groupJid, txt);
       }
       out.push({ tenant: tenantId, action: "stale_followups", count: items.length });
     }
@@ -357,7 +364,7 @@ async function runSummary(sb: any, force = false) {
     const { data, error } = await sb.rpc("capture_daily_summary", { p_tenant: cfg.tenant_id });
     if (error) { out.push({ tenant: cfg.tenant_id, error: error.message }); continue; }
     const text = formatSummary(data as Row, hour);
-    const sent = await sendUazapi(ch.apiUrl, ch.apiKey, ch.groupJid, text);
+    const sent = await sendUazapi(sb, ch,ch.groupJid, text);
     if (sent) await sb.from("capture_handoff_config").update({ last_summary_at: new Date().toISOString() }).eq("tenant_id", cfg.tenant_id);
     out.push({ tenant: cfg.tenant_id, sent });
   }

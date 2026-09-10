@@ -348,7 +348,23 @@ Essas skills ja tem o fluxo completo — nao reinvente.
 14. **Criar agente IA** (via `/criar-agente-ia`)
 15. **Teste E2E**: msg do celular pessoal → agente responde
 
+## REGRA INVIOLÁVEL — WhatsApp não oficial só fala em GRUPO/CANAL
+
+O número Totexcar foi **banido pela Meta (2026-09-10)** por mandar mensagem
+privada pela API não oficial. Desde então:
+
+- Instância **UAZAPI (provider != meta_cloud) JAMAIS envia pra número particular**
+  — só grupos (`@g.us`) e canais (`@newsletter`). Conversa 1:1 com cliente ou
+  vendedor = **exclusivamente API oficial (Cloud API)**.
+- Enforce em 3 camadas: `whatsapp_instances.group_only` (trigger força true pra
+  UAZAPI), guarda `_shared/wa-policy.ts` → `uazapiTargetAllowed()` antes de TODO
+  `fetch` pra `/send/*` nas edge functions, e `src/lib/waPolicy.ts` na UI.
+  Tentativas bloqueadas ficam em `whatsapp_send_blocks`.
+- **Toda função nova que envie WhatsApp via UAZAPI precisa chamar o guarda.**
+  Sem exceção, sem flag, sem "só dessa vez".
+
 ## Armadilhas conhecidas (NAO caia nelas)
+- ❌ Enviar mensagem privada por instância UAZAPI (ver regra inviolável acima)
 
 - ❌ Criar instancia UAZAPI ANTES dos webhooks estarem no ar → msgs nao chegam
 - ❌ Aplicar `002_ai_agent_crons` com `SUPABASE_PROJECT_URL` no placeholder → cron chama URL invalida

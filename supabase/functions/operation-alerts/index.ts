@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { isGroupOrChannelJid } from "../_shared/wa-policy.ts";
 
 // Fase 2 da Torre de Controle: alertas da operação de leads pro time.
 // Disparada por cron. Dois modos (via ?mode= ou body.mode):
@@ -61,6 +62,11 @@ async function sendTelegram(botToken: string, chatId: string, html: string): Pro
 }
 
 async function sendWhatsAppGroup(apiUrl: string, apiKey: string, groupJid: string, text: string): Promise<boolean> {
+  // REGRA INVIOLÁVEL: instância não oficial só fala em grupo/canal (nunca número particular).
+  if (!isGroupOrChannelJid(groupJid)) {
+    console.warn("[operation-alerts] BLOQUEADO: alvo não é grupo/canal:", groupJid);
+    return false;
+  }
   try {
     const res = await fetch(`${apiUrl}/send/text`, {
       method: "POST",
