@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileSignature, Loader2, Save, Lock, Upload, ExternalLink, Pause, Play, FileWarning, XCircle,
   ChevronDown, ChevronRight, History, Building2, UserRound, CalendarClock, Coins, Info, AlertTriangle,
+  Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,28 +19,44 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { maskCep, maskChassis, maskCpfCnpj, maskPlate, maskRenavam, maskUF, onlyDigits } from "@/lib/brMasks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAllTeamMembers } from "@/hooks/useTeamMembers";
+import { useSalesLead } from "@/hooks/useSalesLeads";
 import {
+  ContractRenderError,
   getContractSignedUrl,
+  openContractPreview,
+  useContractDocuments,
+  useContractSnapshot,
+  useGenerateContract,
   useImportSignedContract,
   useIntermediationByLead,
   useIntermediationEvents,
   useLegalEntities,
+  useSetContractData,
   useSetIntermediationCommission,
   useSetIntermediationStatus,
   useSetIntermediationTerms,
 } from "@/hooks/useIntermediation";
 import {
   COMMISSION_STATUS_META,
+  CONTRACT_DOCUMENT_STATUS_META,
+  CONTRACT_MISSING_SOURCE_LABEL,
+  CONTRACT_SIGNER_STATUS_META,
   CONTRACT_STATUS_META,
   CUSTODY_MODE_LABEL,
   INTERMEDIATION_EVENT_LABEL,
   INTERMEDIATION_STATUS_META,
+  SIGNER_PARTY_LABEL,
   TEST_DRIVE_POLICY_LABEL,
   missingTerms,
   type CommissionStatus,
   type CommissionType,
+  type ContractDocument,
+  type ContractMissing,
+  type ContractMissingSource,
+  type ContractSnapshot,
   type CustodyMode,
   type Intermediation,
   type IntermediationEvent,
@@ -90,6 +107,40 @@ function daysUntil(dateISO: string | null): number | null {
   const now = new Date();
   now.setHours(12, 0, 0, 0);
   return Math.round((end.getTime() - now.getTime()) / 86_400_000);
+}
+
+/** Campos do lead que pré-preenchem o proprietário (colunas de `leads`). */
+interface LeadContractFields {
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  cpf_cnpj?: string | null;
+  address?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  address_province?: string | null;
+  postal_code?: string | null;
+  city_name?: string | null;
+  state?: string | null;
+}
+
+/** Colunas de `seller_vehicles` que o contrato usa. */
+interface VehicleContractFields {
+  id: string;
+  description: string | null;
+  brand: string | null;
+  model: string | null;
+  version: string | null;
+  year_model: number | null;
+  km: number | null;
+  color: string | null;
+  fuel: string | null;
+  plate: string | null;
+  renavam: string | null;
+  chassis: string | null;
+  condition_notes: string | null;
+  listing_url: string | null;
+  listing_missing_since: string | null;
 }
 
 const CLOSE_ACTIONS: { value: IntermediationStatusAction; label: string }[] = [
@@ -303,95 +354,548 @@ function TermsBlock({ i, canEdit }: { i: Intermediation; canEdit: boolean }) {
   );
 }
 
+// ─── Dados do contrato (proprietário + veículo) ─────────────────────────────
+
+interface ContractDataForm {
+  cpf_cnpj: string; rg: string; address: string; address_number: string; complement: string; district: string;
+  zip: string; city: string; state: string; email: string; phone: string;
+  plate: string; renavam: string; chassis: string; color: string; fuel: string; brand: string; model: string;
+  version: string; year_model: string; km: string; accessories: string;
+}
+
+/** Primeiro valor preenchido (owner_data → lead → vazio). */
+function pick(...vals: (string | number | null | undefined)[]): string {
+  for (const v of vals) if (v != null && String(v).trim() !== "") return String(v).trim();
+  return "";
+}
+
+function toContractDataForm(i: Intermediation, lead: LeadContractFields | null, v: VehicleContractFields | null): ContractDataForm {
+  const o = i.owner_data ?? {};
+  const st = pick(o.state, lead?.state);
+  return {
+    cpf_cnpj: maskCpfCnpj(pick(o.cpf_cnpj, lead?.cpf_cnpj)),
+    rg: pick(o.rg),
+    address: pick(o.address, lead?.address),
+    address_number: pick(o.address_number, lead?.address_number),
+    complement: pick(o.complement, lead?.address_complement),
+    district: pick(o.district, lead?.address_province),
+    zip: maskCep(pick(o.zip, lead?.postal_code)),
+    city: pick(o.city, lead?.city_name),
+    state: st.length <= 2 ? st.toUpperCase() : st,
+    email: pick(o.email, lead?.email),
+    phone: pick(o.phone, lead?.phone),
+    plate: maskPlate(pick(v?.plate)),
+    renavam: pick(v?.renavam),
+    chassis: pick(v?.chassis),
+    color: pick(v?.color),
+    fuel: pick(v?.fuel),
+    brand: pick(v?.brand),
+    model: pick(v?.model, v?.description),
+    version: pick(v?.version),
+    year_model: pick(v?.year_model),
+    km: pick(v?.km),
+    accessories: pick(v?.condition_notes),
+  };
+}
+
+function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("space-y-1", className)}>
+      <Label className="text-xs">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function ContractDataBlock({ i, lead, vehicle, open, onOpenChange, canEdit, missing, sectionRef }: {
+  i: Intermediation;
+  lead: LeadContractFields | null;
+  vehicle: VehicleContractFields | null;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  canEdit: boolean;
+  missing: ContractMissing[];
+  sectionRef: RefObject<HTMLDivElement>;
+}) {
+  const { isAdmin } = useAuth();
+  const setData = useSetContractData();
+  const [f, setF] = useState<ContractDataForm>(() => toContractDataForm(i, lead, vehicle));
+  const [dirty, setDirty] = useState(false);
+
+  // Re-sincroniza com o servidor só enquanto o usuário não mexeu (não apaga o que ele está digitando)
+  useEffect(() => { if (!dirty) setF(toContractDataForm(i, lead, vehicle)); }, [i, lead, vehicle, dirty]);
+
+  const signedLocked = (i.contract_status === "signed" || i.contract_status === "imported") && !isAdmin;
+  const closed = INTERMEDIATION_STATUS_META[i.status].closed;
+  const readOnly = !canEdit || signedLocked || closed;
+  const ownerMissing = missing.filter((m) => m.source === "contract_data.owner");
+  const vehicleMissing = missing.filter((m) => m.source === "contract_data.vehicle");
+  const missingCount = ownerMissing.length + vehicleMissing.length;
+
+  const set = (k: keyof ContractDataForm, v: string) => { setF((prev) => ({ ...prev, [k]: v })); setDirty(true); };
+
+  const save = async () => {
+    if (f.year_model && !/^\d{4}$/.test(f.year_model)) { toast.error("Ano do veículo precisa ter 4 dígitos (ex.: 2021)."); return; }
+    if (f.plate && f.plate.length !== 7) { toast.error("Placa precisa ter 7 caracteres (ex.: ABC1D23)."); return; }
+    if (f.chassis && f.chassis.length !== 17) { toast.error("Chassi precisa ter 17 caracteres."); return; }
+    if (f.renavam && (f.renavam.length < 9 || f.renavam.length > 11)) { toast.error("Renavam tem 11 dígitos (9 nos documentos antigos)."); return; }
+    if (f.km && !/^\d+$/.test(f.km)) { toast.error("Quilometragem: só números."); return; }
+    const vehicleTouched = [f.plate, f.renavam, f.chassis, f.color, f.fuel, f.brand, f.model, f.version, f.year_model, f.km, f.accessories].some(Boolean);
+    if (!vehicle && vehicleTouched) {
+      toast.error("Esse lead ainda não tem veículo cadastrado — cadastre o carro no card Captação antes de preencher os dados dele.");
+      return;
+    }
+    try {
+      const snap = await setData.mutateAsync({
+        id: i.id,
+        leadId: i.owner_lead_id,
+        data: {
+          owner: {
+            cpf_cnpj: f.cpf_cnpj.trim(), rg: f.rg.trim(), address: f.address.trim(), address_number: f.address_number.trim(),
+            complement: f.complement.trim(), district: f.district.trim(), zip: f.zip.trim(), city: f.city.trim(),
+            state: f.state.trim(), email: f.email.trim().toLowerCase(), phone: f.phone.trim(),
+          },
+          vehicle: vehicle
+            ? {
+                plate: f.plate, renavam: f.renavam, chassis: f.chassis, color: f.color, fuel: f.fuel, brand: f.brand,
+                model: f.model, version: f.version, year_model: f.year_model, km: f.km, accessories: f.accessories,
+              }
+            : undefined,
+        },
+      });
+      setDirty(false);
+      if (snap.ready) toast.success("Dados salvos. Tudo pronto pra gerar o contrato.");
+      else if (snap.missing.length) {
+        const first = snap.missing.slice(0, 4).map((m) => m.label).join(", ");
+        toast.success(`Dados salvos. Ainda falta: ${first}${snap.missing.length > 4 ? "…" : ""}.`);
+      } else toast.success("Dados salvos.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui salvar os dados do contrato.");
+    }
+  };
+
+  const inputCls = "h-9";
+
+  return (
+    <div ref={sectionRef} className="rounded-md border border-border/60 p-3 space-y-3 scroll-mt-24">
+      <Collapsible open={open} onOpenChange={onOpenChange}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="text-sm font-semibold flex items-center gap-1.5 hover:text-foreground">
+              {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+              <ClipboardList className="h-4 w-4 text-violet-600" /> Dados do contrato
+            </button>
+          </CollapsibleTrigger>
+          {missingCount > 0 ? (
+            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 text-[11px]">
+              <AlertTriangle className="h-3 w-3 mr-1" /> Falta: {missingCount} {missingCount === 1 ? "campo" : "campos"}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]">
+              <CheckCircle2 className="h-3 w-3 mr-1" /> Completos
+            </Badge>
+          )}
+        </div>
+
+        <CollapsibleContent className="pt-3 space-y-4">
+          {signedLocked && (
+            <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+              <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Contrato já assinado: esses dados só mudam por aditivo (admin).
+            </p>
+          )}
+
+          {/* Proprietário */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground"><UserRound className="h-3.5 w-3.5" /> Proprietário{lead?.name ? <span className="text-foreground">· {lead.name}</span> : null}</p>
+            {ownerMissing.length > 0 && <p className="text-[11px] text-amber-700 dark:text-amber-300">Falta: {ownerMissing.map((m) => m.label).join(" · ")}</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="CPF / CNPJ *"><Input inputMode="numeric" className={inputCls} value={f.cpf_cnpj} disabled={readOnly} placeholder="000.000.000-00" onChange={(e) => set("cpf_cnpj", maskCpfCnpj(e.target.value))} /></Field>
+              <Field label="RG / IE"><Input className={inputCls} value={f.rg} disabled={readOnly} placeholder="Ex.: 12.345.678-9" onChange={(e) => set("rg", e.target.value)} /></Field>
+              <Field label="CEP"><Input inputMode="numeric" className={inputCls} value={f.zip} disabled={readOnly} placeholder="00000-000" onChange={(e) => set("zip", maskCep(e.target.value))} /></Field>
+              <Field label="Endereço (rua/avenida) *" className="sm:col-span-2"><Input className={inputCls} value={f.address} disabled={readOnly} placeholder="Ex.: Rua das Flores" onChange={(e) => set("address", e.target.value)} /></Field>
+              <Field label="Número"><Input className={inputCls} value={f.address_number} disabled={readOnly} placeholder="Ex.: 120" onChange={(e) => set("address_number", e.target.value)} /></Field>
+              <Field label="Complemento"><Input className={inputCls} value={f.complement} disabled={readOnly} placeholder="Ex.: apto 32" onChange={(e) => set("complement", e.target.value)} /></Field>
+              <Field label="Bairro"><Input className={inputCls} value={f.district} disabled={readOnly} placeholder="Ex.: Alphaville" onChange={(e) => set("district", e.target.value)} /></Field>
+              <div className="grid grid-cols-[1fr_72px] gap-2">
+                <Field label="Cidade *"><Input className={inputCls} value={f.city} disabled={readOnly} placeholder="Ex.: Barueri" onChange={(e) => set("city", e.target.value)} /></Field>
+                <Field label="UF *"><Input className={cn(inputCls, "uppercase")} value={f.state} disabled={readOnly} placeholder="SP" maxLength={2} onChange={(e) => set("state", maskUF(e.target.value))} /></Field>
+              </div>
+              <Field label="E-mail"><Input type="email" className={inputCls} value={f.email} disabled={readOnly} placeholder="nome@email.com" onChange={(e) => set("email", e.target.value)} /></Field>
+              <Field label="Telefone / WhatsApp *"><Input inputMode="tel" className={inputCls} value={f.phone} disabled={readOnly} placeholder="(11) 99999-9999" onChange={(e) => set("phone", e.target.value)} /></Field>
+            </div>
+          </div>
+
+          {/* Veículo */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground"><Car className="h-3.5 w-3.5" /> Veículo</p>
+            {!vehicle && <p className="text-[11px] text-amber-700 dark:text-amber-300">Esse lead ainda não tem veículo cadastrado. Cadastre o carro no card Captação e volte aqui.</p>}
+            {vehicleMissing.length > 0 && <p className="text-[11px] text-amber-700 dark:text-amber-300">Falta: {vehicleMissing.map((m) => m.label).join(" · ")}</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Placa *"><Input className={cn(inputCls, "uppercase font-mono")} value={f.plate} disabled={readOnly || !vehicle} placeholder="ABC1D23" maxLength={7} onChange={(e) => set("plate", maskPlate(e.target.value))} /></Field>
+              <Field label="Renavam *"><Input inputMode="numeric" className={cn(inputCls, "font-mono")} value={f.renavam} disabled={readOnly || !vehicle} placeholder="00000000000" onChange={(e) => set("renavam", maskRenavam(e.target.value))} /></Field>
+              <Field label="Chassi *"><Input className={cn(inputCls, "uppercase font-mono")} value={f.chassis} disabled={readOnly || !vehicle} placeholder="17 caracteres" maxLength={17} onChange={(e) => set("chassis", maskChassis(e.target.value))} /></Field>
+              <Field label="Marca"><Input className={inputCls} value={f.brand} disabled={readOnly || !vehicle} placeholder="Ex.: Toyota" onChange={(e) => set("brand", e.target.value)} /></Field>
+              <Field label="Modelo *"><Input className={inputCls} value={f.model} disabled={readOnly || !vehicle} placeholder="Ex.: Corolla" onChange={(e) => set("model", e.target.value)} /></Field>
+              <Field label="Versão"><Input className={inputCls} value={f.version} disabled={readOnly || !vehicle} placeholder="Ex.: XEi 2.0" onChange={(e) => set("version", e.target.value)} /></Field>
+              <Field label="Ano modelo *"><Input inputMode="numeric" className={inputCls} value={f.year_model} disabled={readOnly || !vehicle} placeholder="2021" maxLength={4} onChange={(e) => set("year_model", onlyDigits(e.target.value).slice(0, 4))} /></Field>
+              <Field label="Quilometragem (km) *"><Input inputMode="numeric" className={inputCls} value={f.km} disabled={readOnly || !vehicle} placeholder="Ex.: 45000" onChange={(e) => set("km", onlyDigits(e.target.value).slice(0, 7))} /></Field>
+              <Field label="Cor"><Input className={inputCls} value={f.color} disabled={readOnly || !vehicle} placeholder="Ex.: Prata" onChange={(e) => set("color", e.target.value)} /></Field>
+              <Field label="Combustível"><Input className={inputCls} value={f.fuel} disabled={readOnly || !vehicle} placeholder="Ex.: Flex" onChange={(e) => set("fuel", e.target.value)} /></Field>
+              <Field label="Acessórios relevantes" className="sm:col-span-2"><Input className={inputCls} value={f.accessories} disabled={readOnly || !vehicle} placeholder="Ex.: teto solar, multimídia, 2 chaves" onChange={(e) => set("accessories", e.target.value)} /></Field>
+            </div>
+          </div>
+
+          {!readOnly && (
+            <div className="flex items-center justify-end gap-2">
+              {dirty && <span className="text-[11px] text-muted-foreground">Alterações não salvas</span>}
+              <Button size="sm" onClick={save} disabled={setData.isPending}>
+                {setData.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                Salvar dados
+              </Button>
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 // ─── Contrato ───────────────────────────────────────────────────────────────
 
-function ContractBlock({ i, memberName }: { i: Intermediation; memberName: (id: string | null) => string | null }) {
+/** Abre uma aba ANTES do await (bloqueador de pop-up) e navega pra URL quando ela chegar. */
+async function openPdfTab(getUrl: () => Promise<string>) {
+  const win = window.open("about:blank", "_blank");
+  if (win) win.opener = null;
+  try {
+    const url = await getUrl();
+    if (win) win.location.href = url;
+    else window.open(url, "_blank", "noopener");
+  } catch (e) {
+    win?.close();
+    throw e;
+  }
+}
+
+function renderErrorToast(e: unknown, fallback: string) {
+  if (e instanceof ContractRenderError && e.missing.length > 0) {
+    toast.error(e.message, { description: `Falta: ${e.missing.map((m) => m.label).join(", ")}.` });
+    return;
+  }
+  toast.error(e instanceof Error ? e.message : fallback);
+}
+
+const LIVE_DOC_STATUSES = ["draft", "generated", "ready", "error"];
+
+function DocumentSigners({ doc }: { doc: ContractDocument }) {
+  const signers = doc.contract_signers ?? [];
+  if (signers.length === 0) return null;
+  return (
+    <div className="space-y-0.5">
+      <p className="text-muted-foreground">Signatários previstos</p>
+      <ul className="space-y-0.5">
+        {signers.map((s) => {
+          const sm = CONTRACT_SIGNER_STATUS_META[s.status] ?? CONTRACT_SIGNER_STATUS_META.pending;
+          return (
+            <li key={s.id} className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", sm.cls)}>{sm.label}</Badge>
+              <span>{SIGNER_PARTY_LABEL[s.party_type] ?? s.party_type}: <strong className="text-foreground">{s.name}</strong>{s.cpf_cnpj ? <span className="text-muted-foreground"> · {s.cpf_cnpj}</span> : null}{s.signed_at ? <span className="text-muted-foreground"> · {fmtDate(s.signed_at)}</span> : null}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, currentDoc, onJump }: {
+  i: Intermediation;
+  memberName: (id: string | null) => string | null;
+  snapshot: ContractSnapshot | null;
+  snapshotLoading: boolean;
+  docs: ContractDocument[];
+  currentDoc: ContractDocument | null;
+  onJump: (source: ContractMissingSource) => void;
+}) {
   const { isAdmin, isPromotora } = useAuth();
   const importContract = useImportSignedContract();
-  const [open, setOpen] = useState(false);
+  const generate = useGenerateContract();
+  const [importOpen, setImportOpen] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenReason, setRegenReason] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [signedAt, setSignedAt] = useState(todayISO());
   const [reason, setReason] = useState("");
-  const [opening, setOpening] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const meta = CONTRACT_STATUS_META[i.contract_status] ?? CONTRACT_STATUS_META.none;
-  const missing = missingTerms(i);
+  const termsMissing = missingTerms(i);
   const hasContract = i.contract_status === "signed" || i.contract_status === "imported";
   const canImportStatus = ["lead", "contracting", "docs_pending", "paused"].includes(i.status);
-  const showImport = !hasContract && canImportStatus && !isPromotora;
+  const closed = INTERMEDIATION_STATUS_META[i.status].closed;
+  const missing = snapshot?.missing ?? [];
+  const ready = snapshot?.ready === true;
+  const nextVersion = snapshot?.next_version ?? (docs[0]?.version ?? 0) + 1;
+  const canGenerate = !isPromotora && !hasContract && canImportStatus && !closed;
+  const canRegenerate = canGenerate && !!currentDoc && LIVE_DOC_STATUSES.includes(currentDoc.status);
+  const history = docs.filter((d) => d.id !== currentDoc?.id);
 
-  const reset = () => { setFile(null); setSignedAt(todayISO()); setReason(""); };
+  const badgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando assinatura` : meta.label;
 
-  const confirm = async () => {
+  const resetImport = () => { setFile(null); setSignedAt(todayISO()); setReason(""); };
+
+  const confirmImport = async () => {
     if (!file) { toast.error("Escolha o PDF do contrato assinado."); return; }
     if (reason.trim().length < 3) { toast.error("Descreva o motivo/origem (ex.: assinado em papel na loja)."); return; }
     try {
-      const r = await importContract.mutateAsync({ id: i.id, leadId: i.owner_lead_id, file, signedAt, reason });
+      const r = await importContract.mutateAsync({
+        id: i.id, leadId: i.owner_lead_id, file, signedAt, reason,
+        documentId: currentDoc?.id ?? i.contract_document_id ?? null,
+      });
       if (r.already) toast.info(`${r.code} já estava formalizada.`);
       else toast.success(`${r.code} formalizada — prêmio de R$ 25 gerado (pendente de aprovação).`);
-      setOpen(false);
-      reset();
+      setImportOpen(false);
+      resetImport();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui importar o contrato.");
     }
   };
 
-  const openPdf = async () => {
-    if (!i.contract_file_path) return;
-    setOpening(true);
+  const openPath = async (path: string, key: string) => {
+    setOpening(key);
     try {
-      const url = await getContractSignedUrl(i.contract_file_path);
-      window.open(url, "_blank", "noopener");
+      await openPdfTab(() => getContractSignedUrl(path, 600));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui abrir o PDF.");
     } finally {
-      setOpening(false);
+      setOpening(null);
     }
   };
 
+  const preview = async () => {
+    setPreviewing(true);
+    try {
+      await openContractPreview(i.id);
+    } catch (e) {
+      renderErrorToast(e, "Não consegui montar a pré-visualização.");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const runGenerate = async (why?: string) => {
+    const win = window.open("about:blank", "_blank");
+    if (win) win.opener = null;
+    try {
+      const r = await generate.mutateAsync({ id: i.id, leadId: i.owner_lead_id, reason: why ?? null });
+      toast.success(`Contrato v${r.document.version} gerado.`);
+      let url = r.signed_url;
+      if (!url && r.document.rendered_file_path) url = await getContractSignedUrl(r.document.rendered_file_path, 600).catch(() => null);
+      if (url) { if (win) win.location.href = url; else window.open(url, "_blank", "noopener"); }
+      else win?.close();
+      setRegenOpen(false);
+      setRegenReason("");
+    } catch (e) {
+      win?.close();
+      renderErrorToast(e, "Não consegui gerar o contrato.");
+    }
+  };
+
+  const confirmRegenerate = () => {
+    if (regenReason.trim().length < 3) { toast.error("Descreva o motivo da nova versão."); return; }
+    void runGenerate(regenReason.trim());
+  };
+
+  const docMeta = currentDoc ? CONTRACT_DOCUMENT_STATUS_META[currentDoc.status] ?? CONTRACT_DOCUMENT_STATUS_META.generated : null;
+  const generatedBy = currentDoc ? memberName(currentDoc.generated_by) : null;
+  const primaryHash = currentDoc?.signed_sha256 ?? currentDoc?.rendered_sha256 ?? null;
+
   return (
-    <div className="rounded-md border border-border/60 p-3 space-y-2">
+    <div className="rounded-md border border-border/60 p-3 space-y-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold flex items-center gap-1.5"><FileSignature className="h-4 w-4 text-emerald-600" /> Contrato</p>
-        <Badge variant="outline" className={cn("border text-[11px]", meta.cls)}>{meta.label}</Badge>
+        <Badge variant="outline" className={cn("border text-[11px]", meta.cls)}>{badgeLabel}</Badge>
       </div>
 
-      {hasContract ? (
+      {/* Assinado/importado: resumo (mantido da fase 1) */}
+      {hasContract && (
         <div className="text-xs text-muted-foreground space-y-0.5">
           <p>Assinado em <strong className="text-foreground">{fmtDate(i.contract_signed_at)}</strong>{i.contract_imported_by && memberName(i.contract_imported_by) ? <> · importado por <strong className="text-foreground">{memberName(i.contract_imported_by)}</strong></> : null}</p>
           {i.contract_sha256 && <p>Hash SHA-256: <code className="text-[11px]">{i.contract_sha256.slice(0, 12)}…</code></p>}
           {i.contract_import_reason && <p>Origem: {i.contract_import_reason}</p>}
           {i.contract_file_path && (
-            <button type="button" onClick={openPdf} disabled={opening} className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-60">
-              {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF
+            <button type="button" onClick={() => openPath(i.contract_file_path!, "signed-main")} disabled={opening === "signed-main"} className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-60">
+              {opening === "signed-main" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF assinado
             </button>
           )}
         </div>
-      ) : showImport ? (
-        isAdmin ? (
-          <div className="space-y-1.5">
-            <Button size="sm" variant="outline" disabled={missing.length > 0} onClick={() => setOpen(true)}>
-              <Upload className="h-4 w-4 mr-1" /> Importar contrato assinado (PDF)
+      )}
+
+      {/* Checklist do snapshot */}
+      {!hasContract && !isPromotora && (
+        snapshotLoading && !snapshot ? (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Conferindo o que falta pro contrato…</p>
+        ) : snapshot && missing.length > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 p-2.5">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Falta pra gerar o contrato ({missing.length}):</p>
+            <ul className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
+              {missing.map((m) => (
+                <li key={m.key} className="text-[11px]">
+                  {m.source === "legal_entity" ? (
+                    <a href="/configuracoes?s=intermediacao" className="inline-flex items-center gap-1 text-amber-900 dark:text-amber-200 hover:underline">
+                      <Settings2 className="h-3 w-3 shrink-0" /> {m.label} <span className="text-muted-foreground">· Configurações › Intermediação</span>
+                    </a>
+                  ) : (
+                    <button type="button" onClick={() => onJump(m.source)} className="inline-flex items-center gap-1 text-left text-amber-900 dark:text-amber-200 hover:underline">
+                      <ChevronRight className="h-3 w-3 shrink-0" /> {m.label} <span className="text-muted-foreground">· {CONTRACT_MISSING_SOURCE_LABEL[m.source] ?? m.source}</span>
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : snapshot && !snapshot.template ? (
+          <p className="text-xs rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 px-3 py-2 flex items-start gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Nenhum template de contrato vigente. Peça pra publicar um em <a href="/configuracoes?s=intermediacao" className="underline">Configurações › Intermediação</a>.
+          </p>
+        ) : snapshot ? (
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Tudo preenchido — template "{snapshot.template!.name}" v{snapshot.template!.version}{snapshot.template!.global ? " (Totex)" : ""}.
+          </p>
+        ) : null
+      )}
+
+      {/* Ações */}
+      {!hasContract && !isPromotora && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={preview} disabled={previewing}>
+            {previewing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Eye className="h-4 w-4 mr-1" />} Pré-visualizar
+          </Button>
+          {!currentDoc || !LIVE_DOC_STATUSES.includes(currentDoc.status) ? (
+            <Button size="sm" disabled={!ready || !canGenerate || generate.isPending} onClick={() => runGenerate()} title={!ready ? "Preencha o que falta antes de gerar" : undefined}>
+              {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />} Gerar contrato v{nextVersion}
             </Button>
-            {missing.length > 0 && (
-              <p className="text-[11px] text-muted-foreground">Antes de importar, preencha nas condições comerciais: {missing.join(", ")}.</p>
+          ) : (
+            <Button size="sm" variant="outline" disabled={!ready || !canRegenerate || generate.isPending} onClick={() => setRegenOpen(true)}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
+            </Button>
+          )}
+          {canImportStatus && (
+            isAdmin ? (
+              <Button size="sm" variant={currentDoc ? "outline" : "ghost"} disabled={termsMissing.length > 0} onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-1" /> {currentDoc ? `Importar o PDF assinado desta versão (v${currentDoc.version})` : "Importar contrato assinado (PDF)"}
+              </Button>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">Depois de assinado, o admin importa o PDF aqui.</span>
+            )
+          )}
+        </div>
+      )}
+      {!hasContract && !isPromotora && isAdmin && canImportStatus && termsMissing.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">Antes de importar, preencha nas condições comerciais: {termsMissing.join(", ")}.</p>
+      )}
+      {!hasContract && isPromotora && <p className="text-xs text-muted-foreground">{currentDoc ? `Contrato v${currentDoc.version} gerado, aguardando assinatura.` : "Sem contrato assinado."}</p>}
+
+      {/* Documento atual */}
+      {currentDoc && docMeta && (
+        <div className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs space-y-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <p className="font-medium flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-sky-600" /> Contrato v{currentDoc.version}
+              <span className="text-muted-foreground font-normal">· template v{currentDoc.template_version ?? "—"}</span>
+            </p>
+            <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", docMeta.cls)}>{docMeta.label}</Badge>
+          </div>
+          <p className="text-muted-foreground">
+            {currentDoc.generated_at ? `Gerado em ${fmtDateTime(currentDoc.generated_at)}` : `Registrado em ${fmtDateTime(currentDoc.created_at)}`}
+            {generatedBy ? ` por ${generatedBy}` : ""}
+            {primaryHash ? <> · hash <code className="text-[11px]">{primaryHash.slice(0, 12)}…</code></> : null}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {currentDoc.rendered_file_path && (
+              <button type="button" onClick={() => openPath(currentDoc.rendered_file_path!, "cur-rendered")} disabled={opening === "cur-rendered"} className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline disabled:opacity-60">
+                {opening === "cur-rendered" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF
+              </button>
+            )}
+            {currentDoc.signed_file_path && currentDoc.signed_file_path !== i.contract_file_path && (
+              <button type="button" onClick={() => openPath(currentDoc.signed_file_path!, "cur-signed")} disabled={opening === "cur-signed"} className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-60">
+                {opening === "cur-signed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF assinado
+              </button>
             )}
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">Peça ao admin pra importar o contrato assinado{missing.length > 0 ? ` (antes, complete: ${missing.join(", ")})` : ""}.</p>
-        )
-      ) : (
-        <p className="text-xs text-muted-foreground">Sem contrato assinado.</p>
+          {currentDoc.cancel_reason && currentDoc.status === "cancelled" && <p className="text-muted-foreground">Cancelado: {currentDoc.cancel_reason}</p>}
+          <DocumentSigners doc={currentDoc} />
+        </div>
+      )}
+
+      {/* Histórico de versões */}
+      {history.length > 0 && (
+        <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+          <CollapsibleTrigger asChild>
+            <button type="button" className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+              {historyOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              <Layers className="h-3.5 w-3.5" /> Versões anteriores ({history.length})
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-1.5">
+            <ul className="space-y-1.5 border-l border-border/60 pl-3">
+              {history.map((d) => {
+                const dm = CONTRACT_DOCUMENT_STATUS_META[d.status] ?? CONTRACT_DOCUMENT_STATUS_META.generated;
+                const path = d.signed_file_path ?? d.rendered_file_path;
+                return (
+                  <li key={d.id} className="text-[11px] relative">
+                    <span className="absolute -left-[17px] top-1.5 h-2 w-2 rounded-full bg-border" />
+                    <p className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">v{d.version}</span>
+                      <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", dm.cls)}>{dm.label}</Badge>
+                      <span className="text-muted-foreground">{fmtDateTime(d.generated_at ?? d.created_at)}{d.template_version ? ` · template v${d.template_version}` : ""}</span>
+                      {path && (
+                        <button type="button" onClick={() => openPath(path, `h-${d.id}`)} disabled={opening === `h-${d.id}`} className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline disabled:opacity-60">
+                          {opening === `h-${d.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />} PDF
+                        </button>
+                      )}
+                    </p>
+                    {d.cancel_reason && <p className="text-muted-foreground">Motivo: {d.cancel_reason}{d.cancelled_at ? ` · ${fmtDate(d.cancelled_at)}` : ""}</p>}
+                  </li>
+                );
+              })}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3" /> Assinatura eletrônica (Clicksign) chega na fase 3.</p>
 
-      <Dialog open={open} onOpenChange={(o) => { if (!importContract.isPending) { setOpen(o); if (!o) reset(); } }}>
+      {/* Regenerar */}
+      <Dialog open={regenOpen} onOpenChange={(o) => { if (!generate.isPending) { setRegenOpen(o); if (!o) setRegenReason(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Importar contrato assinado — {i.code}</DialogTitle>
+            <DialogTitle>Regenerar contrato — {i.code}</DialogTitle>
             <DialogDescription>
-              Isso <strong>formaliza a intermediação</strong> (status Formalizada), move o funil pra Preparação e gera o prêmio da promotora (pendente de aprovação). O PDF fica guardado com hash pra auditoria.
+              Vai gerar a <strong>v{nextVersion}</strong> com os dados de agora. A v{currentDoc?.version ?? "—"} fica <strong>cancelada no histórico</strong> (nada é apagado) — se ela já foi impressa, descarte a cópia.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo *</Label>
+            <Textarea rows={2} value={regenReason} onChange={(e) => setRegenReason(e.target.value)} placeholder="Ex.: corrigido o CPF do proprietário / mudou o prazo" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRegenOpen(false); setRegenReason(""); }} disabled={generate.isPending}>Cancelar</Button>
+            <Button onClick={confirmRegenerate} disabled={generate.isPending}>
+              {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />} Gerar v{nextVersion}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Importar assinado */}
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importContract.isPending) { setImportOpen(o); if (!o) resetImport(); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{currentDoc ? `Importar o PDF assinado desta versão (v${currentDoc.version})` : "Importar contrato assinado"} — {i.code}</DialogTitle>
+            <DialogDescription>
+              Isso <strong>formaliza a intermediação</strong> (status Formalizada), move o funil pra Preparação e gera o prêmio da promotora (pendente de aprovação). O PDF fica guardado com hash pra auditoria{currentDoc ? ` e vinculado ao contrato v${currentDoc.version}` : ""}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -410,8 +914,8 @@ function ContractBlock({ i, memberName }: { i: Intermediation; memberName: (id: 
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setOpen(false); reset(); }} disabled={importContract.isPending}>Cancelar</Button>
-            <Button onClick={confirm} disabled={importContract.isPending || !file}>
+            <Button variant="outline" onClick={() => { setImportOpen(false); resetImport(); }} disabled={importContract.isPending}>Cancelar</Button>
+            <Button onClick={confirmImport} disabled={importContract.isPending || !file}>
               {importContract.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileSignature className="h-4 w-4 mr-1" />}
               Formalizar
             </Button>
@@ -599,6 +1103,7 @@ function summarizePayload(ev: IntermediationEvent): string | null {
   if (s("ends_at")) parts.push(`prazo ${fmtDate(s("ends_at"))}`);
   if (s("contract_status")) parts.push(CONTRACT_STATUS_META[s("contract_status") as keyof typeof CONTRACT_STATUS_META]?.label ?? s("contract_status")!);
   if (s("mode") === "imported") parts.push("PDF importado");
+  if (typeof p.version === "number") parts.push(`v${p.version}${typeof p.template_version === "number" ? ` (template v${p.template_version})` : ""}`);
   if (s("sha256")) parts.push(`hash ${(s("sha256") as string).slice(0, 12)}…`);
   if (typeof p.listing_price === "number") parts.push(`anúncio ${BRL.format(p.listing_price)}`);
   if (ev.event_type === "commercial_terms_set") {
@@ -657,6 +1162,8 @@ export function IntermediationCard({ leadId }: Props) {
   const q = useIntermediationByLead(leadId);
   const { data: members = [] } = useAllTeamMembers();
   const { data: legalEntities = [] } = useLegalEntities();
+  const { data: leadData } = useSalesLead(leadId);
+  const lead = (leadData ?? null) as LeadContractFields | null;
 
   const memberName = useMemo(() => {
     const m = new Map<string, string>();
@@ -664,27 +1171,69 @@ export function IntermediationCard({ leadId }: Props) {
     return (id: string | null) => (id ? m.get(id) ?? null : null);
   }, [members]);
 
-  // Só pra avisar "vai gerar tarefa pra retirar o anúncio"
+  // Veículo da intermediação (ou o último do lead) — pré-preenche "Dados do contrato" e
+  // avisa "vai gerar tarefa pra retirar o anúncio" ao pausar/encerrar.
+  const intermediationId = q.data?.id ?? null;
   const vehicleId = q.data?.vehicle_id ?? null;
   const vehicleQ = useQuery({
-    queryKey: ["intermediation", "vehicle-listing", vehicleId ?? ""],
-    enabled: !!vehicleId,
+    queryKey: ["intermediation", "vehicle", vehicleId ?? "", leadId],
+    enabled: !!intermediationId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("seller_vehicles").select("id, listing_url, listing_missing_since").eq("id", vehicleId!).maybeSingle();
+      const cols = "id, description, brand, model, version, year_model, km, color, fuel, plate, renavam, chassis, condition_notes, listing_url, listing_missing_since";
+      const { data, error } = vehicleId
+        ? await supabase.from("seller_vehicles").select(cols).eq("id", vehicleId).maybeSingle()
+        : await supabase.from("seller_vehicles").select(cols).eq("lead_id", leadId).order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
-      return data as { id: string; listing_url: string | null; listing_missing_since: string | null } | null;
+      return (data as VehicleContractFields | null) ?? null;
     },
     staleTime: 30_000,
   });
-  const vehicleListed = !!vehicleQ.data?.listing_url && !vehicleQ.data?.listing_missing_since;
+  const vehicle = vehicleQ.data ?? null;
+  const vehicleListed = !!vehicle?.listing_url && !vehicle?.listing_missing_since;
+
+  // Fase 2: o que falta pro contrato + versões geradas (promotora não tem acesso à RPC)
+  const snapshotQ = useContractSnapshot(isPromotora ? null : intermediationId);
+  const docsQ = useContractDocuments(isPromotora ? null : intermediationId, "INTERMEDIATION_CONTRACT");
+  const docs = useMemo(() => docsQ.data ?? [], [docsQ.data]);
+  const snapshot = snapshotQ.data ?? null;
+  const contractDataMissing = useMemo(
+    () => (snapshot?.missing ?? []).filter((m) => m.source === "contract_data.owner" || m.source === "contract_data.vehicle"),
+    [snapshot],
+  );
+
+  // "Dados do contrato" abre sozinho enquanto faltar algo (o usuário pode fechar)
+  const [dataOpen, setDataOpen] = useState(false);
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpened.current && snapshot) {
+      autoOpened.current = true;
+      if (contractDataMissing.length > 0) setDataOpen(true);
+    }
+  }, [snapshot, contractDataMissing.length]);
+
+  const termsRef = useRef<HTMLDivElement>(null);
+  const dataRef = useRef<HTMLDivElement>(null);
+  const jumpTo = (source: ContractMissingSource) => {
+    if (source === "terms") {
+      termsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (source === "contract_data.owner" || source === "contract_data.vehicle") {
+      setDataOpen(true);
+      window.setTimeout(() => dataRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+    }
+  };
 
   if (q.isLoading || q.isError || !q.data) return null;
   const i = q.data;
 
   const statusMeta = INTERMEDIATION_STATUS_META[i.status] ?? INTERMEDIATION_STATUS_META.lead;
   const contractMeta = CONTRACT_STATUS_META[i.contract_status] ?? CONTRACT_STATUS_META.none;
+  const currentDoc =
+    docs.find((d) => d.id === i.contract_document_id) ?? docs.find((d) => d.status !== "cancelled" && d.status !== "archived") ?? null;
+  const contractBadgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando assinatura` : contractMeta.label;
   const promoterName = memberName(i.promoter_id);
-  const entity = legalEntities.find((e) => e.id === i.legal_entity_id) ?? null;
+  const entity = legalEntities.find((e) => e.id === (i.legal_entity_id ?? snapshot?.legal_entity_id)) ?? null;
   const canEdit = !isPromotora;
 
   const days = daysUntil(i.ends_at);
@@ -715,15 +1264,37 @@ export function IntermediationCard({ leadId }: Props) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant="outline" className={cn("border text-[11px]", statusMeta.cls)}>{statusMeta.label}</Badge>
-            <Badge variant="outline" className={cn("border text-[11px]", contractMeta.cls)}>{contractMeta.label}</Badge>
+            <Badge variant="outline" className={cn("border text-[11px]", contractMeta.cls)}>{contractBadgeLabel}</Badge>
             {deadlineBadge}
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        <TermsBlock i={i} canEdit={canEdit} />
-        <ContractBlock i={i} memberName={memberName} />
+        <div ref={termsRef} className="scroll-mt-24">
+          <TermsBlock i={i} canEdit={canEdit} />
+        </div>
+        {!isPromotora && (
+          <ContractDataBlock
+            i={i}
+            lead={lead}
+            vehicle={vehicle}
+            open={dataOpen}
+            onOpenChange={setDataOpen}
+            canEdit={canEdit}
+            missing={contractDataMissing}
+            sectionRef={dataRef}
+          />
+        )}
+        <ContractBlock
+          i={i}
+          memberName={memberName}
+          snapshot={snapshot}
+          snapshotLoading={snapshotQ.isLoading}
+          docs={docs}
+          currentDoc={currentDoc}
+          onJump={jumpTo}
+        />
 
         {i.status === "completed" && <CommissionBlock i={i} />}
 

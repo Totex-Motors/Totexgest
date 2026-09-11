@@ -33,6 +33,7 @@ import {
   Building2,
   ChevronLeft,
   Mail,
+  FileSignature,
   type LucideIcon,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAd
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
 import { CaptureHandoffSection } from "@/components/settings/sections/CaptureHandoffSection";
 import { CaptureRewardsSection } from "@/components/settings/sections/CaptureRewardsSection";
+import { IntermediationSettingsSection } from "@/components/settings/sections/IntermediationSettingsSection";
 import { NotificationRulesBuilder } from "@/components/settings/NotificationRulesBuilder";
 import { WhatsAppTaskBotConfig } from "@/components/settings/WhatsAppTaskBotConfig";
 
@@ -217,6 +219,13 @@ const navigationSections: NavSection[] = [
         label: "Prêmios da captação",
         icon: Gift,
         description: "Gamificação: prêmios por meta (ex.: 40 leads na semana → voucher). A promotora vê o prêmio e o progresso na tela dela.",
+      },
+      {
+        id: "intermediacao",
+        label: "Intermediação",
+        icon: FileSignature,
+        description: "Contrato de intermediação: a entidade jurídica que assina pela empresa (razão social, CNPJ, representante) e os templates de contrato versionados.",
+        hint: "Entidade jurídica e templates de contrato",
       },
     ],
   },
@@ -512,6 +521,8 @@ function SettingsContent({ section }: { section: string }) {
       return <CaptureHandoffSection />;
     case "premios":
       return <CaptureRewardsSection />;
+    case "intermediacao":
+      return <IntermediationSettingsSection />;
 
     default:
       return <ModulesSection />;

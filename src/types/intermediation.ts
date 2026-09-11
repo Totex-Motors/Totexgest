@@ -82,6 +82,8 @@ export interface Intermediation {
   contract_imported_by: string | null;
   contract_import_reason: string | null;
   contract_document_id: string | null;
+  /** Fase 2: CPF/RG/endereço do proprietário (o que o lead não tinha). */
+  owner_data: OwnerData;
   // prazo
   deadline_status: DeadlineStatus;
   deadline_alerted_at: string | null;
@@ -112,6 +114,8 @@ export interface IntermediationEvent {
   created_at: string;
 }
 
+export type LegalEntitySignerRole = "Administradora" | "Administrador" | "Procuradora" | "Procurador";
+
 /** Linha da tabela `legal_entities` (razão social/CNPJ que assina o contrato). */
 export interface LegalEntity {
   id: string;
@@ -125,11 +129,228 @@ export interface LegalEntity {
   zip: string | null;
   phone: string | null;
   email: string | null;
+  /** Quem assina pela empresa (fase 5 troca por procurações). */
+  signer_name: string | null;
+  signer_cpf: string | null;
+  signer_role: LegalEntitySignerRole | null;
+  /** Cidade que aparece em "Local e data" do contrato (default: city_name). */
+  contract_city: string | null;
   is_default: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
+
+/** Campos editáveis de `legal_entities` (upsert pela UI, admin). */
+export type LegalEntityInput = Partial<
+  Pick<
+    LegalEntity,
+    | "id"
+    | "legal_name"
+    | "trade_name"
+    | "cnpj"
+    | "address"
+    | "city_name"
+    | "state"
+    | "zip"
+    | "phone"
+    | "email"
+    | "signer_name"
+    | "signer_cpf"
+    | "signer_role"
+    | "contract_city"
+    | "is_default"
+    | "is_active"
+  >
+> & { legal_name: string };
+
+// ─── Fase 2: documentos / contratos ─────────────────────────────────────────
+
+export type ContractDocumentType =
+  | "INTERMEDIATION_CONTRACT"
+  | "PRICE_AUTHORIZATION"
+  | "CUSTODY_TERM"
+  | "TEST_DRIVE_TERM"
+  | "BUYER_PROPOSAL"
+  | "SALE_CONTRACT"
+  | "DELIVERY_TERM"
+  | "CANCELLATION_TERM";
+
+export type ContractTemplateStatus = "draft" | "published" | "retired";
+
+/** Linha de `contract_templates` (jurídico, versionado; publicado é imutável). */
+export interface ContractTemplate {
+  id: string;
+  /** null = global (Totex) — só superadmin edita. */
+  tenant_id: string | null;
+  document_type: ContractDocumentType;
+  name: string;
+  version: number;
+  status: ContractTemplateStatus;
+  body: string;
+  required_variables: string[];
+  signer_policy: { signers: string[] } | Record<string, unknown>;
+  notes: string | null;
+  effective_from: string | null;
+  retired_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContractDocumentStatus =
+  | "draft"
+  | "generated"
+  | "ready"
+  | "sent"
+  | "partial"
+  | "completed"
+  | "validated"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "error"
+  | "archived";
+
+export type ContractSignerPartyType = "owner" | "company" | "buyer" | "witness";
+export type ContractSignerStatus = "pending" | "sent" | "viewed" | "signed" | "declined";
+
+/** Linha de `contract_signers` (signatários previstos de um documento). */
+export interface ContractSigner {
+  id: string;
+  tenant_id: string;
+  document_id: string;
+  party_type: ContractSignerPartyType;
+  party_id: string | null;
+  name: string;
+  cpf_cnpj: string | null;
+  email: string | null;
+  phone: string | null;
+  signing_order: number;
+  provider_signer_id: string | null;
+  status: ContractSignerStatus;
+  viewed_at: string | null;
+  signed_at: string | null;
+  created_at: string;
+}
+
+/** Linha de `contract_documents` (cada geração = uma versão; regenerar cancela a anterior). */
+export interface ContractDocument {
+  id: string;
+  tenant_id: string;
+  intermediation_id: string;
+  document_type: ContractDocumentType;
+  template_id: string | null;
+  template_version: number | null;
+  version: number;
+  status: ContractDocumentStatus;
+  snapshot_json: Record<string, unknown>;
+  rendered_file_path: string | null;
+  rendered_sha256: string | null;
+  signed_file_path: string | null;
+  signed_sha256: string | null;
+  provider: string | null;
+  provider_document_id: string | null;
+  generated_at: string | null;
+  sent_at: string | null;
+  completed_at: string | null;
+  validated_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  generated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Embed `contract_signers(*)`. */
+  contract_signers?: ContractSigner[];
+}
+
+export type ContractMissingSource = "terms" | "contract_data.owner" | "contract_data.vehicle" | "legal_entity" | "other";
+
+/** Item de `missing` do snapshot — a UI leva o usuário até o campo certo. */
+export interface ContractMissing {
+  key: string;
+  label: string;
+  source: ContractMissingSource;
+}
+
+/** Retorno de `intermediation_contract_snapshot(p_id, p_document_type)`. */
+export interface ContractSnapshot {
+  variables: Record<string, string | null>;
+  missing: ContractMissing[];
+  ready: boolean;
+  template: { id: string; name: string; version: number; document_type: ContractDocumentType; global: boolean } | null;
+  next_version: number;
+  legal_entity_id: string | null;
+}
+
+/** `intermediations.owner_data` — dados do proprietário que o lead não tem. */
+export interface OwnerData {
+  cpf_cnpj?: string | null;
+  rg?: string | null;
+  address?: string | null;
+  address_number?: string | null;
+  complement?: string | null;
+  district?: string | null;
+  zip?: string | null;
+  city?: string | null;
+  state?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+/** `p_data.vehicle` de `intermediation_set_contract_data` (tudo string — o servidor normaliza). */
+export interface ContractVehicleData {
+  plate?: string | null;
+  renavam?: string | null;
+  chassis?: string | null;
+  color?: string | null;
+  fuel?: string | null;
+  version?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  year_model?: string | null;
+  km?: string | null;
+  accessories?: string | null;
+}
+
+export interface ContractDataInput {
+  owner?: OwnerData;
+  vehicle?: ContractVehicleData;
+}
+
+export const DOCUMENT_TYPE_LABEL: Record<ContractDocumentType, string> = {
+  INTERMEDIATION_CONTRACT: "Contrato de Intermediação",
+  PRICE_AUTHORIZATION: "Autorização de preço",
+  CUSTODY_TERM: "Termo de custódia",
+  TEST_DRIVE_TERM: "Termo de test drive",
+  BUYER_PROPOSAL: "Proposta do comprador",
+  SALE_CONTRACT: "Contrato de compra e venda",
+  DELIVERY_TERM: "Termo de entrega",
+  CANCELLATION_TERM: "Termo de cancelamento",
+};
+
+export const CONTRACT_TEMPLATE_STATUS_LABEL: Record<ContractTemplateStatus, string> = {
+  draft: "Rascunho",
+  published: "Vigente",
+  retired: "Aposentado",
+};
+
+export const CONTRACT_MISSING_SOURCE_LABEL: Record<ContractMissingSource, string> = {
+  terms: "Condições comerciais",
+  "contract_data.owner": "Dados do proprietário",
+  "contract_data.vehicle": "Dados do veículo",
+  legal_entity: "Entidade jurídica (Configurações)",
+  other: "Outro",
+};
+
+export const SIGNER_PARTY_LABEL: Record<ContractSignerPartyType, string> = {
+  owner: "Proprietário",
+  company: "Empresa",
+  buyer: "Comprador",
+  witness: "Testemunha",
+};
+
+export const SIGNER_ROLE_OPTIONS: LegalEntitySignerRole[] = ["Administradora", "Administrador", "Procuradora", "Procurador"];
 
 /** Subconjunto aceito por `intermediation_set_terms(p_id, p_terms)`. */
 export interface IntermediationTermsInput {
@@ -220,6 +441,29 @@ export const CONTRACT_STATUS_META: Record<ContractStatus, BadgeMeta> = {
   cancelled: { label: "Cancelado", cls: CLS.muted },
 };
 
+export const CONTRACT_DOCUMENT_STATUS_META: Record<ContractDocumentStatus, BadgeMeta> = {
+  draft: { label: "Rascunho", cls: CLS.muted },
+  generated: { label: "Gerado · aguardando assinatura", cls: CLS.sky },
+  ready: { label: "Pronto pra envio", cls: CLS.sky },
+  sent: { label: "Enviado pra assinatura", cls: CLS.sky },
+  partial: { label: "Parcialmente assinado", cls: CLS.amber },
+  completed: { label: "Assinado", cls: CLS.emerald },
+  validated: { label: "Assinado e validado", cls: CLS.emeraldSolid },
+  declined: { label: "Recusado", cls: CLS.red },
+  expired: { label: "Expirado", cls: CLS.red },
+  cancelled: { label: "Cancelado (substituído)", cls: CLS.muted },
+  error: { label: "Erro na geração", cls: CLS.red },
+  archived: { label: "Arquivado", cls: CLS.muted },
+};
+
+export const CONTRACT_SIGNER_STATUS_META: Record<ContractSignerStatus, BadgeMeta> = {
+  pending: { label: "Aguardando", cls: CLS.muted },
+  sent: { label: "Enviado", cls: CLS.sky },
+  viewed: { label: "Visualizou", cls: CLS.amber },
+  signed: { label: "Assinou", cls: CLS.emerald },
+  declined: { label: "Recusou", cls: CLS.red },
+};
+
 export const COMMISSION_STATUS_META: Record<CommissionStatus, BadgeMeta> = {
   pending: { label: "Pendente", cls: CLS.amber },
   invoiced: { label: "Faturada", cls: CLS.sky },
@@ -267,6 +511,8 @@ export const INTERMEDIATION_EVENT_LABEL: Record<string, string> = {
   vehicle_registered: "Veículo cadastrado",
   commercial_terms_set: "Condições comerciais atualizadas",
   intermediation_contract_signed: "Contrato assinado",
+  intermediation_contract_generated: "Contrato gerado (PDF)",
+  contract_data_set: "Dados do contrato atualizados",
   intermediation_activated: "Intermediação formalizada",
   vehicle_published: "Carro anunciado",
   buyer_linked: "Comprador interessado",
