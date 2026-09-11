@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
 export interface TeamMember {
@@ -58,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const sessionRef = useRef<Session | null>(null);
+  // TRAVA POR LOGIN: o cache do React Query é limpo a cada troca de usuário.
+  // Sem isso, quem loga em seguida no mesmo navegador vê por alguns segundos os
+  // dados (leads, retornos, metas) da sessão anterior — ex.: admin → promotora.
+  const queryClient = useQueryClient();
 
   // Busca teamMember via select direto (mais rápido que RPC — sem overhead de function call)
   const fetchTeamMember = useCallback(async (email: string): Promise<TeamMember | null> => {
@@ -153,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasInitiallySignedIn = true;
 
         console.log('[AuthContext] Auth event: SIGNED_IN (primeiro login)');
+        queryClient.clear(); // nada da sessão anterior sobrevive ao novo login
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
@@ -191,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_OUT') {
         console.log('[AuthContext] Auth event: SIGNED_OUT');
         hasInitiallySignedIn = false;
+        queryClient.clear();
         setIsPasswordRecovery(false);
         setSession(null);
         setUser(null);
@@ -203,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchTeamMember, linkAuthUser]);
+  }, [fetchTeamMember, linkAuthUser, queryClient]);
 
   // Health check: ao voltar pra aba, Supabase auto-refresh já cuida do token.
   // Só precisamos forçar logout se a sessão sumiu completamente (ex: storage limpo).
@@ -290,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    queryClient.clear();
     setUser(null);
     setSession(null);
     setTeamMember(null);
