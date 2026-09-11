@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HandCoins, Loader2, Save, Users } from "lucide-react";
+import { HandCoins, Loader2, RefreshCw, Save, Store, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,10 @@ import { useAllTeamMembers } from "@/hooks/useTeamMembers";
 import {
   DEFAULT_HANDOFF_CONFIG,
   useCaptureHandoffConfig,
+  useMarketplaceDealerships,
   useSaveCaptureHandoffConfig,
   useSetCaptureProfile,
+  useSyncCaptureListings,
   type CaptureHandoffConfig,
 } from "@/hooks/useCaptureHandoff";
 
@@ -117,6 +119,8 @@ export function CaptureHandoffSection() {
   const save = useSaveCaptureHandoffConfig();
   const { data: members = [] } = useAllTeamMembers();
   const { data: instances = [] } = useUazapiInstances(tenantId);
+  const dealerships = useMarketplaceDealerships();
+  const sync = useSyncCaptureListings();
 
   const [form, setForm] = useState<Omit<CaptureHandoffConfig, "tenant_id">>(DEFAULT_HANDOFF_CONFIG);
   useEffect(() => {
@@ -283,6 +287,83 @@ export function CaptureHandoffSection() {
               <Input placeholder="1203634…@g.us (vazio = herdar)" value={form.whatsapp_group_jid ?? ""}
                 onChange={(e) => setForm({ ...form, whatsapp_group_jid: e.target.value.trim() || null })} />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Store className="h-4 w-4" /> Anúncio no marketplace (etapa "Anunciado")</CardTitle>
+          <CardDescription>
+            A etapa <strong>Anunciado</strong> da jornada do carro não é marcada na mão: 2× por dia (8h e 18h) o sistema
+            confere o estoque da loja no site totexmotors.com. Carro captado que aparece lá vira Anunciado com link e preço.
+            Se sumir do estoque, o especialista recebe uma tarefa ("vendeu ou tirou?").
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Conferir o estoque automaticamente</Label>
+              <p className="text-xs text-muted-foreground">Desligado = Anunciado só na mão, pelo detalhe do lead.</p>
+            </div>
+            <Switch checked={form.listing_sync_enabled} onCheckedChange={(v) => setForm({ ...form, listing_sync_enabled: v })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Loja no marketplace</Label>
+            <Select
+              value={form.marketplace_store_id ?? NONE}
+              onValueChange={(v) => setForm({ ...form, marketplace_store_id: v === NONE ? null : v })}
+            >
+              <SelectTrigger><SelectValue placeholder={dealerships.isLoading ? "Carregando lojas…" : "Escolha a loja"} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Nenhuma (usa o vínculo do marketplace, se houver)</SelectItem>
+                {(dealerships.data ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name} ({d.vehicles} carro{d.vehicles === 1 ? "" : "s"})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {dealerships.isError && <p className="text-xs text-amber-600">Não consegui listar as lojas do marketplace agora. Tente de novo mais tarde.</p>}
+            {!dealerships.isLoading && !dealerships.isError && (dealerships.data ?? []).length > 0
+              && !(dealerships.data ?? []).some((d) => d.id === form.marketplace_store_id) && form.marketplace_store_id && (
+              <p className="text-xs text-amber-600">A loja salva não aparece mais na lista do marketplace.</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Só o estoque dessa loja é conferido — um Civic de outra loja da rede nunca é casado com o seu carro captado.
+              Se a loja ainda não está no marketplace, a etapa fica manual até ela entrar.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2">
+            <div className="text-xs text-muted-foreground min-w-0">
+              {cfg?.listing_last_sync_at ? (
+                <>
+                  Última conferência: {new Date(cfg.listing_last_sync_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  {cfg.listing_last_sync_result ? <> · {cfg.listing_last_sync_result}</> : null}
+                </>
+              ) : (
+                "Ainda não conferiu o estoque."
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sync.isPending || !form.listing_sync_enabled}
+              onClick={async () => {
+                if (JSON.stringify({ ...cfg, tenant_id: undefined }) !== JSON.stringify({ ...cfg, ...form, tenant_id: undefined })) {
+                  toast.info("Salve as alterações antes de sincronizar.");
+                  return;
+                }
+                try {
+                  const r = await sync.mutateAsync();
+                  if (r.error) toast.error(r.error);
+                  else toast.success(r.result ?? "Sincronizado");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Erro ao sincronizar");
+                }
+              }}
+            >
+              {sync.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Sincronizar agora
+            </Button>
           </div>
         </CardContent>
       </Card>

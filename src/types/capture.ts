@@ -224,9 +224,9 @@ export type CaptureVehicleStatus =
 export const VEHICLE_JOURNEY: { status: CaptureVehicleStatus; label: string; hint: string }[] = [
   { status: "avaliacao", label: "Avaliação", hint: "O especialista está avaliando o carro (fotos, estado, preço de mercado)." },
   { status: "captado", label: "Captado", hint: "O carro entrou pro estoque Totex. Seu prêmio de captação é gerado aqui." },
-  { status: "anunciado", label: "Anunciado", hint: "Já está nos portais e nas redes. Agora é atrair comprador." },
-  { status: "negociacao", label: "Negociação", hint: "Tem comprador interessado e proposta na mesa." },
-  { status: "vendido", label: "Vendido", hint: "Fechou! Seu bônus de venda é gerado aqui." },
+  { status: "anunciado", label: "Anunciado", hint: "O sistema confere o site da Totex 2× por dia: quando o carro aparece no estoque, essa etapa acende sozinha." },
+  { status: "negociacao", label: "Negociação", hint: "Um comprador interessado nesse carro chegou em proposta no CRM." },
+  { status: "vendido", label: "Vendido", hint: "Fechou! A venda é registrada com valor e comprador, o gestor confere e libera seu bônus." },
 ];
 
 export const VEHICLE_STATUS_META: Record<CaptureVehicleStatus, { label: string; cls: string; step: number }> = {
@@ -260,6 +260,9 @@ export interface MyCaptureVehicle {
   reward_sold_cents: number | null;
   ledger_captured_status: CaptureLedgerStatus | null;
   ledger_sold_status: CaptureLedgerStatus | null;
+  /** Anúncio no marketplace Totex (preenchido pelo sync capture-listings) */
+  listing_url: string | null;
+  listing_price: number | null;
 }
 
 export function vehicleTitle(v: Pick<MyCaptureVehicle, "description" | "brand" | "model" | "year_model">) {

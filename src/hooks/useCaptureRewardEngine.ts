@@ -406,11 +406,20 @@ export function useCaptureLeadInfo(leadId: string | null | undefined) {
 export function useSetSellerVehicleStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ vehicleId, status, soldPrice }: { vehicleId: string; status: CaptureVehicleStatus; soldPrice?: number | null }) => {
+    mutationFn: async ({ vehicleId, status, soldPrice, soldDealId, soldNote }: {
+      vehicleId: string;
+      status: CaptureVehicleStatus;
+      soldPrice?: number | null;
+      /** Vendido: negócio do COMPRADOR (evidência) — ou soldNote descrevendo a venda */
+      soldDealId?: string | null;
+      soldNote?: string | null;
+    }) => {
       const { error } = await supabase.rpc("set_seller_vehicle_status", {
         p_vehicle_id: vehicleId,
         p_status: status,
         p_sold_price: soldPrice ?? null,
+        p_sold_deal_id: soldDealId ?? null,
+        p_sold_note: soldNote ?? null,
       });
       if (error) throw error;
     },

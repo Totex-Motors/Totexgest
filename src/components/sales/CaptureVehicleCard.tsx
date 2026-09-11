@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Car, Check, AlertTriangle, Loader2, Ban } from "lucide-react";
+import { Car, Check, AlertTriangle, Loader2, Ban, ExternalLink, Link2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,16 @@ interface VehicleRow {
   sold_price: number | null;
   captured_at: string | null;
   sold_at: string | null;
+  /** Anúncio no marketplace (sync capture-listings, 2×/dia) */
+  marketplace_vehicle_id: string | null;
+  listing_url: string | null;
+  listing_price: number | null;
+  listing_last_seen_at: string | null;
+  listing_missing_since: string | null;
+  /** Evidência da venda (obrigatória pra marcar Vendido) */
+  sold_deal_id: string | null;
+  sold_note: string | null;
+  sold_marked_by: string | null;
 }
 
 interface CardData {
@@ -76,6 +86,18 @@ interface CardData {
   capture_invalid_reason: string | null;
   promotora_name: string | null;
   vehicle: VehicleRow | null;
+  /** Título do negócio do comprador (quando vendido com deal vinculado) */
+  sold_deal_title: string | null;
+  sold_marked_by_name: string | null;
+}
+
+/** Negócio do comprador — candidatos pro vínculo da venda (busca client-side nos 100 mais recentes). */
+interface DealOption {
+  id: string;
+  title: string;
+  status: string | null;
+  lead_name: string | null;
+  won: boolean;
 }
 
 /** Opções do Select (sem 'lead', que é o estado inicial automático). */
@@ -146,14 +168,51 @@ async function fetchCardData(leadId: string): Promise<CardData | null> {
   if (vErr) throw vErr;
 
   const promo = Array.isArray(row.promotora) ? row.promotora[0] : row.promotora;
+  const vehicle = ((vehicles ?? [])[0] as VehicleRow | undefined) ?? null;
+
+  // 3) evidência da venda (título do negócio do comprador + quem marcou)
+  let sold_deal_title: string | null = null;
+  let sold_marked_by_name: string | null = null;
+  if (vehicle?.sold_deal_id) {
+    const { data: d } = await supabase.from("deals").select("title").eq("id", vehicle.sold_deal_id).maybeSingle();
+    sold_deal_title = (d?.title as string | undefined) ?? null;
+  }
+  if (vehicle?.sold_marked_by) {
+    const { data: m } = await supabase.from("team_members").select("name").eq("id", vehicle.sold_marked_by).maybeSingle();
+    sold_marked_by_name = (m?.name as string | undefined) ?? null;
+  }
+
   return {
     captured_by_member_id: row.captured_by_member_id,
     captured_at: row.captured_at,
     capture_valid: !!row.capture_valid,
     capture_invalid_reason: row.capture_invalid_reason,
     promotora_name: promo?.name ?? null,
-    vehicle: ((vehicles ?? [])[0] as VehicleRow | undefined) ?? null,
+    vehicle,
+    sold_deal_title,
+    sold_marked_by_name,
   };
+}
+
+/** Negócios recentes do tenant, menos os do próprio dono do carro (RLS do tenant já filtra). */
+async function fetchDealOptions(sellerLeadId: string): Promise<DealOption[]> {
+  const { data, error } = await supabase
+    .from("deals")
+    .select("id, title, status, won_at, lead_id, lead:leads(name)")
+    .neq("lead_id", sellerLeadId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data ?? []).map((d) => {
+    const lead = Array.isArray(d.lead) ? d.lead[0] : d.lead;
+    return {
+      id: d.id as string,
+      title: (d.title as string) || "Negócio sem título",
+      status: (d.status as string | null) ?? null,
+      lead_name: (lead as { name?: string } | null)?.name ?? null,
+      won: !!d.won_at || d.status === "won",
+    };
+  });
 }
 
 export function CaptureVehicleCard({ leadId }: Props) {
@@ -164,6 +223,9 @@ export function CaptureVehicleCard({ leadId }: Props) {
 
   const [pendingStatus, setPendingStatus] = useState<CaptureVehicleStatus | null>(null);
   const [soldPrice, setSoldPrice] = useState("");
+  const [soldDealId, setSoldDealId] = useState<string | null>(null);
+  const [soldNote, setSoldNote] = useState("");
+  const [dealSearch, setDealSearch] = useState("");
   const [invalidateOpen, setInvalidateOpen] = useState(false);
   const [invalidateReason, setInvalidateReason] = useState("");
 
@@ -173,6 +235,23 @@ export function CaptureVehicleCard({ leadId }: Props) {
     queryFn: () => fetchCardData(leadId),
     staleTime: 15_000,
   });
+
+  // Só carrega a lista de negócios quando o usuário abre o formulário de venda.
+  const dealsQ = useQuery({
+    queryKey: ["capture", "engine", "deal-options", leadId],
+    enabled: pendingStatus === "vendido",
+    queryFn: () => fetchDealOptions(leadId),
+    staleTime: 30_000,
+  });
+  const dealOptions = useMemo(() => {
+    const all = dealsQ.data ?? [];
+    const term = dealSearch.trim().toLowerCase();
+    const filtered = term
+      ? all.filter((d) => d.title.toLowerCase().includes(term) || (d.lead_name ?? "").toLowerCase().includes(term))
+      : all;
+    return filtered.slice(0, 8);
+  }, [dealsQ.data, dealSearch]);
+  const selectedDeal = (dealsQ.data ?? []).find((d) => d.id === soldDealId) ?? null;
 
   // Só renderiza pra lead captado por promotora.
   if (q.isLoading || q.isError || !q.data) return null;
@@ -190,19 +269,26 @@ export function CaptureVehicleCard({ leadId }: Props) {
     qc.invalidateQueries({ queryKey: ["sales-leads"] });
   };
 
-  const applyStatus = async (next: CaptureVehicleStatus, price?: number | null) => {
+  const resetSoldForm = () => {
+    setPendingStatus(null);
+    setSoldPrice("");
+    setSoldDealId(null);
+    setSoldNote("");
+    setDealSearch("");
+  };
+
+  const applyStatus = async (next: CaptureVehicleStatus, price?: number | null, dealId?: string | null, note?: string | null) => {
     if (!vehicle) return;
     try {
-      await setStatus.mutateAsync({ vehicleId: vehicle.id, status: next, soldPrice: price ?? null });
+      await setStatus.mutateAsync({ vehicleId: vehicle.id, status: next, soldPrice: price ?? null, soldDealId: dealId ?? null, soldNote: note ?? null });
       toast.success(
         next === "captado"
           ? "Carro marcado como Captado — bônus de captação gerado pra promotora."
           : next === "vendido"
-            ? "Carro marcado como Vendido — bônus de venda gerado pra promotora."
+            ? "Venda registrada — o bônus da promotora entra como pendente pro gestor aprovar em Prêmios › Aprovações."
             : `Status do carro: ${STATUS_OPTIONS.find((o) => o.value === next)?.label ?? next}.`,
       );
-      setPendingStatus(null);
-      setSoldPrice("");
+      resetSoldForm();
       refreshLead();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui atualizar o status do carro.");
@@ -215,6 +301,8 @@ export function CaptureVehicleCard({ leadId }: Props) {
     if (next === "vendido") {
       setPendingStatus("vendido");
       setSoldPrice(vehicle?.sold_price != null ? String(vehicle.sold_price) : "");
+      setSoldDealId(vehicle?.sold_deal_id ?? null);
+      setSoldNote(vehicle?.sold_note ?? "");
       return;
     }
     void applyStatus(next);
@@ -226,7 +314,12 @@ export function CaptureVehicleCard({ leadId }: Props) {
       toast.error("Informe o valor da venda.");
       return;
     }
-    void applyStatus("vendido", price);
+    const note = soldNote.trim();
+    if (!soldDealId && note.length < 3) {
+      toast.error("Vincule o negócio do comprador ou descreva a venda (nome do comprador / nº do documento).");
+      return;
+    }
+    void applyStatus("vendido", price, soldDealId, note || null);
   };
 
   const confirmInvalidate = async () => {
@@ -300,6 +393,36 @@ export function CaptureVehicleCard({ leadId }: Props) {
               </div>
             </div>
           )}
+
+          {/* Anúncio (fonte de verdade do "Anunciado") */}
+          {vehicle?.listing_url && (
+            <p className="mt-2 text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
+              <a href={vehicle.listing_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline">
+                <ExternalLink className="h-3.5 w-3.5" /> Ver anúncio no site
+              </a>
+              {vehicle.listing_price != null && <span className="text-muted-foreground">· {fmtBRL(vehicle.listing_price)}</span>}
+              {vehicle.listing_missing_since ? (
+                <span className="text-amber-700 dark:text-amber-400">· sumiu do estoque em {fmtDate(vehicle.listing_missing_since)}</span>
+              ) : vehicle.listing_last_seen_at ? (
+                <span className="text-muted-foreground">· visto no estoque em {fmtDate(vehicle.listing_last_seen_at)}</span>
+              ) : null}
+            </p>
+          )}
+          {vehicle && !vehicle.listing_url && ["captado", "preparacao"].includes(status) && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Ainda não apareceu no estoque da loja no site. O sistema confere 2× por dia e move pra Anunciado sozinho.
+            </p>
+          )}
+
+          {/* Evidência da venda */}
+          {vehicle && status === "vendido" && (vehicle.sold_note || data.sold_deal_title || data.sold_marked_by_name) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <Link2 className="inline h-3.5 w-3.5 mr-1 text-emerald-600" />
+              {data.sold_deal_title ? <>Negócio do comprador: <strong className="text-foreground">{data.sold_deal_title}</strong>. </> : null}
+              {vehicle.sold_note ? <>{vehicle.sold_note}. </> : null}
+              {data.sold_marked_by_name ? <>Marcado por {data.sold_marked_by_name}.</> : <>Registrado automaticamente pelo funil.</>}
+            </p>
+          )}
         </div>
 
         {/* Controles — só time comercial/admin (promotora não altera) */}
@@ -319,19 +442,81 @@ export function CaptureVehicleCard({ leadId }: Props) {
             </Select>
 
             {pendingStatus === "vendido" && (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30 p-3 space-y-2">
-                <Label htmlFor="sold-price" className="text-xs">Valor da venda (R$)</Label>
-                <Input
-                  id="sold-price"
-                  inputMode="decimal"
-                  placeholder="Ex.: 85000"
-                  value={soldPrice}
-                  onChange={(e) => setSoldPrice(e.target.value)}
-                  className="h-9"
-                  autoFocus
-                />
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30 p-3 space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="sold-price" className="text-xs">Valor da venda (R$) *</Label>
+                  <Input
+                    id="sold-price"
+                    inputMode="decimal"
+                    placeholder="Ex.: 85000"
+                    value={soldPrice}
+                    onChange={(e) => setSoldPrice(e.target.value)}
+                    className="h-9"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Negócio do comprador (evidência)</Label>
+                  {selectedDeal ? (
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-300 bg-background px-2.5 py-1.5 text-xs">
+                      <span className="min-w-0 truncate">
+                        <Link2 className="inline h-3.5 w-3.5 mr-1 text-emerald-600" />
+                        <strong>{selectedDeal.title}</strong>{selectedDeal.lead_name ? ` · ${selectedDeal.lead_name}` : ""}{selectedDeal.won ? " · ganho" : ""}
+                      </span>
+                      <button type="button" className="text-muted-foreground hover:text-foreground shrink-0" onClick={() => setSoldDealId(null)} aria-label="Remover vínculo">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Input
+                        placeholder="Buscar pelo título do negócio ou nome do comprador…"
+                        value={dealSearch}
+                        onChange={(e) => setDealSearch(e.target.value)}
+                        className="h-9"
+                      />
+                      {dealsQ.isLoading ? (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando negócios…</p>
+                      ) : dealOptions.length > 0 ? (
+                        <ul className="max-h-40 overflow-y-auto rounded-md border border-border/60 bg-background divide-y divide-border/60">
+                          {dealOptions.map((d) => (
+                            <li key={d.id}>
+                              <button
+                                type="button"
+                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-muted/60"
+                                onClick={() => { setSoldDealId(d.id); setDealSearch(""); }}
+                              >
+                                <span className="font-medium">{d.title}</span>
+                                {d.lead_name ? <span className="text-muted-foreground"> · {d.lead_name}</span> : null}
+                                {d.won ? <span className="ml-1 text-emerald-600">· ganho</span> : null}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : dealSearch ? (
+                        <p className="text-[11px] text-muted-foreground">Nenhum negócio com esse nome. Sem negócio no CRM? Descreva a venda abaixo.</p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="sold-note" className="text-xs">{soldDealId ? "Observação (opcional)" : "Ou descreva a venda *"}</Label>
+                  <Textarea
+                    id="sold-note"
+                    rows={2}
+                    placeholder="Ex.: comprador Maria Souza · NF 1234 · vendido na loja em 10/09"
+                    value={soldNote}
+                    onChange={(e) => setSoldNote(e.target.value)}
+                  />
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  A venda fica registrada com valor, comprador e quem marcou. O bônus da promotora nasce <strong>pendente</strong> com essa evidência e só é pago depois que o gestor aprovar.
+                </p>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => { setPendingStatus(null); setSoldPrice(""); }} disabled={setStatus.isPending}>
+                  <Button size="sm" variant="outline" onClick={resetSoldForm} disabled={setStatus.isPending}>
                     Cancelar
                   </Button>
                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={confirmSold} disabled={setStatus.isPending}>
@@ -343,7 +528,7 @@ export function CaptureVehicleCard({ leadId }: Props) {
             )}
 
             <p className="text-[11px] text-muted-foreground">
-              <strong>Captado</strong> gera o bônus de captação pra promotora; <strong>Vendido</strong> gera o bônus de venda.
+              <strong>Captado</strong> acende quando o negócio chega em Ganho no funil (ou aqui). <strong>Anunciado</strong> acende sozinho quando o carro aparece no estoque da loja no site (conferido 2× por dia). <strong>Negociação</strong> e <strong>Vendido</strong> acendem pelo negócio do comprador — ou aqui, com evidência.
             </p>
           </div>
         )}

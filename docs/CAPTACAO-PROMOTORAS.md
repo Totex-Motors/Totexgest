@@ -185,6 +185,36 @@ folgista" por regra em Prêmios da captação › Regras. Trigger
 `protect_team_member_privileges` impede que o próprio membro altere `role` ou
 `capture_profile` (fecha a brecha da policy de auto-edição de `team_members`).
 
+## Jornada do carro com validação real (entregue 2026-09-11)
+
+Migration `20260911160000_captacao_anuncio_venda.sql` + edge fn `capture-listing-sync`.
+Antes, Anunciado/Negociação/Vendido eram um `<select>` manual sem fonte de verdade.
+
+| Etapa | Fonte de verdade | Como acende |
+|---|---|---|
+| Avaliação | funil | deal entra em "Avaliação agendada" (trigger existente) |
+| Captado | funil | deal entra em etapa `is_won` (Ganho) → bônus R$ 25 pendente |
+| **Anunciado** | **estoque da loja no marketplace** | cron `capture-listings` (`0 11,21 * * *` UTC = 8h/18h BRT) → `capture-listing-sync` baixa o estoque da loja (`capture_handoff_config.marketplace_store_id`, fallback `marketplace_store_mappings`) e casa por modelo + marca + ano + placa final + km ±25%. Empate = não casa. Achou → `capture_listing_sync_apply(found=true)` guarda `marketplace_vehicle_id`/`listing_url`/`listing_price` e move pra `anunciado` (retorno "📢 … foi anunciado!"). Sumiu por 2 checagens seguidas (≥ 8h) → **uma** tarefa pro especialista ("vendeu ou tirou?"). |
+| **Negociação** | negócio do COMPRADOR | lead comprador com `metadata.vehicle.id` = `marketplace_vehicle_id` do carro captado entra em etapa Proposta/Negociação/Financiamento (`trg_capture_buyer_deal`) |
+| **Vendido** | negócio do comprador **ou** evidência manual | (a) negócio do comprador em etapa `is_won` → vendido automático com `sold_deal_id` + preço do deal; (b) `set_seller_vehicle_status(..., 'vendido', preço, deal_id, nota)` — **exige** valor > 0 e (deal do comprador OU nota ≥ 3 chars); deal do próprio dono é recusado; grava `sold_marked_by`. |
+
+Bônus de venda (R$ 50) nasce **pendente** com a evidência em `capture_reward_ledger.note`
+("Venda R$ 85.000,00 · negócio: … (comprador: …) · marcado por Fulano" ou "· automático").
+Gestor aprova em Configurações › Prêmios › Aprovações (validação dupla).
+
+- `capture_listing_sync_apply` só roda com `service_role` (REVOKE de authenticated/anon).
+- Config: Configurações › Comercial › Captação › card "Anúncio no marketplace" (loja, liga/desliga,
+  "Sincronizar agora", última conferência). Modo `dealerships` da edge fn lista as lojas.
+- Custo: 1 request por página de estoque por tenant (não por carro), 2×/dia. Sem carro
+  captado aguardando → não chama o marketplace.
+- **Pré-requisito**: a loja precisa estar no marketplace. Em 2026-09-11 a Totex Motors
+  (Tamboré) ainda não tinha loja lá — até entrar, Anunciado fica manual.
+- Promotora vê "Ver anúncio no site da Totex · R$" no card do carro (`list_my_capture_vehicles`
+  devolve `listing_url`/`listing_price`).
+
+Smoke test local: `scratchpad/smoke_test7.sql` (anunciado/seen/missing/alert, bloqueios do
+vendido, negócio do comprador → negociação → vendido, idempotência, RLS da promotora).
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.

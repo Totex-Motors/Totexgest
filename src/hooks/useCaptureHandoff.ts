@@ -27,6 +27,12 @@ export interface CaptureHandoffConfig {
   specialist_template_name: string;
   /** Meta diária de leads válidos (null = meta semanal ÷ 5) */
   daily_goal: number | null;
+  /** Loja no marketplace Totex — fonte de verdade do "Anunciado" (null = herda marketplace_store_mappings) */
+  marketplace_store_id: string | null;
+  /** Cron capture-listings (2×/dia) confere o estoque e move o carro pra Anunciado */
+  listing_sync_enabled: boolean;
+  listing_last_sync_at?: string | null;
+  listing_last_sync_result?: string | null;
 }
 
 export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
@@ -34,6 +40,8 @@ export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
   summary_hours: [13, 19],
   specialist_template_name: "captacao_lead_especialista",
   daily_goal: null,
+  marketplace_store_id: null,
+  listing_sync_enabled: true,
   enabled: true,
   specialist_member_ids: [],
   last_assigned_member_id: null,
@@ -86,6 +94,51 @@ export function useSaveCaptureHandoffConfig() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["capture-handoff-config"] }),
+  });
+}
+
+/** Lojas do marketplace Totex (via edge fn capture-listing-sync, modo dealerships). */
+export interface MarketplaceDealership {
+  id: string;
+  name: string;
+  vehicles: number;
+}
+
+export function useMarketplaceDealerships(enabled = true) {
+  return useQuery({
+    queryKey: ["capture", "marketplace-dealerships"],
+    enabled,
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("capture-listing-sync", { body: { mode: "dealerships" } });
+      if (error) throw new Error(error.message || "Não consegui listar as lojas do marketplace");
+      return ((data?.dealerships ?? []) as MarketplaceDealership[]);
+    },
+  });
+}
+
+/** Admin: roda o sync do estoque agora (mesmo que o cron 2×/dia faz). */
+export interface CaptureListingSyncResult {
+  tenant_id: string;
+  result?: string;
+  error?: string;
+  vehicles?: number;
+  anunciado?: number;
+}
+
+export function useSyncCaptureListings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("capture-listing-sync", { body: { mode: "listings", force: true } });
+      if (error) throw new Error(error.message || "Erro ao sincronizar");
+      const r = (data?.results ?? []) as CaptureListingSyncResult[];
+      return r[0] ?? { tenant_id: "", result: data?.note ?? "nada a sincronizar" };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["capture-handoff-config"] });
+      qc.invalidateQueries({ queryKey: captureKeys.all });
+    },
   });
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Car, Check, UserCheck, Sparkles } from "lucide-react";
+import { Car, Check, ExternalLink, UserCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -187,6 +187,19 @@ export function VehicleJourneyCard({
               />
             )}
           </div>
+        )}
+
+        {/* Anúncio no marketplace (etapa validada pelo sync do estoque) */}
+        {!compact && !lost && v.listing_url && (
+          <a
+            href={v.listing_url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Ver anúncio no site da Totex{v.listing_price ? ` · ${v.listing_price.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}` : ""}
+          </a>
         )}
 
         {/* Especialista */}
