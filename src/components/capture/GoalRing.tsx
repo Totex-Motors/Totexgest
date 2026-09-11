@@ -5,16 +5,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /**
- * Anel da meta semanal: leads VÁLIDOS / meta (do servidor). Animado com
- * framer-motion; celebra UMA vez por semana ao bater 100% (localStorage
- * `captacao:celebrated:<period>`), e dá um brilho curto nos marcos 10/20/30.
- * Nunca bloqueia navegação — tudo é decorativo e respeita reduced-motion.
+ * Anel de meta (leads VÁLIDOS / meta, do servidor). Usado em dupla na Home:
+ * "Hoje" (meta diária) e "Semana" (meta semanal, com marcos 10/20/30 e
+ * celebração única por semana em `captacao:celebrated:<period>`).
+ * Tudo decorativo, respeita reduced-motion e nunca bloqueia navegação.
  */
 
 const MILESTONES = [10, 20, 30];
-const SIZE = 196;
-const STROKE = 14;
-const R = (SIZE - STROKE) / 2;
 
 /** Segunda-feira da semana atual (mesma janela do servidor, que usa date_trunc('week')). */
 export function currentWeekPeriod(now = new Date()) {
@@ -22,10 +19,6 @@ export function currentWeekPeriod(now = new Date()) {
   const dow = (d.getDay() + 6) % 7; // seg=0
   d.setDate(d.getDate() - dow);
   return d.toISOString().slice(0, 10);
-}
-
-function celebratedKey(period: string) {
-  return `captacao:celebrated:${period}`;
 }
 
 const CONFETTI = Array.from({ length: 18 }, (_, i) => ({
@@ -59,34 +52,44 @@ function Confetti() {
 export function GoalRing({
   current,
   goal,
-  metaLabel,
+  label,
   loading,
+  size = 132,
+  variant = "week",
 }: {
   current: number;
   goal: number;
-  metaLabel?: string | null;
+  /** texto embaixo do número (ex.: "hoje", "semana") */
+  label: string;
   loading?: boolean;
+  size?: number;
+  /** week = marcos 10/20/30 + confete uma vez por semana; day = celebração só com selo */
+  variant?: "week" | "day";
 }) {
   const reduce = useReducedMotion();
   const safeGoal = Math.max(1, goal || 1);
   const pct = Math.min(1, current / safeGoal);
-  const remaining = Math.max(0, safeGoal - current);
   const done = !loading && current >= safeGoal;
-  const period = useMemo(() => currentWeekPeriod(), []);
+  const period = useMemo(() => (variant === "week" ? currentWeekPeriod() : new Date().toISOString().slice(0, 10)), [variant]);
+  const stroke = Math.max(8, Math.round(size / 13));
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const milestones = variant === "week" ? MILESTONES.filter((m) => m < safeGoal) : [];
 
-  // ── Celebração: uma vez por semana ──
+  // ── Celebração: uma vez por período (só confete no anel da semana) ──
   const [celebrate, setCelebrate] = useState(false);
   useEffect(() => {
     if (!done) return;
+    const key = `captacao:celebrated:${variant}:${period}`;
     let already = false;
-    try { already = localStorage.getItem(celebratedKey(period)) === "1"; } catch { /* ignore */ }
+    try { already = localStorage.getItem(key) === "1"; } catch { /* ignore */ }
     if (already) return;
-    try { localStorage.setItem(celebratedKey(period), "1"); } catch { /* ignore */ }
-    if (reduce) return;
+    try { localStorage.setItem(key, "1"); } catch { /* ignore */ }
+    if (reduce || variant !== "week") return;
     setCelebrate(true);
     const t = setTimeout(() => setCelebrate(false), 1800);
     return () => clearTimeout(t);
-  }, [done, period, reduce]);
+  }, [done, period, reduce, variant]);
 
   // ── Marco (10/20/30): glow curto quando cruza ──
   const prev = useRef<number | null>(null);
@@ -96,15 +99,12 @@ export function GoalRing({
     const p = prev.current;
     prev.current = current;
     if (p == null) return; // primeira carga: sem glow
-    const crossed = MILESTONES.filter((m) => p < m && current >= m).pop();
+    const crossed = milestones.filter((m) => p < m && current >= m).pop();
     if (crossed == null || reduce) return;
     setGlow(crossed);
     const t = setTimeout(() => setGlow(null), 1400);
     return () => clearTimeout(t);
-  }, [current, loading, reduce]);
-
-  const reached = MILESTONES.filter((m) => m <= current && m < safeGoal);
-  const circumference = 2 * Math.PI * R;
+  }, [current, loading, reduce, milestones]);
 
   return (
     <div className="relative flex flex-col items-center">
@@ -112,18 +112,18 @@ export function GoalRing({
 
       <motion.div
         className="relative"
-        style={{ width: SIZE, height: SIZE }}
+        style={{ width: size, height: size }}
         animate={glow != null && !reduce ? { scale: [1, 1.04, 1] } : { scale: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="-rotate-90">
-          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} className="stroke-muted" strokeWidth={STROKE} fill="none" />
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+          <circle cx={size / 2} cy={size / 2} r={r} className="stroke-muted" strokeWidth={stroke} fill="none" />
           <motion.circle
-            cx={SIZE / 2}
-            cy={SIZE / 2}
-            r={R}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
             fill="none"
-            strokeWidth={STROKE}
+            strokeWidth={stroke}
             strokeLinecap="round"
             className={cn(done ? "stroke-emerald-500" : "stroke-emerald-600")}
             strokeDasharray={circumference}
@@ -132,79 +132,41 @@ export function GoalRing({
             transition={{ duration: reduce ? 0 : 0.9, ease: "easeOut" }}
             style={glow != null ? { filter: "drop-shadow(0 0 8px rgb(16 185 129 / 0.8))" } : undefined}
           />
-          {/* marcos */}
-          {MILESTONES.filter((m) => m < safeGoal).map((m) => {
+          {milestones.map((m) => {
             const a = (m / safeGoal) * 2 * Math.PI;
-            const cx = SIZE / 2 + R * Math.cos(a);
-            const cy = SIZE / 2 + R * Math.sin(a);
+            const cx = size / 2 + r * Math.cos(a);
+            const cy = size / 2 + r * Math.sin(a);
             const hit = current >= m;
-            return (
-              <circle
-                key={m}
-                cx={cx}
-                cy={cy}
-                r={hit ? 3.5 : 2.5}
-                className={cn(hit ? "fill-white" : "fill-muted-foreground/40")}
-              />
-            );
+            return <circle key={m} cx={cx} cy={cy} r={hit ? 3 : 2} className={cn(hit ? "fill-white" : "fill-muted-foreground/40")} />;
           })}
         </svg>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {loading ? (
-            <Skeleton className="h-10 w-20" />
+            <Skeleton className="h-7 w-14" />
           ) : (
             <motion.p
               key={current}
               initial={reduce ? false : { scale: 0.9, opacity: 0.6 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="text-4xl font-bold tabular-nums tracking-tight leading-none"
+              className={cn("font-bold tabular-nums tracking-tight leading-none", size >= 160 ? "text-4xl" : "text-[26px]")}
             >
               {current}
-              <span className="text-xl text-muted-foreground font-semibold">/{safeGoal}</span>
+              <span className={cn("text-muted-foreground font-semibold", size >= 160 ? "text-xl" : "text-sm")}>/{safeGoal}</span>
             </motion.p>
           )}
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mt-1.5">leads válidos</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">{label}</p>
           {done && (
             <motion.span
               initial={reduce ? false : { scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white text-[10px] font-semibold px-2 py-0.5"
+              className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white text-[9px] font-semibold px-1.5 py-0.5"
             >
-              <Trophy className="h-3 w-3" /> META BATIDA
+              <Trophy className="h-2.5 w-2.5" /> BATEU
             </motion.span>
           )}
         </div>
       </motion.div>
-
-      <div className="mt-3 text-center min-h-[2.5rem]">
-        {loading ? (
-          <Skeleton className="h-4 w-48 mx-auto" />
-        ) : done ? (
-          <p className="text-sm font-medium">
-            {metaLabel ? <>🎁 {metaLabel} liberado — o gestor vai entregar.</> : "Meta da semana batida! Cada lead a mais conta pro ranking."}
-          </p>
-        ) : (
-          <p className="text-sm">
-            faltam <strong className="tabular-nums">{remaining}</strong>
-            {metaLabel ? <> pro <strong>{metaLabel}</strong></> : " pra bater a meta da semana"}
-          </p>
-        )}
-        {reached.length > 0 && !done && (
-          <div className="mt-1.5 flex items-center justify-center gap-1">
-            {reached.map((m) => (
-              <motion.span
-                key={m}
-                animate={glow === m && !reduce ? { boxShadow: ["0 0 0 0 rgb(16 185 129 / 0)", "0 0 0 6px rgb(16 185 129 / 0.35)", "0 0 0 0 rgb(16 185 129 / 0)"] } : {}}
-                transition={{ duration: 1.2 }}
-                className="rounded-full border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold px-2 py-0.5"
-              >
-                {m} ✓
-              </motion.span>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

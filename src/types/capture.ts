@@ -167,6 +167,8 @@ export interface CaptureHomeStats {
   /** motivo → quantidade, ex.: {"autorização de contato": 2, "ano do veículo": 1} */
   invalidos_motivos?: Record<string, number>;
   meta_semanal?: number;
+  /** meta diária de leads válidos (config do tenant ou meta semanal ÷ 5) */
+  meta_diaria?: number;
   meta_label?: string | null;
   wallet?: { pending_cents: number; earned_cents: number; vouchers_pending: number };
 }

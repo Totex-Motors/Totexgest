@@ -138,23 +138,31 @@ export default function CaptureHome() {
         </CardContent>
       </Card>
 
-      {/* Meta semanal — anel */}
+      {/* Metas — dois anéis no mesmo card: HOJE (meta diária) e SEMANA (meta do voucher) */}
       <Card className="border-emerald-200/70 dark:border-emerald-900/50">
-        <CardContent className="pt-5 pb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold">Meta da semana</span>
-            {!stats.isLoading && (
-              <span className="text-[11px] text-muted-foreground tabular-nums">hoje: {s?.validos_hoje ?? 0} válido{(s?.validos_hoje ?? 0) === 1 ? "" : "s"}</span>
-            )}
+        <CardContent className="pt-4 pb-4">
+          <div className="grid grid-cols-2 divide-x divide-border/60">
+            <div className="flex flex-col items-center px-1">
+              <span className="text-xs font-semibold mb-2">Meta de hoje</span>
+              <GoalRing current={s?.validos_hoje ?? 0} goal={s?.meta_diaria ?? 8} label="hoje" variant="day" loading={stats.isLoading} />
+              <p className="mt-2 text-[11px] text-center text-muted-foreground">
+                {stats.isLoading ? "…" : (s?.validos_hoje ?? 0) >= (s?.meta_diaria ?? 8)
+                  ? "Meta do dia batida 👏"
+                  : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_diaria ?? 8) - (s?.validos_hoje ?? 0))}</strong> hoje</>}
+              </p>
+            </div>
+            <div className="flex flex-col items-center px-1">
+              <span className="text-xs font-semibold mb-2">Meta da semana</span>
+              <GoalRing current={s?.validos_semana ?? 0} goal={s?.meta_semanal ?? 40} label="semana" variant="week" loading={stats.isLoading} />
+              <p className="mt-2 text-[11px] text-center text-muted-foreground">
+                {stats.isLoading ? "…" : (s?.validos_semana ?? 0) >= (s?.meta_semanal ?? 40)
+                  ? <>🎁 {s?.meta_label ?? "Voucher"} liberado</>
+                  : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_semanal ?? 40) - (s?.validos_semana ?? 0))}</strong>{s?.meta_label ? <> pro <strong className="text-foreground">{s.meta_label}</strong></> : ""}</>}
+              </p>
+            </div>
           </div>
-          <GoalRing
-            current={s?.validos_semana ?? 0}
-            goal={s?.meta_semanal ?? 40}
-            metaLabel={s?.meta_label}
-            loading={stats.isLoading}
-          />
           {!stats.isLoading && (s?.invalidos_semana ?? 0) > 0 && (
-            <Link to="/captacao/leads" className="mt-2 block text-center text-[11px] text-amber-700 dark:text-amber-400">
+            <Link to="/captacao/leads" className="mt-3 block text-center text-[11px] text-amber-700 dark:text-amber-400">
               {s!.invalidos_semana} lead{s!.invalidos_semana! > 1 ? "s" : ""} da semana ainda não conta{s!.invalidos_semana! > 1 ? "m" : ""} — ver o que falta
             </Link>
           )}

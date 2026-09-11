@@ -118,6 +118,11 @@ export function CaptureHandoffSection() {
             </div>
           </div>
 
+          <div className="space-y-1.5">
+            <Label>Meta diária de leads válidos (anel "Hoje" da promotora)</Label>
+            <Input type="number" min={1} max={200} value={form.daily_goal ?? ""} placeholder="vazio = meta semanal ÷ 5"
+              onChange={(e) => setForm({ ...form, daily_goal: e.target.value ? Math.max(1, Number(e.target.value)) : null })} />
+          </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>SLA lead quente (min)</Label>

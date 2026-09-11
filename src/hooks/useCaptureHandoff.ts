@@ -25,12 +25,15 @@ export interface CaptureHandoffConfig {
   summary_hours: number[];
   /** Template Cloud API do aviso privado do especialista */
   specialist_template_name: string;
+  /** Meta diária de leads válidos (null = meta semanal ÷ 5) */
+  daily_goal: number | null;
 }
 
 export const DEFAULT_HANDOFF_CONFIG: Omit<CaptureHandoffConfig, "tenant_id"> = {
   summary_enabled: true,
   summary_hours: [13, 19],
   specialist_template_name: "captacao_lead_especialista",
+  daily_goal: null,
   enabled: true,
   specialist_member_ids: [],
   last_assigned_member_id: null,
