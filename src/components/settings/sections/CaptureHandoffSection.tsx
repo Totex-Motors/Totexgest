@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HandCoins, Loader2, Save } from "lucide-react";
+import { HandCoins, Loader2, Save, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   DEFAULT_HANDOFF_CONFIG,
   useCaptureHandoffConfig,
   useSaveCaptureHandoffConfig,
+  useSetCaptureProfile,
   type CaptureHandoffConfig,
 } from "@/hooks/useCaptureHandoff";
 
@@ -23,9 +24,76 @@ import {
  * Configurações › Comercial › Captação (promotoras).
  * Quem recebe os leads captados (rodízio), SLA por temperatura, escalonamento
  * e canal de aviso (instância UAZAPI + grupo). Vazio = herda da Torre de Controle.
+ * Também: perfil de captação de cada promotora (padrão | folgista).
  */
 
 const NONE = "__none__";
+
+type CaptureProfile = "padrao" | "folgista";
+
+/** Card "Promotoras": perfil de captação por membro (RPC set_capture_profile, admin). */
+function PromotorasCard({ members }: { members: { id: string; name: string; role: string | null; is_active: boolean; capture_profile?: CaptureProfile }[] }) {
+  const setProfile = useSetCaptureProfile();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const promotoras = members.filter((m) => m.role === "promotora");
+
+  const change = async (m: { id: string; name: string }, profile: CaptureProfile) => {
+    setPendingId(m.id);
+    try {
+      await setProfile.mutateAsync({ memberId: m.id, profile });
+      toast.success(`${m.name}: perfil ${profile === "folgista" ? "Folgista" : "Padrão"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao trocar o perfil");
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> Promotoras</CardTitle>
+        <CardDescription>
+          Folgista = esporádica; não entra nos valores em pecúnia nem vouchers, salvo regra marcada "vale pra folgista".
+          Ela capta e treina normalmente — só vê o painel simples, sem carteira.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {promotoras.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma promotora cadastrada no time.</p>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {promotoras.map((m) => {
+              const busy = pendingId === m.id;
+              return (
+                <li key={m.id} className="py-2 flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{m.name}</p>
+                    {!m.is_active && <p className="text-[11px] text-muted-foreground">inativa</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    <Select
+                      value={m.capture_profile ?? "padrao"}
+                      disabled={busy}
+                      onValueChange={(v) => change(m, v as CaptureProfile)}
+                    >
+                      <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="padrao">Padrão</SelectItem>
+                        <SelectItem value="folgista">Folgista</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function useUazapiInstances(tenantId: string | null) {
   return useQuery({
@@ -225,6 +293,9 @@ export function CaptureHandoffSection() {
           Salvar
         </Button>
       </div>
+
+      {/* Perfil de captação — salva na hora (RPC), independente do botão Salvar acima */}
+      <PromotorasCard members={members} />
     </div>
   );
 }

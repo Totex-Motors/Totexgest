@@ -22,6 +22,10 @@ import { cn } from "@/lib/utils";
  * fazer agora (próximo passo) e a frase pra usar no corredor.
  *
  * Dinheiro e meta vêm SÓ de capture_home_stats — nada é calculado aqui.
+ *
+ * Modo SIMPLES (folgista, ou nenhuma regra de prêmio vale pra ela): sem
+ * carteira, sem anel da semana/voucher — só "Meta de hoje" + contagem da
+ * semana. Frase do dia, carros, próximo passo, retornos e treino continuam.
  */
 
 function greeting() {
@@ -64,7 +68,7 @@ function invalidReasonPhrase(reason: string, n: number): string {
 }
 
 export default function CaptureHome() {
-  const { teamMember } = useAuth();
+  const { teamMember, isFolgista } = useAuth();
   const stats = useCaptureHomeStats();
   const events = useCaptureEvents({ unreadOnly: true, limit: 10 });
   const markRead = useMarkCaptureEventsRead();
@@ -72,6 +76,8 @@ export default function CaptureHome() {
   const campaign = useActiveCaptureCampaign();
 
   const s = stats.data;
+  // Painel simples: folgista (auth já sabe, evita "piscar") ou servidor diz que não há incentivo pra ela
+  const simple = isFolgista || s?.perfil === "folgista" || (!!s && !s.incentivos);
   const dayIndex = Math.floor(Date.now() / 86_400_000);
   const staticScript = SCRIPT_CARDS.filter((c) => c.tag === "Abordagem")[dayIndex % 2];
   const staticObjection = SCRIPT_CARDS.filter((c) => c.tag === "Objeção")[dayIndex % 3];
@@ -121,29 +127,45 @@ export default function CaptureHome() {
         </CardContent>
       </Card>
 
-      {/* Metas — dois anéis no mesmo card: HOJE (meta diária) e SEMANA (meta do voucher) */}
+      {/* Metas — dois anéis no mesmo card: HOJE (meta diária) e SEMANA (meta do voucher).
+          Modo simples: só o anel de HOJE, centralizado, e a contagem da semana em texto. */}
       <Card className="border-emerald-200/70 dark:border-emerald-900/50">
         <CardContent className="pt-4 pb-4">
-          <div className="grid grid-cols-2 divide-x divide-border/60">
+          {simple ? (
             <div className="flex flex-col items-center px-1">
               <span className="text-xs font-semibold mb-2">Meta de hoje</span>
-              <GoalRing current={s?.validos_hoje ?? 0} goal={s?.meta_diaria ?? 8} label="hoje" variant="day" loading={stats.isLoading} />
+              <GoalRing current={s?.validos_hoje ?? 0} goal={s?.meta_diaria ?? 8} label="hoje" variant="day" size={150} loading={stats.isLoading} />
               <p className="mt-2 text-[11px] text-center text-muted-foreground">
                 {stats.isLoading ? "…" : (s?.validos_hoje ?? 0) >= (s?.meta_diaria ?? 8)
                   ? "Meta do dia batida 👏"
                   : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_diaria ?? 8) - (s?.validos_hoje ?? 0))}</strong> hoje</>}
               </p>
-            </div>
-            <div className="flex flex-col items-center px-1">
-              <span className="text-xs font-semibold mb-2">Meta da semana</span>
-              <GoalRing current={s?.validos_semana ?? 0} goal={s?.meta_semanal ?? 40} label="semana" variant="week" loading={stats.isLoading} />
-              <p className="mt-2 text-[11px] text-center text-muted-foreground">
-                {stats.isLoading ? "…" : (s?.validos_semana ?? 0) >= (s?.meta_semanal ?? 40)
-                  ? <>🎁 {s?.meta_label ?? "Voucher"} liberado</>
-                  : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_semanal ?? 40) - (s?.validos_semana ?? 0))}</strong>{s?.meta_label ? <> pro <strong className="text-foreground">{s.meta_label}</strong></> : ""}</>}
+              <p className="mt-1.5 text-[11px] text-center text-muted-foreground">
+                Semana: <strong className="text-foreground tabular-nums">{stats.isLoading ? "…" : (s?.validos_semana ?? 0)}</strong> lead{(s?.validos_semana ?? 0) === 1 ? "" : "s"} válido{(s?.validos_semana ?? 0) === 1 ? "" : "s"}
               </p>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 divide-x divide-border/60">
+              <div className="flex flex-col items-center px-1">
+                <span className="text-xs font-semibold mb-2">Meta de hoje</span>
+                <GoalRing current={s?.validos_hoje ?? 0} goal={s?.meta_diaria ?? 8} label="hoje" variant="day" loading={stats.isLoading} />
+                <p className="mt-2 text-[11px] text-center text-muted-foreground">
+                  {stats.isLoading ? "…" : (s?.validos_hoje ?? 0) >= (s?.meta_diaria ?? 8)
+                    ? "Meta do dia batida 👏"
+                    : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_diaria ?? 8) - (s?.validos_hoje ?? 0))}</strong> hoje</>}
+                </p>
+              </div>
+              <div className="flex flex-col items-center px-1">
+                <span className="text-xs font-semibold mb-2">Meta da semana</span>
+                <GoalRing current={s?.validos_semana ?? 0} goal={s?.meta_semanal ?? 40} label="semana" variant="week" loading={stats.isLoading} />
+                <p className="mt-2 text-[11px] text-center text-muted-foreground">
+                  {stats.isLoading ? "…" : (s?.validos_semana ?? 0) >= (s?.meta_semanal ?? 40)
+                    ? <>🎁 {s?.meta_label ?? "Voucher"} liberado</>
+                    : <>faltam <strong className="text-foreground tabular-nums">{Math.max(0, (s?.meta_semanal ?? 40) - (s?.validos_semana ?? 0))}</strong>{s?.meta_label ? <> pro <strong className="text-foreground">{s.meta_label}</strong></> : ""}</>}
+                </p>
+              </div>
+            </div>
+          )}
           {!stats.isLoading && (s?.invalidos_semana ?? 0) > 0 && (
             <Link to="/captacao/leads" className="mt-3 block text-center text-[11px] text-amber-700 dark:text-amber-400">
               {s!.invalidos_semana} lead{s!.invalidos_semana! > 1 ? "s" : ""} da semana ainda não conta{s!.invalidos_semana! > 1 ? "m" : ""} — ver o que falta
@@ -154,13 +176,15 @@ export default function CaptureHome() {
 
       {/* (sem CTA retangular: o botão central "Captar" do bottom-nav já é a ação principal) */}
 
-      {/* Carteira — só dados do servidor */}
-      <WalletCard
-        earnedCents={s?.wallet?.earned_cents ?? 0}
-        pendingCents={s?.wallet?.pending_cents ?? 0}
-        vouchersPending={s?.wallet?.vouchers_pending ?? 0}
-        loading={stats.isLoading}
-      />
+      {/* Carteira — só dados do servidor (escondida no modo simples) */}
+      {!simple && (
+        <WalletCard
+          earnedCents={s?.wallet?.earned_cents ?? 0}
+          pendingCents={s?.wallet?.pending_cents ?? 0}
+          vouchersPending={s?.wallet?.vouchers_pending ?? 0}
+          loading={stats.isLoading}
+        />
+      )}
 
       {/* Meus carros — carrossel */}
       <div>
@@ -174,7 +198,7 @@ export default function CaptureHome() {
           <div className="flex gap-2 overflow-hidden">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-40 shrink-0 rounded-xl" />)}</div>
         ) : myVehicles.length === 0 ? (
           <Link to="/captacao/carros" className="block rounded-xl border border-dashed border-border/80 px-3 py-3 text-xs text-muted-foreground">
-            Quando um lead seu virar carro no estoque, ele aparece aqui — com o seu prêmio. 🚗
+            Quando um lead seu virar carro no estoque, ele aparece aqui{simple ? "" : " — com o seu prêmio"}. 🚗
           </Link>
         ) : (
           <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 snap-x">

@@ -322,12 +322,14 @@ type RuleForm = {
   cap_per_period: string;
   min_valid_leads: string;
   campaign_id: string;
+  include_folgista: boolean;
   active: boolean;
 };
 
 const EMPTY_RULE: RuleForm = {
   name: "", event_type: "lead_validated", threshold: "40", period_type: "week", reward_type: "voucher",
-  amount: "0,00", voucher_label: "", reward_id: NONE, cap_per_period: "1", min_valid_leads: "10", campaign_id: NONE, active: true,
+  amount: "0,00", voucher_label: "", reward_id: NONE, cap_per_period: "1", min_valid_leads: "10", campaign_id: NONE,
+  include_folgista: false, active: true,
 };
 
 function toRuleForm(r: CaptureRewardRule): RuleForm {
@@ -343,6 +345,7 @@ function toRuleForm(r: CaptureRewardRule): RuleForm {
     cap_per_period: String(r.cap_per_period),
     min_valid_leads: r.min_valid_leads == null ? "" : String(r.min_valid_leads),
     campaign_id: r.campaign_id ?? NONE,
+    include_folgista: !!r.include_folgista,
     active: r.active,
   };
 }
@@ -390,6 +393,7 @@ function RuleDialog({ rule, onClose, nextPosition }: { rule: CaptureRewardRule |
         cap_per_period: cap,
         min_valid_leads: isChampion ? (Number(f.min_valid_leads) || null) : null,
         campaign_id: f.campaign_id === NONE ? null : f.campaign_id,
+        include_folgista: f.include_folgista,
         active: f.active,
       });
       toast.success(rule ? "Regra atualizada" : "Regra criada");
@@ -515,6 +519,14 @@ function RuleDialog({ rule, onClose, nextPosition }: { rule: CaptureRewardRule |
             </label>
           </div>
 
+          <label className="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2 text-sm">
+            <span>
+              Vale pra folgista
+              <span className="block text-xs text-muted-foreground">Desligado = promotora folgista não recebe este prêmio (nem entra na disputa).</span>
+            </span>
+            <Switch checked={f.include_folgista} onCheckedChange={(v) => setF({ ...f, include_folgista: v })} />
+          </label>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
             <Button type="submit" disabled={save.isPending}>
@@ -550,6 +562,14 @@ function RulesTab() {
   const toggleActive = async (r: CaptureRewardRule) => {
     try {
       await save.mutateAsync({ ...r, active: !r.active });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
+    }
+  };
+
+  const toggleFolgista = async (r: CaptureRewardRule) => {
+    try {
+      await save.mutateAsync({ ...r, include_folgista: !r.include_folgista });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar");
     }
@@ -596,6 +616,7 @@ function RulesTab() {
                     <TableHead>Condição</TableHead>
                     <TableHead>Prêmio</TableHead>
                     <TableHead className="text-center">Máx./período</TableHead>
+                    <TableHead className="text-center">Vale pra folgista</TableHead>
                     <TableHead className="text-center">Ativa</TableHead>
                     <TableHead className="w-[90px]" />
                   </TableRow>
@@ -617,6 +638,7 @@ function RulesTab() {
                           </span>
                         </TableCell>
                         <TableCell className="text-center text-sm">{r.cap_per_period}</TableCell>
+                        <TableCell className="text-center"><Switch checked={!!r.include_folgista} onCheckedChange={() => toggleFolgista(r)} /></TableCell>
                         <TableCell className="text-center"><Switch checked={r.active} onCheckedChange={() => toggleActive(r)} /></TableCell>
                         <TableCell>
                           <div className="flex gap-1 justify-end">

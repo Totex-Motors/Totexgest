@@ -12,6 +12,8 @@ export interface TeamMember {
   auth_user_id: string | null;
   whatsapp_instance_id: string | null;
   focus_mode_enabled: boolean;
+  /** Captação: padrao | folgista (só vem em useAllTeamMembers) */
+  capture_profile?: 'padrao' | 'folgista';
   created_at: string;
   updated_at: string;
 }
@@ -41,7 +43,7 @@ export const useAllTeamMembers = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('team_members')
-        .select('id, name, email, role, team, phone, is_active, auth_user_id, whatsapp_instance_id, focus_mode_enabled, created_at, updated_at')
+        .select('id, name, email, role, team, phone, is_active, auth_user_id, whatsapp_instance_id, focus_mode_enabled, capture_profile, created_at, updated_at')
         .order('is_active', { ascending: false })
         .order('name', { ascending: true });
 

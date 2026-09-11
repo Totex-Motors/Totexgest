@@ -147,7 +147,13 @@ export interface CreateCaptureLeadResult {
   handoff?: CaptureHandoffResult;
 }
 
+export type CaptureProfile = "padrao" | "folgista";
+
 export interface CaptureHomeStats {
+  /** Perfil de captação (migration 20260911140000): folgista = sem incentivos financeiros */
+  perfil?: CaptureProfile;
+  /** Existe alguma regra de prêmio ativa que vale pra essa pessoa? */
+  incentivos?: boolean;
   hoje?: number;
   semana?: number;
   mes?: number;

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCaptureWallet, useCaptureRewardProgress } from "@/hooks/useCaptureRewards";
 import { WalletCard } from "@/components/capture/WalletCard";
 import { RewardCard } from "@/components/capture/RewardCard";
@@ -16,9 +17,13 @@ import CaptureProfile from "./CaptureProfile";
  * "Prêmios" — carteira (extrato do ledger), catálogo de prêmios com progresso,
  * treino e perfil. Tab via query param `tab` (carteira | premios | treino | perfil)
  * — /captacao/perfil e /captacao/treino redirecionam pra cá.
+ *
+ * Folgista (sem incentivos financeiros): só `treino | perfil`, default treino;
+ * `tab=carteira|premios` na URL cai em treino.
  */
 
 const TABS = ["carteira", "premios", "treino", "perfil"] as const;
+const TABS_FOLGISTA = ["treino", "perfil"] as const;
 type Tab = (typeof TABS)[number];
 
 function fmtDate(iso?: string | null) {
@@ -27,17 +32,48 @@ function fmtDate(iso?: string | null) {
 }
 
 export default function CapturePrizes() {
+  const { isFolgista } = useAuth();
   const [params, setParams] = useSearchParams();
   const raw = params.get("tab");
-  const tab: Tab = (TABS as readonly string[]).includes(raw ?? "") ? (raw as Tab) : "carteira";
-  const wallet = useCaptureWallet();
-  const rewards = useCaptureRewardProgress();
+  const allowed: readonly string[] = isFolgista ? TABS_FOLGISTA : TABS;
+  const tab: Tab = allowed.includes(raw ?? "") ? (raw as Tab) : isFolgista ? "treino" : "carteira";
 
   const setTab = (t: string) => {
     const p = new URLSearchParams(params);
     p.set("tab", t);
     setParams(p, { replace: true });
   };
+
+  if (isFolgista) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-lg font-bold flex items-center gap-2"><GraduationCap className="h-5 w-5 text-emerald-600" /> Treino</h1>
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="grid grid-cols-2 w-full h-11">
+            <TabsTrigger value="treino" className="gap-1 text-xs"><GraduationCap className="h-3.5 w-3.5" /> Treino</TabsTrigger>
+            <TabsTrigger value="perfil" className="gap-1 text-xs"><UserCircle className="h-3.5 w-3.5" /> Perfil</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="treino" className="mt-3">
+            <CaptureTraining />
+          </TabsContent>
+
+          <TabsContent value="perfil" className="mt-3">
+            <CaptureProfile />
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
+
+  return <PrizesFull tab={tab} setTab={setTab} />;
+}
+
+/** Versão completa (perfil padrão): carteira + prêmios + treino + perfil. */
+function PrizesFull({ tab, setTab }: { tab: Tab; setTab: (t: string) => void }) {
+  const wallet = useCaptureWallet();
+  const rewards = useCaptureRewardProgress();
 
   return (
     <div className="space-y-3">

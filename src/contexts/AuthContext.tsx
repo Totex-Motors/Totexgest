@@ -19,6 +19,8 @@ export interface TeamMember {
   google_calendar_watch_channel_id: string | null;
   google_calendar_watch_expiration: string | null;
   focus_mode_enabled: boolean;
+  /** Captação: padrao = participa de metas/incentivos; folgista = esporádica, sem valores em pecúnia */
+  capture_profile?: 'padrao' | 'folgista';
   created_at: string;
 }
 
@@ -38,6 +40,8 @@ interface AuthContextType {
   isComercial: boolean;
   /** Promotora de captação: só enxerga /captacao (RoleRoute + RLS restritiva no banco) */
   isPromotora: boolean;
+  /** Promotora folgista: capta e treina, mas não participa dos incentivos financeiros (painel simples) */
+  isFolgista: boolean;
   canAccessSettings: boolean;
   canAccessHR: boolean;
   /** tenant do usuário logado (team_members.tenant_id) — null enquanto carrega */
@@ -60,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('team_members')
-        .select('id, tenant_id, email, name, role, team, phone, avatar_url, is_active, auth_user_id, whatsapp_instance_id, google_calendar_connected, google_calendar_watch_channel_id, google_calendar_watch_expiration, focus_mode_enabled, created_at')
+        .select('id, tenant_id, email, name, role, team, phone, avatar_url, is_active, auth_user_id, whatsapp_instance_id, google_calendar_connected, google_calendar_watch_channel_id, google_calendar_watch_expiration, focus_mode_enabled, capture_profile, created_at')
         .eq('email', email)
         .limit(1)
         .single();
@@ -295,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isCS = teamMember?.role === 'cs' || teamMember?.team === 'cs';
   const isComercial = teamMember?.role === 'comercial' || teamMember?.role === 'closer' || teamMember?.role === 'sdr' || teamMember?.team === 'comercial';
   const isPromotora = teamMember?.role === 'promotora';
+  const isFolgista = isPromotora && teamMember?.capture_profile === 'folgista';
   const canAccessSettings = teamMember?.role === 'admin' || teamMember?.role === 'comercial';
   const canAccessHR = teamMember?.role !== 'closer' && teamMember?.role !== 'sdr';
 
@@ -314,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isCS,
       isComercial,
       isPromotora,
+      isFolgista,
       canAccessSettings,
       canAccessHR,
       tenantId: teamMember?.tenant_id ?? null,

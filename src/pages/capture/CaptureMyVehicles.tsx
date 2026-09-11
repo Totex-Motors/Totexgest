@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Car, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { useMyCaptureVehicles } from "@/hooks/useCaptureRewards";
 import { useCaptureHomeStats } from "@/hooks/useCaptureLeads";
 import { VehicleJourneyCard } from "@/components/capture/VehicleJourneyCard";
@@ -10,7 +11,8 @@ import type { CaptureVehicleStatus } from "@/types/capture";
 /**
  * "Meus Carros" — jornada de cada carro que a promotora captou
  * (list_my_capture_vehicles). Prêmios e status vêm do ledger; nada é
- * calculado aqui.
+ * calculado aqui. Folgista (ou sem regra que valha pra ela) vê a jornada
+ * sem o bloco de prêmio.
  */
 
 type Filter = "todos" | "ativos" | "vendidos";
@@ -18,9 +20,11 @@ type Filter = "todos" | "ativos" | "vendidos";
 const ACTIVE: CaptureVehicleStatus[] = ["avaliacao", "captado", "preparacao", "anunciado", "negociacao"];
 
 export default function CaptureMyVehicles() {
+  const { isFolgista } = useAuth();
   const vehicles = useMyCaptureVehicles();
   const stats = useCaptureHomeStats();
   const [filter, setFilter] = useState<Filter>("todos");
+  const showRewards = !isFolgista && stats.data?.perfil !== "folgista" && stats.data?.incentivos !== false;
 
   const all = vehicles.data ?? [];
   const list = all.filter((v) => {
@@ -77,13 +81,13 @@ export default function CaptureMyVehicles() {
             {filter === "vendidos" ? "Nenhum vendido ainda — mas tá chegando." : "Seu primeiro carro no estoque tá a uma conversa de distância."}
           </p>
           <p className="text-xs text-muted-foreground">
-            Cada lead válido com autorização de contato pode virar um carro captado. Quando virar, ele aparece aqui com o seu prêmio.
+            Cada lead válido com autorização de contato pode virar um carro captado. Quando virar, ele aparece aqui{showRewards ? " com o seu prêmio" : " pra você acompanhar"}.
           </p>
         </div>
       ) : (
         <ul className="space-y-3">
           {list.map((v) => (
-            <li key={v.vehicle_id}><VehicleJourneyCard vehicle={v} /></li>
+            <li key={v.vehicle_id}><VehicleJourneyCard vehicle={v} showRewards={showRewards} /></li>
           ))}
         </ul>
       )}

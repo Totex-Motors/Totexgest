@@ -89,6 +89,26 @@ export function useSaveCaptureHandoffConfig() {
   });
 }
 
+/**
+ * Admin: troca o perfil de captação de uma promotora (RPC set_capture_profile).
+ * folgista = esporádica; fica fora dos valores em pecúnia/vouchers, salvo regra
+ * marcada com include_folgista.
+ */
+export function useSetCaptureProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, profile }: { memberId: string; profile: "padrao" | "folgista" }) => {
+      const { error } = await supabase.rpc("set_capture_profile", { p_member_id: memberId, p_profile: profile });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team-members-all"] });
+      qc.invalidateQueries({ queryKey: ["team-members"] });
+      qc.invalidateQueries({ queryKey: captureKeys.all });
+    },
+  });
+}
+
 /** Retornos da promotora logada (mais recentes primeiro). */
 export function useCaptureEvents(opts?: { unreadOnly?: boolean; limit?: number }) {
   return useQuery({

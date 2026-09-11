@@ -59,6 +59,8 @@ export interface CaptureRewardRule {
   reward_id: string | null;
   cap_per_period: number;
   min_valid_leads: number | null;
+  /** Regra também vale pra promotora folgista? (default false — folgista fica fora dos incentivos) */
+  include_folgista: boolean;
   active: boolean;
   position: number;
   created_at: string;

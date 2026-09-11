@@ -17,6 +17,9 @@ import {
  * Card da jornada de um carro captado pela promotora:
  * identificação → status → timeline (toque numa etapa = explicação curta) →
  * bloco de prêmio (valores e status vêm do ledger; o front nunca calcula).
+ *
+ * `showRewards={false}` (perfil folgista): esconde o bloco de prêmio e as
+ * menções a R$ nas dicas da jornada — a jornada em si continua igual.
  */
 
 function fmtDate(iso?: string | null) {
@@ -29,7 +32,22 @@ function ledgerLabel(s: CaptureLedgerStatus | null) {
   return LEDGER_STATUS_META[s]?.label.toLowerCase() ?? s;
 }
 
-export function VehicleJourneyCard({ vehicle: v, compact }: { vehicle: MyCaptureVehicle; compact?: boolean }) {
+/** Dicas sem menção a prêmio (modo folgista) — só as etapas que citam R$ mudam. */
+const NEUTRAL_HINT: Partial<Record<MyCaptureVehicle["status"], string>> = {
+  captado: "O carro entrou pro estoque Totex. Agora é preparar e anunciar.",
+  vendido: "Fechou! O carro que você captou foi vendido.",
+};
+
+export function VehicleJourneyCard({
+  vehicle: v,
+  compact,
+  showRewards = true,
+}: {
+  vehicle: MyCaptureVehicle;
+  compact?: boolean;
+  /** false = esconde o bloco "Seu prêmio" (folgista) */
+  showRewards?: boolean;
+}) {
   const reduce = useReducedMotion();
   const [openStep, setOpenStep] = useState<number | null>(null);
   const meta = VEHICLE_STATUS_META[v.status] ?? VEHICLE_STATUS_META.lead;
@@ -139,15 +157,16 @@ export function VehicleJourneyCard({ vehicle: v, compact }: { vehicle: MyCapture
                   exit={reduce ? undefined : { height: 0, opacity: 0 }}
                   className="overflow-hidden text-xs text-muted-foreground mt-2 rounded-md bg-muted/50 px-2.5 py-1.5"
                 >
-                  <strong className="text-foreground">{VEHICLE_JOURNEY[openStep].label}:</strong> {VEHICLE_JOURNEY[openStep].hint}
+                  <strong className="text-foreground">{VEHICLE_JOURNEY[openStep].label}:</strong>{" "}
+                  {showRewards ? VEHICLE_JOURNEY[openStep].hint : NEUTRAL_HINT[VEHICLE_JOURNEY[openStep].status] ?? VEHICLE_JOURNEY[openStep].hint}
                 </motion.p>
               )}
             </AnimatePresence>
           </div>
         )}
 
-        {/* Prêmio */}
-        {!lost && (captured > 0 || soldReward > 0) && (
+        {/* Prêmio (escondido no perfil folgista) */}
+        {showRewards && !lost && (captured > 0 || soldReward > 0) && (
           <div className="rounded-xl bg-zinc-950 text-white p-3 space-y-1.5 dark:bg-zinc-900">
             <p className="text-[10px] uppercase tracking-wide text-zinc-400 flex items-center gap-1"><Sparkles className="h-3 w-3 text-emerald-400" /> Seu prêmio</p>
             {captured > 0 && (

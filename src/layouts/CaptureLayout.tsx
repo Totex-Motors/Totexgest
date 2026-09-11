@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Home, PlusCircle, Users, Car, Gift, ArrowLeft } from "lucide-react";
+import { Home, PlusCircle, Users, Car, Gift, GraduationCap, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -8,20 +8,26 @@ import { useAuth } from "@/contexts/AuthContext";
  * software administrativo. Mobile-first: coluna única, bottom-nav com 5 itens,
  * botão "Captar" em destaque no centro. No desktop a mesma coluna fica
  * centralizada (máx. 520px) — sem a sidebar completa do CRM.
+ *
+ * Folgista (team_members.capture_profile): sem incentivos financeiros — o 5º
+ * item vira "Treino" em vez de "Prêmios".
  */
 
-const NAV = [
+const NAV_BASE = [
   { to: "/captacao", label: "Hoje", icon: Home, end: true },
   { to: "/captacao/leads", label: "Meus Leads", icon: Users },
   { to: "/captacao/novo", label: "Captar", icon: PlusCircle, primary: true },
   { to: "/captacao/carros", label: "Meus Carros", icon: Car },
-  { to: "/captacao/premios", label: "Prêmios", icon: Gift },
 ] as const;
 
+const NAV_PRIZES = { to: "/captacao/premios", label: "Prêmios", icon: Gift } as const;
+const NAV_TRAINING = { to: "/captacao/premios?tab=treino", label: "Treino", icon: GraduationCap } as const;
+
 export function CaptureLayout() {
-  const { isPromotora } = useAuth();
+  const { isPromotora, isFolgista } = useAuth();
   const location = useLocation();
   const onNewLead = location.pathname.startsWith("/captacao/novo");
+  const NAV = [...NAV_BASE, isFolgista ? NAV_TRAINING : NAV_PRIZES] as const;
 
   return (
     <div className="min-h-[100dvh] bg-muted/40 flex flex-col">

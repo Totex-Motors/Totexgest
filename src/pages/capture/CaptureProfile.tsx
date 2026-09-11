@@ -24,6 +24,9 @@ function useTenantName(tenantId: string | null) {
 /**
  * "Perfil" — meta semanal, pontos e evolução da promotora. Sem configurações
  * do tenant. Pontos/nível são placeholder até performance_goals (Fase 5).
+ *
+ * Folgista: sem pontos/carteira/prêmios — só identificação, contagem da
+ * semana/mês e um aviso neutro de que o perfil não tem incentivos financeiros.
  */
 const META_SEMANAL_PLACEHOLDER = 40;
 
@@ -36,7 +39,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export default function CaptureProfile() {
-  const { teamMember, signOut, tenantId } = useAuth();
+  const { teamMember, signOut, tenantId, isFolgista } = useAuth();
   const stats = useCaptureHomeStats();
   const { data: tenantName } = useTenantName(tenantId);
 
@@ -46,6 +49,39 @@ export default function CaptureProfile() {
   // Pontuação simples e transparente: 10 por lead + 20 extra por quente
   const pontos = semana * 10 + quentes * 20;
   const pct = Math.min(100, Math.round((semana / META_SEMANAL_PLACEHOLDER) * 100));
+
+  if (isFolgista) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-14 w-14">
+            <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">{initials}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold truncate">{teamMember?.name}</h1>
+            <p className="text-xs text-muted-foreground">{ROLE_LABEL[teamMember?.role ?? ""] ?? teamMember?.role}</p>
+            {tenantName && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1"><Store className="h-3 w-3" /> {tenantName}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <Stat icon={Target} label="Na semana" value={semana} loading={stats.isLoading} />
+          <Stat icon={Sparkles} label="Quentes" value={quentes} loading={stats.isLoading} />
+          <Stat icon={Target} label="No mês" value={stats.data?.mes ?? 0} loading={stats.isLoading} />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground text-center px-2">
+          Perfil folgista — sem incentivos financeiros.
+        </p>
+
+        <Button variant="outline" className="w-full h-11" onClick={signOut}>
+          <LogOut className="h-4 w-4 mr-2" /> Sair
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
