@@ -17,7 +17,7 @@ const NAV_BASE = [
   { to: "/captacao", label: "Hoje", icon: Home, end: true },
   { to: "/captacao/leads", label: "Meus Leads", icon: Users },
   { to: "/captacao/novo", label: "Captar", icon: PlusCircle, primary: true },
-  { to: "/captacao/carros", label: "Meus Carros", icon: Car },
+  { to: "/captacao/carros", label: "Intermediações", icon: Car },
 ] as const;
 
 const NAV_PRIZES = { to: "/captacao/premios", label: "Prêmios", icon: Gift } as const;

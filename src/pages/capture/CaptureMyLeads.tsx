@@ -47,7 +47,7 @@ function relDate(iso?: string | null) {
 function nextAction(l: CaptureLead): { text: string; urgent: boolean } {
   const q = l.seller_qualification ?? {};
   const rep = l.sales_rep_name?.split(" ")[0];
-  if (l.stage_is_won) return { text: "🏆 Carro captado", urgent: false };
+  if (l.stage_is_won) return { text: "🏆 Contrato assinado", urgent: false };
   if (l.stage_is_lost) return { text: "Perdido", urgent: false };
   if (q.autoriza_contato !== true) return { text: "Pedir autorização de contato", urgent: true };
   if (l.first_contact_at) return { text: rep ? `${rep} já contatou` : "Contatado", urgent: false };

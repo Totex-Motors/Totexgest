@@ -348,7 +348,7 @@ async function runSla(sb: any) {
       const ch = channels.get(tenantId)!;
       if (ch.apiUrl && ch.apiKey && ch.groupJid && ch.notifyGroup) {
         const txt = `📌 *Follow-up da captação* — sem avaliação agendada:\n` +
-          items.map((s) => `• ${s.lead} — ${s.rep} · ${s.dias} dias em "Contato feito"`).join("\n") +
+          items.map((s) => `• ${s.lead} — ${s.rep} · 1º contato há ${s.dias} dias, sem avaliação marcada`).join("\n") +
           `\n\nTarefa criada pra cada um. Agenda a avaliação ou move pra Nutrição/Perdido.`;
         await sendUazapi(sb, ch,ch.groupJid, txt);
       }

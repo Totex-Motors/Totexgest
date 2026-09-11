@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  *
  * Modo SIMPLES (folgista, ou nenhuma regra de prêmio vale pra ela): sem
  * carteira, sem anel da semana/voucher — só "Meta de hoje" + contagem da
- * semana. Frase do dia, carros, próximo passo, retornos e treino continuam.
+ * semana. Frase do dia, intermediações, próximo passo, retornos e treino continuam.
  */
 
 function greeting() {
@@ -186,19 +186,19 @@ export default function CaptureHome() {
         />
       )}
 
-      {/* Meus carros — carrossel */}
+      {/* Intermediações — carrossel (captados_mes = contratos assinados no mês) */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold flex items-center gap-1.5"><Car className="h-4 w-4" /> Meus carros</h2>
+          <h2 className="text-sm font-semibold flex items-center gap-1.5"><Car className="h-4 w-4" /> Intermediações</h2>
           <Link to="/captacao/carros" className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-0.5">
-            {s?.captados_mes != null ? `${s.captados_mes} no mês` : "Ver todos"} <ChevronRight className="h-3.5 w-3.5" />
+            {s?.captados_mes != null ? `${s.captados_mes} contrato${s.captados_mes === 1 ? "" : "s"} no mês` : "Ver todas"} <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
         {vehicles.isLoading ? (
           <div className="flex gap-2 overflow-hidden">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-40 shrink-0 rounded-xl" />)}</div>
         ) : myVehicles.length === 0 ? (
           <Link to="/captacao/carros" className="block rounded-xl border border-dashed border-border/80 px-3 py-3 text-xs text-muted-foreground">
-            Quando um lead seu virar carro no estoque, ele aparece aqui{simple ? "" : " — com o seu prêmio"}. 🚗
+            Quando um lead seu virar intermediação, ela aparece aqui{simple ? "" : " — e o seu prêmio entra quando o contrato for assinado"}. 🚗
           </Link>
         ) : (
           <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 snap-x">
@@ -238,7 +238,16 @@ export default function CaptureHome() {
                 <ul className="space-y-2">
                   {events.data!.map((e) => (
                     <li key={e.id}>
-                      <Link to={e.event_type === "sold" || e.event_type === "won" ? "/captacao/carros" : `/captacao/leads?lead=${e.lead_id}`} className="flex items-start gap-2 text-sm">
+                      <Link
+                        to={
+                          e.event_type === "sold" || e.event_type === "won"
+                            ? "/captacao/carros"
+                            : e.event_type === "info" && /pr[êe]mio/i.test(e.title)
+                              ? "/captacao/premios?tab=premios"
+                              : `/captacao/leads?lead=${e.lead_id}`
+                        }
+                        className="flex items-start gap-2 text-sm"
+                      >
                         <span className="shrink-0">{EVENT_ICON[e.event_type as keyof typeof EVENT_ICON] ?? "•"}</span>
                         <span className="flex-1 min-w-0">
                           <span className="font-medium block truncate">{e.title}</span>
@@ -305,7 +314,10 @@ function MiniVehicle({ v, index }: { v: MyCaptureVehicle; index: number }) {
         )}
       >
         <p className="text-sm font-semibold truncate">{vehicleTitle(v)}</p>
-        <p className="text-[11px] text-muted-foreground truncate">{v.lead_name}</p>
+        <p className="text-[11px] text-muted-foreground truncate">
+          {v.intermediation_code ? <span className="font-mono">{v.intermediation_code}</span> : null}
+          {v.intermediation_code ? " · " : ""}{v.lead_name}
+        </p>
         <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", meta.cls)}>
           {sold && <Sparkles className="h-3 w-3" />}{meta.label}
         </span>

@@ -17,25 +17,45 @@ import type { CaptureLedgerStatus, CaptureRewardType, CaptureVehicleStatus } fro
 export const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 export const formatCents = (cents: number | null | undefined) => BRL.format((Number(cents) || 0) / 100);
 
-export type CaptureRuleEventType = "lead_validated" | "vehicle_captured" | "vehicle_sold" | "monthly_champion";
+export type CaptureRuleEventType =
+  | "lead_validated"
+  | "intermediation_formalized"
+  | "intermediation_completed"
+  | "monthly_champion"
+  /** Legado (antes da intermediação) — regras antigas foram migradas pros novos tipos */
+  | "vehicle_captured"
+  | "vehicle_sold";
 export type CaptureRulePeriod = "week" | "month";
 
-export const RULE_EVENT_META: Record<CaptureRuleEventType, { label: string; hint: string }> = {
+/** Tipos legados: não aparecem no select de nova regra, só em regras antigas já salvas. */
+export const LEGACY_RULE_EVENT_TYPES: CaptureRuleEventType[] = ["vehicle_captured", "vehicle_sold"];
+
+export const RULE_EVENT_META: Record<CaptureRuleEventType, { label: string; hint: string; legacy?: boolean }> = {
   lead_validated: {
     label: "Meta de leads válidos",
     hint: "Quando a promotora atinge N leads válidos (nome, telefone, veículo, ano, intenção e consentimento) na semana ou no mês.",
   },
-  vehicle_captured: {
-    label: "Veículo captado",
-    hint: "Quando o carro captado entra pro estoque (status Captado — automático ao ganhar o deal ou manual no lead).",
+  intermediation_formalized: {
+    label: "Intermediação formalizada (contrato assinado)",
+    hint: "Quando o contrato de intermediação do proprietário é assinado (importado pelo admin ou, na fase 3, assinatura eletrônica). É o antigo \"Veículo captado\".",
   },
-  vehicle_sold: {
-    label: "Veículo vendido",
-    hint: "Quando o carro captado é vendido (status Vendido).",
+  intermediation_completed: {
+    label: "Intermediação concluída (venda)",
+    hint: "Quando a venda do carro captado é registrada com evidência (valor + negócio do comprador ou nota). É o antigo \"Veículo vendido\".",
   },
   monthly_champion: {
     label: "Campeã do mês",
     hint: "Ao fechar o mês: melhor conversão (captados ÷ válidos) entre quem atingiu o mínimo de leads válidos.",
+  },
+  vehicle_captured: {
+    label: "Veículo captado (legado)",
+    hint: "Regra antiga: pagava quando o carro entrava pro estoque. Substituída por \"Intermediação formalizada\".",
+    legacy: true,
+  },
+  vehicle_sold: {
+    label: "Veículo vendido (legado)",
+    hint: "Regra antiga: pagava no status Vendido. Substituída por \"Intermediação concluída\".",
+    legacy: true,
   },
 };
 

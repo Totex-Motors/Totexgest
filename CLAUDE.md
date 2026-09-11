@@ -363,6 +363,15 @@ privada pela API não oficial. Desde então:
 - **Toda função nova que envie WhatsApp via UAZAPI precisa chamar o guarda.**
   Sem exceção, sem flag, sem "só dessa vez".
 
+## INTERMEDIAÇÃO (captação das promotoras) — regra de ouro
+
+Entidade-mãe é `intermediations` (docs/INTERMEDIACAO.md). "Captação" é só a origem.
+**O estágio do funil é consequência do evento, nunca o contrário**: contrato assinado
+formaliza (R$ 25), anúncio no marketplace acende "Em vitrine", venda com evidência
+conclui (R$ 50). Não crie caminho que mova o card na mão pra essas etapas — o gate
+`trg_intermediation_deal_gate` bloqueia e é proposital. Toda automação que mova o
+funil usa `capture_move_stage`/`intermediation_move_deal` (bypass do gate).
+
 ## Armadilhas conhecidas (NAO caia nelas)
 - ❌ Enviar mensagem privada por instância UAZAPI (ver regra inviolável acima)
 

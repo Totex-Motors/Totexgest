@@ -220,25 +220,83 @@ export interface CaptureWallet {
 export type CaptureVehicleStatus =
   | "lead" | "avaliacao" | "captado" | "preparacao" | "anunciado" | "negociacao" | "vendido" | "perdido";
 
-/** Etapas visíveis pra promotora na jornada do carro (ordem importa). */
+/**
+ * Etapas visíveis pra promotora na jornada da intermediação (ordem importa).
+ * 'captado' = contrato de intermediação assinado pelo proprietário (é aqui que
+ * nasce o prêmio de captação — migration 20260911200000).
+ */
 export const VEHICLE_JOURNEY: { status: CaptureVehicleStatus; label: string; hint: string }[] = [
   { status: "avaliacao", label: "Avaliação", hint: "O especialista está avaliando o carro (fotos, estado, preço de mercado)." },
-  { status: "captado", label: "Captado", hint: "O carro entrou pro estoque Totex. Seu prêmio de captação é gerado aqui." },
-  { status: "anunciado", label: "Anunciado", hint: "O sistema confere o site da Totex 2× por dia: quando o carro aparece no estoque, essa etapa acende sozinha." },
+  { status: "captado", label: "Contrato", hint: "Contrato de intermediação assinado pelo proprietário. Seu prêmio de R$ entra aqui." },
+  { status: "anunciado", label: "Em vitrine", hint: "O sistema confere o site da Totex 2× por dia: quando o carro aparece na vitrine, essa etapa acende sozinha." },
   { status: "negociacao", label: "Negociação", hint: "Um comprador interessado nesse carro chegou em proposta no CRM." },
-  { status: "vendido", label: "Vendido", hint: "Fechou! A venda é registrada com valor e comprador, o gestor confere e libera seu bônus." },
+  { status: "vendido", label: "Vendida", hint: "Fechou! A venda é registrada com valor e comprador, o gestor confere e libera seu bônus." },
 ];
 
 export const VEHICLE_STATUS_META: Record<CaptureVehicleStatus, { label: string; cls: string; step: number }> = {
   lead: { label: "Em contato", cls: "bg-muted text-muted-foreground border-border", step: -1 },
   avaliacao: { label: "Avaliação", cls: "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900", step: 0 },
-  captado: { label: "Captado", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", step: 1 },
+  captado: { label: "Contrato assinado", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", step: 1 },
   preparacao: { label: "Em preparação", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", step: 1 },
-  anunciado: { label: "Anunciado", cls: "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100", step: 2 },
+  anunciado: { label: "Em vitrine", cls: "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100", step: 2 },
   negociacao: { label: "Negociação", cls: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900", step: 3 },
-  vendido: { label: "Vendido", cls: "bg-emerald-600 text-white border-emerald-600", step: 4 },
+  vendido: { label: "Vendida", cls: "bg-emerald-600 text-white border-emerald-600", step: 4 },
   perdido: { label: "Perdido", cls: "bg-muted text-muted-foreground border-border line-through", step: -1 },
 };
+
+// ─── Intermediação (migration 20260911200000_intermediacao_nucleo) ──────────
+
+export type IntermediationStatus =
+  | "lead" | "contracting" | "active" | "completed" | "paused"
+  | "cancelled_by_owner" | "refused_by_totex" | "lost" | "sold_outside" | "docs_pending";
+
+export type IntermediationContractStatus =
+  | "none" | "generated" | "sent" | "partial" | "signed" | "imported" | "declined" | "expired" | "cancelled";
+
+export type IntermediationDeadlineStatus = "ok" | "expiring" | "expired";
+
+export const INTERMEDIATION_STATUS_LABEL: Record<IntermediationStatus, string> = {
+  lead: "Em contato",
+  contracting: "Contrato em andamento",
+  active: "Intermediação ativa",
+  completed: "Venda concluída",
+  paused: "Pausada",
+  cancelled_by_owner: "Cancelada pelo proprietário",
+  refused_by_totex: "Recusada pela Totex",
+  lost: "Perdida",
+  sold_outside: "Vendida por fora",
+  docs_pending: "Documentos pendentes",
+};
+
+/** Statuses em que a intermediação saiu do fluxo normal — o card mostra badge + explicação curta. */
+export const INTERMEDIATION_STATUS_NOTE: Partial<Record<IntermediationStatus, { note: string; cls: string }>> = {
+  paused: { note: "Intermediação pausada por enquanto. O especialista retoma quando fizer sentido.", cls: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900" },
+  docs_pending: { note: "Falta documentação do proprietário pra seguir. O especialista está cobrando.", cls: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900" },
+  cancelled_by_owner: { note: "O proprietário desistiu da intermediação. Bora pro próximo. 🚗", cls: "bg-muted text-muted-foreground border-border" },
+  refused_by_totex: { note: "A Totex não seguiu com esse carro (perfil ou condições fora do padrão).", cls: "bg-muted text-muted-foreground border-border" },
+  lost: { note: "Esse não deu certo dessa vez. Cada intermediação é uma nova chance.", cls: "bg-muted text-muted-foreground border-border" },
+  sold_outside: { note: "O proprietário vendeu por conta própria. Não gera prêmio de venda.", cls: "bg-muted text-muted-foreground border-border" },
+};
+
+export const CONTRACT_STATUS_LABEL: Record<IntermediationContractStatus, string> = {
+  none: "Contrato: aguardando",
+  generated: "Contrato: em assinatura",
+  sent: "Contrato: em assinatura",
+  partial: "Contrato: em assinatura",
+  signed: "Contrato: assinado",
+  imported: "Contrato: assinado",
+  declined: "Contrato: pendente de revisão",
+  expired: "Contrato: pendente de revisão",
+  cancelled: "Contrato: pendente de revisão",
+};
+
+/** Cor do badge de contrato: aguardando = neutro, em assinatura = âmbar, assinado = verde, revisão = vermelho suave. */
+export function contractStatusClass(s: IntermediationContractStatus): string {
+  if (s === "signed" || s === "imported") return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900";
+  if (s === "generated" || s === "sent" || s === "partial") return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900";
+  if (s === "declined" || s === "expired" || s === "cancelled") return "bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900";
+  return "bg-muted text-muted-foreground border-border";
+}
 
 /** Linha devolvida por list_my_capture_vehicles */
 export interface MyCaptureVehicle {
@@ -263,6 +321,25 @@ export interface MyCaptureVehicle {
   /** Anúncio no marketplace Totex (preenchido pelo sync capture-listings) */
   listing_url: string | null;
   listing_price: number | null;
+  /** Intermediação do proprietário (null enquanto não existir) — migration 20260911200000 */
+  intermediation_id: string | null;
+  /** Ex.: "INT-00012" */
+  intermediation_code: string | null;
+  intermediation_status: IntermediationStatus | null;
+  contract_status: IntermediationContractStatus | null;
+  contract_signed_at: string | null;
+  /** Data-fim do contrato de intermediação (YYYY-MM-DD) */
+  ends_at: string | null;
+  deadline_status: IntermediationDeadlineStatus | null;
+}
+
+/** Dias (inteiros, arredondados pra cima) até `ends_at`; null se não houver data. */
+export function daysUntil(dateIso: string | null | undefined, now: Date = new Date()): number | null {
+  if (!dateIso) return null;
+  const [y, m, d] = dateIso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+  return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86_400_000));
 }
 
 export function vehicleTitle(v: Pick<MyCaptureVehicle, "description" | "brand" | "model" | "year_model">) {

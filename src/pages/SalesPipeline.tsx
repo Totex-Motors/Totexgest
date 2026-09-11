@@ -556,10 +556,12 @@ export function PipelineBoardContent() {
         title: "Negociação movida",
         description: "A negociação foi movida para o novo estágio.",
       });
-    } catch (_e) {
+    } catch (e) {
+      // Mensagem do banco (ex.: gate da intermediação: "Só depois do contrato assinado…")
+      const msg = e instanceof Error ? e.message : (e as { message?: string } | null)?.message;
       toast({
         title: "Erro ao mover negociação",
-        description: "Tente novamente.",
+        description: msg || "Tente novamente.",
         variant: "destructive",
       });
     }

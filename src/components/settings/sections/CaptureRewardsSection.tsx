@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   Gift, Plus, Pencil, Trash2, Loader2, ImagePlus, CheckCircle2, X, ListChecks, BadgeCheck,
-  Trophy, Megaphone, Coins, Ticket, Ban, Crown, Info, Save,
+  Trophy, Megaphone, Coins, Ticket, Ban, Crown, Info, Save, Filter, ArrowRight, Timer, CalendarClock, XCircle, FileSignature,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,8 @@ import {
   type CaptureRuleEventType,
   type CaptureRulePeriod,
 } from "@/hooks/useCaptureRewardEngine";
+import { useIntermediationFunnel } from "@/hooks/useIntermediation";
+import type { IntermediationFunnelPeriod } from "@/types/intermediation";
 
 /**
  * Configurações › Comercial › Prêmios da captação.
@@ -421,9 +423,12 @@ function RuleDialog({ rule, onClose, nextPosition }: { rule: CaptureRewardRule |
               <Select value={f.event_type} onValueChange={(v) => setEvent(v as CaptureRuleEventType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(RULE_EVENT_META) as CaptureRuleEventType[]).map((k) => (
-                    <SelectItem key={k} value={k}>{RULE_EVENT_META[k].label}</SelectItem>
-                  ))}
+                  {/* Tipos legados só aparecem se a regra já usa um deles */}
+                  {(Object.keys(RULE_EVENT_META) as CaptureRuleEventType[])
+                    .filter((k) => !RULE_EVENT_META[k].legacy || k === f.event_type)
+                    .map((k) => (
+                      <SelectItem key={k} value={k}>{RULE_EVENT_META[k].label}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -594,7 +599,7 @@ function RulesTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid sm:grid-cols-2 gap-2">
-            {(Object.keys(RULE_EVENT_META) as CaptureRuleEventType[]).map((k) => (
+            {(Object.keys(RULE_EVENT_META) as CaptureRuleEventType[]).filter((k) => !RULE_EVENT_META[k].legacy).map((k) => (
               <div key={k} className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
                 <p className="text-xs font-semibold">{RULE_EVENT_META[k].label}</p>
                 <p className="text-[11px] text-muted-foreground leading-snug">{RULE_EVENT_META[k].hint}</p>
@@ -627,7 +632,7 @@ function RulesTab() {
                     return (
                       <TableRow key={r.id} className={cn(!r.active && "opacity-60")}>
                         <TableCell className="font-medium">{r.name}</TableCell>
-                        <TableCell className="text-sm">{RULE_EVENT_META[r.event_type].label}</TableCell>
+                        <TableCell className="text-sm">{RULE_EVENT_META[r.event_type]?.label ?? r.event_type}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{ruleConditionText(r)}</TableCell>
                         <TableCell className="text-sm">
                           <span className="inline-flex items-center gap-2">
@@ -989,6 +994,98 @@ function RankingTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Funil da intermediação (intermediation_funnel)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BRL_FULL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const convPct = (num: number, den: number) => (den > 0 ? pct((num / den) * 100) : "—");
+const fmtDays = (d: number | null) => (d == null ? "—" : `${d.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dia${d === 1 ? "" : "s"}`);
+
+/** Etapa do funil: número grande + taxa em relação à etapa anterior. */
+function FunnelStep({ label, value, prev, first, tone }: { label: string; value: number; prev?: number; first?: boolean; tone: string }) {
+  return (
+    <div className="flex items-stretch gap-1 min-w-0">
+      {!first && (
+        <div className="flex flex-col items-center justify-center shrink-0 w-12 text-[11px] text-muted-foreground">
+          <ArrowRight className="h-3.5 w-3.5" />
+          <span className="tabular-nums">{convPct(value, prev ?? 0)}</span>
+        </div>
+      )}
+      <div className={cn("flex-1 min-w-0 rounded-lg border border-border/60 p-3", tone)}>
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground truncate">{label}</p>
+        <p className="text-2xl font-semibold tabular-nums leading-tight">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function FunnelTab() {
+  const [period, setPeriod] = useState<IntermediationFunnelPeriod>("month");
+  const { data: f, isLoading, isError, error } = useIntermediationFunnel(period);
+
+  const periodLabel = period === "week" ? "esta semana" : period === "month" ? "este mês" : "desde o início";
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2"><Filter className="h-5 w-5 text-sky-600" /> Funil da intermediação</CardTitle>
+              <CardDescription>Da captação à venda — intermediações criadas {periodLabel}. A taxa entre etapas é sobre a etapa anterior.</CardDescription>
+            </div>
+            <Select value={period} onValueChange={(v) => setPeriod(v as IntermediationFunnelPeriod)}>
+              <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">Esta semana</SelectItem>
+                <SelectItem value="month">Este mês</SelectItem>
+                <SelectItem value="all">Tudo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>
+          ) : isError || !f ? (
+            <p className="text-sm text-red-600">{error instanceof Error ? error.message : "Não consegui carregar o funil."}</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+                <FunnelStep label="Captadas" value={f.captadas} first tone="bg-muted/30" />
+                <FunnelStep label="Válidas" value={f.validas} prev={f.captadas} tone="bg-sky-50/60 dark:bg-sky-950/20" />
+                <FunnelStep label="Formalizadas" value={f.formalizadas} prev={f.validas} tone="bg-emerald-50/60 dark:bg-emerald-950/20" />
+                <FunnelStep label="Em vitrine" value={f.em_vitrine} prev={f.formalizadas} tone="bg-zinc-100/60 dark:bg-zinc-900/40" />
+                <FunnelStep label="Com proposta" value={f.com_proposta} prev={f.em_vitrine} tone="bg-purple-50/60 dark:bg-purple-950/20" />
+                <FunnelStep label="Vendidas" value={f.vendidas} prev={f.com_proposta} tone="bg-emerald-100/70 dark:bg-emerald-950/40" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Conversão total: <strong>{convPct(f.vendidas, f.captadas)}</strong> das captadas viraram venda · <strong>{convPct(f.formalizadas, f.captadas)}</strong> chegaram a contrato assinado.
+              </p>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                <StatTile label="Ativas (contrato vigente)" value={String(f.ativas)} icon={FileSignature} tone="bg-emerald-100 text-emerald-700" />
+                <StatTile label="Vencendo / vencidas" value={String(f.vencendo)} icon={CalendarClock} tone={f.vencendo > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"} />
+                <StatTile label="Encerradas sem venda" value={String(f.encerradas)} icon={XCircle} tone="bg-red-100 text-red-700" />
+                <StatTile label="Comissão apurada" value={BRL_FULL.format(f.comissao_apurada)} icon={Coins} tone="bg-sky-100 text-sky-700" />
+                <StatTile label="Comissão paga" value={BRL_FULL.format(f.comissao_paga)} icon={CheckCircle2} tone="bg-emerald-600 text-white" />
+                <StatTile label="Dias até formalizar (média)" value={fmtDays(f.dias_para_formalizar)} icon={Timer} tone="bg-muted text-muted-foreground" />
+                <StatTile label="Dias até vender (média)" value={fmtDays(f.dias_para_vender)} icon={Timer} tone="bg-muted text-muted-foreground" />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Válidas = lead com dados completos · Formalizadas = contrato assinado · Em vitrine = carro no site · Com proposta = comprador em negociação · Vendidas = venda registrada com evidência.
+                Dias até formalizar conta da captação ao contrato; dias até vender, do contrato à venda.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Campanha (frase/objeção do dia)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1151,12 +1248,14 @@ export function CaptureRewardsSection() {
             {pendingCount > 0 && <Badge className="ml-1 h-5 px-1.5 text-[11px]">{pendingCount}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="ranking" className="gap-1.5"><Trophy className="h-4 w-4" /> Ranking / ROI</TabsTrigger>
+          <TabsTrigger value="funil" className="gap-1.5"><Filter className="h-4 w-4" /> Funil</TabsTrigger>
           <TabsTrigger value="catalogo" className="gap-1.5"><Gift className="h-4 w-4" /> Catálogo</TabsTrigger>
           <TabsTrigger value="campanha" className="gap-1.5"><Megaphone className="h-4 w-4" /> Campanha</TabsTrigger>
         </TabsList>
         <TabsContent value="regras"><RulesTab /></TabsContent>
         <TabsContent value="aprovacoes"><ApprovalsTab /></TabsContent>
         <TabsContent value="ranking"><RankingTab /></TabsContent>
+        <TabsContent value="funil"><FunnelTab /></TabsContent>
         <TabsContent value="catalogo"><CatalogTab /></TabsContent>
         <TabsContent value="campanha"><CampaignTab /></TabsContent>
       </Tabs>

@@ -60,6 +60,7 @@ import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard"
 import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
 import { CaptureVehicleCard } from "@/components/sales/CaptureVehicleCard";
+import { IntermediationCard } from "@/components/sales/IntermediationCard";
 import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
 import { CancelRefundModal } from "@/components/sales/CancelRefundModal";
@@ -1514,6 +1515,8 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               {/* Comercial Tab */}
               <TabsContent value="comercial">
                 <div className="space-y-6">
+                  {/* Intermediação (entidade-mãe) — só renderiza se existe intermediação pro lead */}
+                  {id && <IntermediationCard leadId={id} />}
                   {/* Captação — só renderiza se o lead foi captado por promotora */}
                   {id && <CaptureVehicleCard leadId={id} />}
 

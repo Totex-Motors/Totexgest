@@ -89,10 +89,11 @@ export const MICRO_LESSONS: MicroLesson[] = [
     id: "handoff",
     title: "O que acontece depois que você capta",
     minutes: 1,
-    summary: "Lead quente → especialista é avisado na hora. Morno → contato no mesmo dia. Frio → nutrição automática. Você vê o resultado em Meus Leads.",
+    summary: "Lead quente → especialista é avisado na hora. Morno → contato no mesmo dia. Frio → nutrição automática. Você vê o resultado em Meus Leads e em Intermediações.",
     bullets: [
       "Combine a expectativa: 'nosso especialista chama você ainda hoje'.",
-      "Acompanhe o status do lead — se virar 'Captado', o carro entrou pro estoque Totex.",
+      "Quando o proprietário assina o contrato de intermediação, a intermediação vira 'Contrato assinado' — é aí que entra o seu prêmio de captação.",
+      "Cadastro completo (carro, ano, KM, autorização) = contrato sai mais rápido.",
       "Leads com dado errado (telefone inválido) voltam pra você corrigir.",
     ],
   },

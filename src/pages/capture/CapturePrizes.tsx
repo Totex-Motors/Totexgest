@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Gift, Wallet, GraduationCap, UserCircle, Receipt } from "lucide-react";
+import { Gift, Wallet, GraduationCap, UserCircle, Receipt, Megaphone, X, FileSignature, Trophy, Target } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -25,6 +27,13 @@ import CaptureProfile from "./CaptureProfile";
 const TABS = ["carteira", "premios", "treino", "perfil"] as const;
 const TABS_FOLGISTA = ["treino", "perfil"] as const;
 type Tab = (typeof TABS)[number];
+
+/** Aviso da mudança de regra (migration 20260911200000): some depois que a promotora dispensa. */
+const REWARDS_NOTICE_KEY = "capture.rewardsNotice.v1";
+
+function loadNoticeDismissed(): boolean {
+  try { return localStorage.getItem(REWARDS_NOTICE_KEY) === "1"; } catch { return false; }
+}
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "";
@@ -112,7 +121,7 @@ function PrizesFull({ tab, setTab }: { tab: Tab; setTab: (t: string) => void }) 
               <p className="text-sm text-destructive">Erro ao carregar: {(wallet.error as Error).message}</p>
             ) : (wallet.data?.items.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Nada por aqui ainda. Bata a meta da semana ou tenha um carro captado — o prêmio aparece aqui automaticamente. 🎯
+                Nada por aqui ainda. Bata a meta da semana ou tenha um contrato de intermediação assinado — o prêmio aparece aqui automaticamente. 🎯
               </p>
             ) : (
               <ul className="space-y-2">
@@ -125,6 +134,7 @@ function PrizesFull({ tab, setTab }: { tab: Tab; setTab: (t: string) => void }) 
         </TabsContent>
 
         <TabsContent value="premios" className="mt-3 space-y-2">
+          <RewardsNotice />
           {rewards.isLoading ? (
             <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}</div>
           ) : (rewards.data?.length ?? 0) === 0 ? (
@@ -146,6 +156,54 @@ function PrizesFull({ tab, setTab }: { tab: Tab; setTab: (t: string) => void }) 
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/**
+ * "Novidade nos prêmios" — o R$ 25 de captação passou a entrar na assinatura
+ * do contrato de intermediação (antes: quando o carro entrava). Dismissível;
+ * a escolha fica só no aparelho (localStorage, com try/catch).
+ */
+function RewardsNotice() {
+  const [dismissed, setDismissed] = useState<boolean>(loadNoticeDismissed);
+  if (dismissed) return null;
+  const dismiss = () => {
+    setDismissed(true);
+    try { localStorage.setItem(REWARDS_NOTICE_KEY, "1"); } catch { /* ignore */ }
+  };
+  return (
+    <Card className="border-emerald-300/70 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-900">
+      <CardContent className="pt-3 pb-3">
+        <div className="flex items-start gap-2">
+          <Megaphone className="h-4 w-4 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Novidade nos prêmios</p>
+            <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+              <li className="flex items-start gap-1.5">
+                <FileSignature className="h-3.5 w-3.5 shrink-0 mt-px text-emerald-600" />
+                <span><strong className="text-foreground">R$ 25</strong> entram quando o proprietário <strong className="text-foreground">assina o contrato</strong> de intermediação (antes era quando o carro entrava).</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <Trophy className="h-3.5 w-3.5 shrink-0 mt-px text-emerald-600" />
+                <span><strong className="text-foreground">R$ 50</strong> continuam na <strong className="text-foreground">venda concluída</strong>.</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <Target className="h-3.5 w-3.5 shrink-0 mt-px text-emerald-600" />
+                <span>A <strong className="text-foreground">meta semanal</strong> de leads válidos (voucher) continua igual.</span>
+              </li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Dispensar aviso"
+            className="shrink-0 -mr-1 -mt-1 h-7 w-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

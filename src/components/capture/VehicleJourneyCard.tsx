@@ -1,22 +1,32 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Car, Check, ExternalLink, UserCheck, Sparkles } from "lucide-react";
+import { Car, Check, ExternalLink, UserCheck, Sparkles, FileSignature, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
+  CONTRACT_STATUS_LABEL,
+  INTERMEDIATION_STATUS_LABEL,
+  INTERMEDIATION_STATUS_NOTE,
   LEDGER_STATUS_META,
   VEHICLE_JOURNEY,
   VEHICLE_STATUS_META,
+  contractStatusClass,
+  daysUntil,
   formatBRL,
   vehicleTitle,
   type CaptureLedgerStatus,
+  type IntermediationStatus,
   type MyCaptureVehicle,
 } from "@/types/capture";
 
 /**
- * Card da jornada de um carro captado pela promotora:
- * identificação → status → timeline (toque numa etapa = explicação curta) →
- * bloco de prêmio (valores e status vêm do ledger; o front nunca calcula).
+ * Card da jornada de uma INTERMEDIAÇÃO nascida de um lead da promotora:
+ * identificação (com o código INT-xxxxx) → status do carro + status do
+ * contrato → timeline (toque numa etapa = explicação curta) → bloco de prêmio
+ * (valores e status vêm do ledger; o front nunca calcula).
+ *
+ * Regra de prêmio (migration 20260911200000): o R$ de captação entra quando o
+ * CONTRATO de intermediação é assinado ('captado'); o de venda, na venda.
  *
  * `showRewards={false}` (perfil folgista): esconde o bloco de prêmio e as
  * menções a R$ nas dicas da jornada — a jornada em si continua igual.
@@ -34,9 +44,12 @@ function ledgerLabel(s: CaptureLedgerStatus | null) {
 
 /** Dicas sem menção a prêmio (modo folgista) — só as etapas que citam R$ mudam. */
 const NEUTRAL_HINT: Partial<Record<MyCaptureVehicle["status"], string>> = {
-  captado: "O carro entrou pro estoque Totex. Agora é preparar e anunciar.",
-  vendido: "Fechou! O carro que você captou foi vendido.",
+  captado: "Contrato de intermediação assinado pelo proprietário. Agora é preparar e colocar na vitrine.",
+  vendido: "Fechou! O carro da sua intermediação foi vendido.",
 };
+
+/** Intermediação encerrada sem venda — some a timeline, card fica esmaecido. */
+const TERMINAL: IntermediationStatus[] = ["cancelled_by_owner", "refused_by_totex", "lost", "sold_outside"];
 
 export function VehicleJourneyCard({
   vehicle: v,
@@ -52,8 +65,13 @@ export function VehicleJourneyCard({
   const [openStep, setOpenStep] = useState<number | null>(null);
   const meta = VEHICLE_STATUS_META[v.status] ?? VEHICLE_STATUS_META.lead;
   const sold = v.status === "vendido";
-  const lost = v.status === "perdido";
+  const intStatus = v.intermediation_status;
+  const offTrack = intStatus ? INTERMEDIATION_STATUS_NOTE[intStatus] : undefined;
+  const ended = v.status === "perdido" || (!!intStatus && TERMINAL.includes(intStatus));
   const currentStep = meta.step;
+
+  const contractSigned = v.contract_status === "signed" || v.contract_status === "imported";
+  const deadlineDays = v.deadline_status === "expiring" ? daysUntil(v.ends_at) : null;
 
   const captured = v.reward_captured_cents ?? 0;
   const soldReward = v.reward_sold_cents ?? 0;
@@ -66,7 +84,7 @@ export function VehicleJourneyCard({
       className={cn(
         "relative overflow-hidden rounded-2xl border bg-card",
         sold ? "border-emerald-500/70 shadow-[0_0_0_1px_rgb(16_185_129_/_0.25)]" : "border-border/60",
-        lost && "opacity-70",
+        ended && "opacity-70",
       )}
     >
       {/* brilho do vendido */}
@@ -87,6 +105,9 @@ export function VehicleJourneyCard({
             <Car className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
+            {v.intermediation_code && (
+              <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground leading-none mb-0.5">{v.intermediation_code}</p>
+            )}
             <p className="font-semibold leading-tight truncate">{vehicleTitle(v)}</p>
             <p className="text-xs text-muted-foreground truncate">
               Captado por você{v.captured_at ? ` • ${fmtDate(v.captured_at)}` : ""} · {v.lead_name}
@@ -100,15 +121,52 @@ export function VehicleJourneyCard({
               transition={{ type: "spring", stiffness: 260, damping: 18 }}
               className="shrink-0 rounded-md border-2 border-emerald-600 text-emerald-700 dark:text-emerald-400 text-[11px] font-black tracking-widest px-2 py-0.5"
             >
-              VENDIDO
+              VENDIDA
             </motion.span>
           ) : (
             <Badge variant="outline" className={cn("border text-[10px] shrink-0", meta.cls)}>{meta.label}</Badge>
           )}
         </div>
 
+        {/* Contrato + situação da intermediação (só quando existe intermediação) */}
+        {v.intermediation_id && (v.contract_status || offTrack) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {v.contract_status && (
+              <Badge variant="outline" className={cn("border text-[10px] gap-1", contractStatusClass(v.contract_status))}>
+                <FileSignature className="h-3 w-3" />
+                {CONTRACT_STATUS_LABEL[v.contract_status]}
+                {contractSigned && v.contract_signed_at ? ` · ${fmtDate(v.contract_signed_at)}` : ""}
+              </Badge>
+            )}
+            {offTrack && intStatus && (
+              <Badge variant="outline" className={cn("border text-[10px]", offTrack.cls)}>{INTERMEDIATION_STATUS_LABEL[intStatus]}</Badge>
+            )}
+          </div>
+        )}
+        {offTrack && (
+          <p className="text-xs text-muted-foreground -mt-1">{offTrack.note}</p>
+        )}
+
+        {/* Prazo do contrato */}
+        {!ended && v.deadline_status === "expiring" && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5 -mt-1">
+            <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+            {deadlineDays == null
+              ? "Prazo do contrato está vencendo"
+              : deadlineDays === 0
+                ? "Prazo do contrato vence hoje"
+                : `Prazo do contrato vence em ${deadlineDays} dia${deadlineDays === 1 ? "" : "s"}`}
+          </p>
+        )}
+        {!ended && v.deadline_status === "expired" && (
+          <p className="text-xs text-red-700 dark:text-red-400 flex items-center gap-1.5 -mt-1">
+            <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+            Prazo venceu — o especialista está cuidando
+          </p>
+        )}
+
         {/* Timeline */}
-        {!lost && (
+        {!ended && (
           <div>
             <ol className="flex items-center">
               {VEHICLE_JOURNEY.map((s, i) => {
@@ -136,7 +194,7 @@ export function VehicleJourneyCard({
                         {doneStep ? <Check className="h-3.5 w-3.5" /> : i + 1}
                       </motion.span>
                       {!compact && (
-                        <span className={cn("text-[9px] uppercase tracking-wide", active ? "text-emerald-700 dark:text-emerald-400 font-semibold" : doneStep ? "text-foreground" : "text-muted-foreground")}>
+                        <span className={cn("text-[9px] uppercase tracking-wide whitespace-nowrap", active ? "text-emerald-700 dark:text-emerald-400 font-semibold" : doneStep ? "text-foreground" : "text-muted-foreground")}>
                           {s.label}
                         </span>
                       )}
@@ -166,31 +224,31 @@ export function VehicleJourneyCard({
         )}
 
         {/* Prêmio (escondido no perfil folgista) */}
-        {showRewards && !lost && (captured > 0 || soldReward > 0) && (
+        {showRewards && !ended && (captured > 0 || soldReward > 0) && (
           <div className="rounded-xl bg-zinc-950 text-white p-3 space-y-1.5 dark:bg-zinc-900">
             <p className="text-[10px] uppercase tracking-wide text-zinc-400 flex items-center gap-1"><Sparkles className="h-3 w-3 text-emerald-400" /> Seu prêmio</p>
             {captured > 0 && (
               <RewardLine
                 amount={captured}
-                label="captado"
+                label="contrato assinado"
                 status={v.ledger_captured_status}
-                future={!v.ledger_captured_status && currentStep < 1 ? "quando captado" : null}
+                future={!v.ledger_captured_status && currentStep < 1 && !contractSigned ? "quando o contrato for assinado" : null}
               />
             )}
             {soldReward > 0 && (
               <RewardLine
                 amount={soldReward}
-                label="vendido"
+                label="venda"
                 status={v.ledger_sold_status}
-                future={!v.ledger_sold_status ? "se vendido" : null}
+                future={!v.ledger_sold_status ? "se vender" : null}
                 plus
               />
             )}
           </div>
         )}
 
-        {/* Anúncio no marketplace (etapa validada pelo sync do estoque) */}
-        {!compact && !lost && v.listing_url && (
+        {/* Anúncio no marketplace (etapa validada pelo sync da vitrine) */}
+        {!compact && !ended && v.listing_url && (
           <a
             href={v.listing_url}
             target="_blank"
@@ -206,12 +264,12 @@ export function VehicleJourneyCard({
         {!compact && (v.sales_rep_name || v.stage_name) && (
           <p className="text-[11px] text-muted-foreground flex items-center gap-1">
             <UserCheck className="h-3 w-3" />
-            {v.sales_rep_name ? `${v.sales_rep_name.split(" ")[0]} cuida desse carro` : "Aguardando especialista"}
+            {v.sales_rep_name ? `${v.sales_rep_name.split(" ")[0]} cuida dessa intermediação` : "Aguardando especialista"}
             {v.stage_name ? ` · ${v.stage_name}` : ""}
           </p>
         )}
-        {lost && (
-          <p className="text-xs text-muted-foreground">Esse não deu certo dessa vez. Bora pro próximo — cada carro captado é uma nova chance. 🚗</p>
+        {ended && !offTrack && (
+          <p className="text-xs text-muted-foreground">Essa não deu certo dessa vez. Bora pro próximo — cada intermediação é uma nova chance. 🚗</p>
         )}
       </div>
     </motion.article>
@@ -233,7 +291,7 @@ function RewardLine({
           <span className={cn(status === "cancelled" ? "text-zinc-500 line-through" : "text-zinc-200")}>{ledgerLabel(status)}</span>
         </span>
       ) : (
-        <span className="text-[11px] text-zinc-400">{future}</span>
+        <span className="text-[11px] text-zinc-400 text-right">{future}</span>
       )}
     </div>
   );

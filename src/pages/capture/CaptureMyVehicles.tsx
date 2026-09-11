@@ -9,10 +9,11 @@ import { VehicleJourneyCard } from "@/components/capture/VehicleJourneyCard";
 import type { CaptureVehicleStatus } from "@/types/capture";
 
 /**
- * "Meus Carros" — jornada de cada carro que a promotora captou
- * (list_my_capture_vehicles). Prêmios e status vêm do ledger; nada é
- * calculado aqui. Folgista (ou sem regra que valha pra ela) vê a jornada
- * sem o bloco de prêmio.
+ * "Intermediações" — jornada de cada intermediação que nasceu de um lead da
+ * promotora (list_my_capture_vehicles). A captação é só a origem; o objeto
+ * acompanhado é a intermediação do carro do proprietário (contrato → vitrine
+ * → venda). Prêmios e status vêm do ledger; nada é calculado aqui. Folgista
+ * (ou sem regra que valha pra ela) vê a jornada sem o bloco de prêmio.
  */
 
 type Filter = "todos" | "ativos" | "vendidos";
@@ -33,26 +34,29 @@ export default function CaptureMyVehicles() {
     return true;
   });
   const vendidos = all.filter((v) => v.status === "vendido").length;
+  // captados_mes = contratos assinados no mês (desde a migration de intermediação, 'captado' = contrato assinado)
+  const formalizadas = stats.data?.captados_mes ?? 0;
+  const vendidasMes = stats.data?.vendidos_mes ?? 0;
 
   return (
     <div className="space-y-3">
       <div>
-        <h1 className="text-lg font-bold flex items-center gap-2"><Car className="h-5 w-5" /> Meus carros</h1>
+        <h1 className="text-lg font-bold flex items-center gap-2"><Car className="h-5 w-5" /> Minhas intermediações</h1>
         <p className="text-xs text-muted-foreground">
           {stats.data ? (
             <>
-              <strong className="text-foreground">{stats.data.captados_mes ?? 0}</strong> captado{(stats.data.captados_mes ?? 0) === 1 ? "" : "s"} e{" "}
-              <strong className="text-foreground">{stats.data.vendidos_mes ?? 0}</strong> vendido{(stats.data.vendidos_mes ?? 0) === 1 ? "" : "s"} este mês
+              <strong className="text-foreground">{formalizadas}</strong> formalizada{formalizadas === 1 ? "" : "s"} e{" "}
+              <strong className="text-foreground">{vendidasMes}</strong> vendida{vendidasMes === 1 ? "" : "s"} este mês
             </>
-          ) : "Acompanhe cada carro até a venda."}
+          ) : "Acompanhe cada intermediação do contrato até a venda."}
         </p>
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1">
         {([
-          { v: "todos", label: `Todos (${all.length})` },
+          { v: "todos", label: `Todas (${all.length})` },
           { v: "ativos", label: "Em andamento" },
-          { v: "vendidos", label: `Vendidos (${vendidos})` },
+          { v: "vendidos", label: `Vendidas (${vendidos})` },
         ] as { v: Filter; label: string }[]).map((f) => (
           <button
             key={f.v}
@@ -78,10 +82,14 @@ export default function CaptureMyVehicles() {
             <Sparkles className="h-7 w-7" />
           </div>
           <p className="text-sm font-semibold">
-            {filter === "vendidos" ? "Nenhum vendido ainda — mas tá chegando." : "Seu primeiro carro no estoque tá a uma conversa de distância."}
+            {filter === "vendidos"
+              ? "Nenhuma vendida ainda — mas tá chegando."
+              : filter === "ativos"
+                ? "Nenhuma intermediação em andamento agora."
+                : "Sua primeira intermediação tá a uma conversa de distância."}
           </p>
           <p className="text-xs text-muted-foreground">
-            Cada lead válido com autorização de contato pode virar um carro captado. Quando virar, ele aparece aqui{showRewards ? " com o seu prêmio" : " pra você acompanhar"}.
+            Cada lead válido com autorização de contato pode virar uma intermediação. Quando o especialista abrir uma, ela aparece aqui{showRewards ? " — e o seu prêmio entra quando o contrato for assinado" : " pra você acompanhar"}.
           </p>
         </div>
       ) : (

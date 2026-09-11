@@ -283,7 +283,7 @@ export function CaptureVehicleCard({ leadId }: Props) {
       await setStatus.mutateAsync({ vehicleId: vehicle.id, status: next, soldPrice: price ?? null, soldDealId: dealId ?? null, soldNote: note ?? null });
       toast.success(
         next === "captado"
-          ? "Carro marcado como Captado — bônus de captação gerado pra promotora."
+          ? "Carro marcado como Captado. O prêmio da promotora vem com o contrato de intermediação assinado."
           : next === "vendido"
             ? "Venda registrada — o bônus da promotora entra como pendente pro gestor aprovar em Prêmios › Aprovações."
             : `Status do carro: ${STATUS_OPTIONS.find((o) => o.value === next)?.label ?? next}.`,
@@ -528,7 +528,7 @@ export function CaptureVehicleCard({ leadId }: Props) {
             )}
 
             <p className="text-[11px] text-muted-foreground">
-              <strong>Captado</strong> acende quando o negócio chega em Ganho no funil (ou aqui). <strong>Anunciado</strong> acende sozinho quando o carro aparece no estoque da loja no site (conferido 2× por dia). <strong>Negociação</strong> e <strong>Vendido</strong> acendem pelo negócio do comprador — ou aqui, com evidência.
+              <strong>Captado</strong> acende quando o contrato de intermediação é assinado (card Intermediação acima) — é o contrato que gera o prêmio da promotora, não este status. <strong>Anunciado</strong> acende sozinho quando o carro aparece no estoque da loja no site (conferido 2× por dia). <strong>Negociação</strong> e <strong>Vendido</strong> acendem pelo negócio do comprador — ou aqui, com evidência.
             </p>
           </div>
         )}
