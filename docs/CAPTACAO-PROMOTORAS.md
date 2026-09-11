@@ -159,6 +159,17 @@ Migration `20260911100000_captacao_reward_engine.sql`.
 
 Testes (Postgres local, `scratchpad/smoke_test6.sql`): 39→40 libera 1 voucher; reavaliação não duplica; captado 2× paga 1×; vendido 2× paga 1×; promotora não altera ledger; aprovação/pagamento auditados; campeã idempotente; invalidação desfaz meta.
 
+## Treino — Roleplay com IA (F8, entregue)
+
+| Peça | Onde |
+|---|---|
+| Cenários | `capture_roleplay_scenarios` — 5 padrão (tenant NULL): apressado, desconfiado, quer preço, "não agora", "por conta própria"; cada um com persona, fala inicial, fatos ocultos (carro/prazo/telefone) e `max_turns`. Tenant pode criar os seus (admin) |
+| Sessões | `capture_roleplay_sessions` (mensagens, turnos, status, score, evaluation) — escrita só pela edge function |
+| Edge function | `capture-roleplay` (JWT do usuário): `start` / `reply` (IA = cliente, Haiku 4.5, nunca sai do personagem, `[FIM]` encerra) / `finish` (Sonnet 4.6 avalia com rubrica abordagem 20 · descoberta 25 · objeção 20 · consentimento 20 · fechamento 15 → JSON com critérios, pontos fortes, melhorias, melhor frase, próximo treino) / `abandon` |
+| Chave | `ANTHROPIC_API_KEY` via `getIntegrationKey` (tenant_integration_keys → config → env) |
+| Progresso | `capture_training_progress` (aulas saem do localStorage) — RPCs `capture_training_mark_lesson`, `capture_training_summary` (aulas, nº de roleplays, média, melhor nota, últimos) |
+| UI | aba Treino › Roleplay: cards de cenário → chat estilo WhatsApp → tela de resultado |
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.
