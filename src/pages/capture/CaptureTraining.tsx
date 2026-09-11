@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Circle, MessageSquareQuote, ShieldQuestion, Handshake, GraduationCap } from "lucide-react";
+import { CheckCircle2, Circle, MessageSquareQuote, ShieldQuestion, Handshake, GraduationCap, Bot } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useMarkLesson, useTrainingSummary } from "@/hooks/useCaptureRoleplay";
+import { RoleplayChat } from "@/components/capture/RoleplayChat";
 import { MICRO_LESSONS, QUIZ, SCRIPT_CARDS } from "./captureContent";
 
 /**
- * "Treino" — microaprendizado de campo: aulas de 1–2 min, scripts prontos e
- * quiz rápido. Progresso fica no localStorage nesta fase; vira
- * training_progress (banco) + roleplay com IA na Fase 6.
+ * "Treino" — roleplay com IA, microaulas de 1–2 min, scripts prontos e quiz.
+ * Progresso das aulas vive no servidor (capture_training_progress via RPC);
+ * o localStorage fica só como espelho/fallback offline.
  */
 
 const DONE_KEY = "captacao:treino:done";
@@ -22,46 +25,82 @@ function loadDone(): string[] {
 const TAG_ICON = { Abordagem: MessageSquareQuote, Objeção: ShieldQuestion, Fechamento: Handshake } as const;
 
 export default function CaptureTraining() {
-  const [done, setDone] = useState<string[]>(loadDone);
+  const summary = useTrainingSummary();
+  const markLesson = useMarkLesson();
+  const [localDone, setLocalDone] = useState<string[]>(loadDone);
   const [openLesson, setOpenLesson] = useState<string | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
 
+  // fonte: servidor; fallback: espelho local (offline / erro)
+  const done = summary.data?.lessons_done ?? localDone;
+
   useEffect(() => {
-    try { localStorage.setItem(DONE_KEY, JSON.stringify(done)); } catch { /* ignore */ }
-  }, [done]);
+    if (!summary.data) return;
+    setLocalDone(summary.data.lessons_done);
+    try { localStorage.setItem(DONE_KEY, JSON.stringify(summary.data.lessons_done)); } catch { /* ignore */ }
+  }, [summary.data]);
 
-  const toggle = (id: string) =>
-    setDone((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggle = (id: string) => {
+    const next = !done.includes(id);
+    setLocalDone((prev) => (next ? [...new Set([...prev, id])] : prev.filter((x) => x !== id)));
+    markLesson.mutate(
+      { lessonId: id, done: next },
+      { onError: (e) => toast.error(`Não consegui salvar o progresso: ${(e as Error).message}`) },
+    );
+  };
 
-  const pct = Math.round((done.length / MICRO_LESSONS.length) * 100);
+  const total = MICRO_LESSONS.length;
+  const doneCount = MICRO_LESSONS.filter((l) => done.includes(l.id)).length;
+  const pct = Math.round((doneCount / total) * 100);
   const quizScore = QUIZ.filter((q, i) => quizAnswers[i] === q.answer).length;
+  const roleplays = summary.data?.roleplays ?? 0;
+  const avg = summary.data?.avg_score;
+  const best = summary.data?.best_score;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-bold">Treino</h1>
-        <p className="text-xs text-muted-foreground">Aulas curtas pra usar hoje no corredor.</p>
+        <p className="text-xs text-muted-foreground">Aulas curtas e roleplay com IA pra usar hoje no corredor.</p>
       </div>
 
       <Card>
         <CardContent className="pt-4 pb-4">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-sm font-medium flex items-center gap-1.5"><GraduationCap className="h-4 w-4" /> Trilha Captação Totex</span>
-            <span className="text-xs text-muted-foreground tabular-nums">{done.length}/{MICRO_LESSONS.length}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">{doneCount}/{total}</span>
           </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
           {pct === 100 && <p className="text-xs text-emerald-700 mt-1.5">Trilha concluída — selo “Captação Totex” liberado 🏅</p>}
+          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5 tabular-nums">
+            <Bot className="h-3.5 w-3.5 text-emerald-600" />
+            Roleplays: <strong className="text-foreground">{roleplays}</strong>
+            {roleplays > 0 && (
+              <>
+                {" · "}média <strong className="text-foreground">{avg ?? "—"}</strong>
+                {" · "}melhor <strong className="text-foreground">{best ?? "—"}</strong>
+              </>
+            )}
+          </p>
+          {summary.isError && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Sem conexão com o servidor — mostrando progresso salvo no aparelho.</p>
+          )}
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="aulas">
-        <TabsList className="grid grid-cols-3 w-full">
+      <Tabs defaultValue="roleplay">
+        <TabsList className="grid grid-cols-4 w-full">
+          <TabsTrigger value="roleplay">Roleplay</TabsTrigger>
           <TabsTrigger value="aulas">Aulas</TabsTrigger>
           <TabsTrigger value="scripts">Scripts</TabsTrigger>
           <TabsTrigger value="quiz">Quiz</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="roleplay" className="mt-3">
+          <RoleplayChat />
+        </TabsContent>
 
         <TabsContent value="aulas" className="space-y-2 mt-3">
           {MICRO_LESSONS.map((l) => {
@@ -82,7 +121,7 @@ export default function CaptureTraining() {
                       <ul className="list-disc pl-4 space-y-1 text-sm">
                         {l.bullets.map((b) => <li key={b}>{b}</li>)}
                       </ul>
-                      <Button size="sm" variant={isDone ? "outline" : "default"} onClick={() => toggle(l.id)}>
+                      <Button size="sm" variant={isDone ? "outline" : "default"} disabled={markLesson.isPending} onClick={() => toggle(l.id)}>
                         {isDone ? "Desmarcar" : "Concluí esta aula"}
                       </Button>
                     </div>
