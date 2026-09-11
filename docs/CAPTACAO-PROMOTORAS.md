@@ -170,6 +170,21 @@ Testes (Postgres local, `scratchpad/smoke_test6.sql`): 39→40 libera 1 voucher;
 | Progresso | `capture_training_progress` (aulas saem do localStorage) — RPCs `capture_training_mark_lesson`, `capture_training_summary` (aulas, nº de roleplays, média, melhor nota, últimos) |
 | UI | aba Treino › Roleplay: cards de cenário → chat estilo WhatsApp → tela de resultado |
 
+## Perfil de captação: padrão × folgista (entregue)
+
+`team_members.capture_profile` = `padrao` | `folgista` (migration `20260911140000`).
+**Folgista** = promotora esporádica: capta, treina e vê os próprios leads/carros
+normalmente, mas **não participa dos valores em pecúnia nem vouchers** — salvo
+regra de prêmio marcada com `include_folgista`. Enforce no servidor:
+`capture_award()` (ponto único de lançamento) pula quando `capture_rule_applies()`
+= false; `capture_close_month()` tira folgista da disputa; `capture_home_stats()`
+devolve `perfil` + `incentivos` e o front mostra o painel simples (só "Meta de
+hoje", sem carteira; 5º item do menu vira Treino). Gestor troca o perfil em
+Configurações › Captação › Promotoras (`set_capture_profile`) e marca "vale pra
+folgista" por regra em Prêmios da captação › Regras. Trigger
+`protect_team_member_privileges` impede que o próprio membro altere `role` ou
+`capture_profile` (fecha a brecha da policy de auto-edição de `team_members`).
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.

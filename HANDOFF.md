@@ -55,6 +55,8 @@
 
 13. **Reward Engine da captação (PRD do Marco, 2026-09-10):** migration `20260911100000_captacao_reward_engine.sql` APLICADA — regras (`capture_reward_rules`, seed Totex: 40 válidos/semana → Voucher Outback; captado R$25; vendido R$50; campeã do mês R$100), eventos + ledger idempotentes, `leads.capture_valid` (consentimento obrigatório), `seller_vehicles.status` (jornada do carro), carteira/extrato, ranking/ROI, campeã do mês, campanha com frase do dia. UI: `/captacao` (Hoje com GoalRing/WalletCard, Meus Carros, Prêmios) e Configurações › Prêmios da captação (Regras/Aprovações/Ranking/Campanha) + card do veículo no detalhe do lead. Detalhes em `docs/CAPTACAO-PROMOTORAS.md`.
 
+14. **Roleplay IA no treino + perfil folgista (2026-09-11):** `capture-roleplay` (edge fn, JWT) com 5 cenários, avaliação por rubrica; progresso de aulas em `capture_training_progress`. `team_members.capture_profile` padrao|folgista — folgista fora dos incentivos (`capture_award` pula; regra pode marcar `include_folgista`); painel simples. Trigger `protect_team_member_privileges`: só admin muda `role`/`capture_profile` (antes qualquer membro podia se promover pela policy de auto-edição).
+
 ## ⏳ PENDÊNCIAS (por prioridade)
 1. **Configurar template de follow-up:** quando a Meta aprovar o template de nutrição do Marco, gravar o nome em `config` (`WHATSAPP_FOLLOWUP_TEMPLATE`) ou `agent.settings.followup_template_name` do Ronaldo. (Existe `boas_vindas` APROVADO que pode servir de provisório.)
 2. **Testar follow-up ponta-a-ponta:** `agent_reminders` estava VAZIA (Ronaldo nunca agendou em teste). Testar: conversar, deixar pergunta no ar, sumir → ver lembrete criado, disparo, entrega (e fora da janela → template).
