@@ -374,6 +374,7 @@ privada pela API não oficial. Desde então:
 - ❌ Hardcode de URL UAZAPI (ex: `your-uazapi-instance.uazapi.com`) → **regra inviolavel**, use `instance.api_url` ou `config.UAZAPI_ADMIN_URL`
 - ❌ Cadastrar so `WHATSAPP_CLOUD_TOKEN` sem `WHATSAPP_PHONE_NUMBER_ID` (ou vice-versa) → Cloud API precisa dos DOIS
 - ❌ Usar `/status` da UAZAPI (health check) em vez de `/instance/status` (status da instancia)
+- ❌ Consultar status/QR da UAZAPI numa instancia `provider = meta_cloud` → a resposta "sem credenciais" vira `disconnected` e derruba o numero oficial no banco. Cloud API nao passa pela UAZAPI (guarda no `uazapi-proxy` + skip na UI). Se a "IAP - OFICIAL" aparecer desconectada sem motivo, foi isso.
 - ❌ Esquecer de desativar Email Confirm → aluno nao consegue logar em contas de teste
 - ❌ Agente IA nao responder audio/imagem → tem que ter `GEMINI_API_KEY` (Whisper so pega audio, nao imagem)
 

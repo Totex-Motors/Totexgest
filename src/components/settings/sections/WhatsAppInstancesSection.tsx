@@ -135,12 +135,18 @@ export function WhatsAppInstancesSection() {
 
   // === STATUS === (via uazapi-proxy — credenciais só no servidor)
   const fetchStatus = async (inst: WhatsAppInstance) => {
+    // Cloud API (Meta) não tem endpoint de status na UAZAPI. Consultar derrubava a
+    // instância oficial pra "disconnected" toda vez que alguém abria esta tela
+    // (o proxy respondia "sem credenciais" e o código abaixo lia como offline).
+    if (inst.provider === "meta_cloud") return;
     setRefreshingId(inst.id);
     try {
       const res = await callUazapi("instance_status", inst.id);
       const data = res.data as InstanceStatus;
       setStatusMap((prev) => ({ ...prev, [inst.id]: data }));
-      const newStatus = data.status?.connected ? "connected" : "disconnected";
+      // Sem objeto `status` na resposta = erro do proxy/UAZAPI, não "offline": não grava.
+      if (!data?.status) return;
+      const newStatus = data.status.connected ? "connected" : "disconnected";
       if (inst.status !== newStatus) {
         await supabase.from("whatsapp_instances").update({ status: newStatus }).eq("id", inst.id);
         fetchData();
@@ -350,7 +356,15 @@ export function WhatsAppInstancesSection() {
                         >
                           {online ? "● Conectado" : "Desconectado"}
                         </Badge>
-                        {inst.provider !== "meta_cloud" && (
+                        {inst.provider === "meta_cloud" ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-normal text-muted-foreground"
+                            title="WhatsApp Cloud API (oficial Meta): status e envio gerenciados pela Meta, não pela UAZAPI"
+                          >
+                            API oficial (Meta)
+                          </Badge>
+                        ) : (
                           <Badge
                             variant="outline"
                             className="text-[10px] font-normal text-muted-foreground"
@@ -394,7 +408,11 @@ export function WhatsAppInstancesSection() {
 
                       {/* Actions */}
                       <div className="space-y-1.5">
-                        {!online ? (
+                        {inst.provider === "meta_cloud" ? (
+                          <p className="text-[11px] text-muted-foreground text-center px-1 py-1.5">
+                            Sem QR Code: o número oficial é gerenciado no painel da Meta.
+                          </p>
+                        ) : !online ? (
                           <Button
                             className="w-full bg-green-500 hover:bg-green-600 text-white rounded-lg h-8 text-xs"
                             size="sm"

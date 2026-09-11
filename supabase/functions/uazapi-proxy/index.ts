@@ -209,6 +209,13 @@ Deno.serve(async (req) => {
     const waInstance = { id: instanceId, provider: instance.provider, group_only: instance.group_only };
     const BLOCKED_MSG = "Bloqueado: número não oficial (UAZAPI) só envia em grupos/canais. Use o número oficial (API Cloud).";
 
+    // Cloud API (Meta) não passa pela UAZAPI: status/QR/envio dela são outro caminho
+    // (send-whatsapp-cloud, painel da Meta). Sem esta guarda, "instance_status" numa
+    // instância Cloud respondia "sem credenciais" e o cliente gravava "disconnected".
+    if (instance.provider === "meta_cloud") {
+      return json({ ok: false, status: 200, data: { error: "Instância Cloud API (Meta) não usa a UAZAPI — status e envio são gerenciados pela Meta." } });
+    }
+
     const metadata = (instance.metadata as Record<string, unknown>) || {};
     const apiUrl = String(instance.api_url || instance.webhook_url || metadata.uazapi_url || "").replace(/\/$/, "");
     const apiKey = instance.api_key as string | null;
