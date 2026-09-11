@@ -120,12 +120,46 @@ Migration `20260912100000_intermediacao_contratos.sql` (aplicada em prod em 2 pa
   versões, signatários), Configurações › Comercial › Intermediação (entidade jurídica + templates).
 - Smoke local: `scratchpad/smoke_test9.sql`.
 
+## Fase 3 — Assinatura eletrônica (entregue 2026-09-13)
+
+Migration `20260913100000_intermediacao_assinatura.sql` (aplicada em prod em 2 partes) + adapter
+`supabase/functions/_shared/signature/*` + edge fns `contract-send`, `clicksign-webhook`, `contract-reconcile`.
+
+- **Provedor plugável**: interface `SignatureProvider` (createEnvelope, getStatus, cancel, notify, registerWebhook,
+  verifyWebhook, parseWebhook). Primeiro provedor: **Clicksign API v3** (envelopes). Chaves por tenant em
+  Configurações › Integrações: `CLICKSIGN_API_KEY`, `CLICKSIGN_ENV` (`sandbox` | `production`; ausente = sandbox),
+  `CLICKSIGN_WEBHOOK_SECRET` (gravada pelo botão "Registrar webhook"). Nunca em código.
+- **Envio** (`contract-send` `action:'send'`, JWT comercial/admin): documento `generated|ready|error` → PDF do bucket →
+  envelope + documento + signatários (canal e-mail/WhatsApp/SMS, autenticação e-mail/WhatsApp/SMS/PIX, CPF quando houver)
+  + requisitos + ativa + notifica → `contract_document_mark_sent()` (doc `sent`, signers `sent`,
+  `intermediation.contract_status='sent'`). Prazo em dias vira `deadline_at`. Falha no meio → cancela envelope e
+  `contract_document_set_status(doc,'error')`.
+- **Eventos**: tudo que chega (webhook ou reconciliação) entra em `contract_events` com chave de idempotência
+  (`provider_event_id` ou tipo+signatário+digest) e só depois `contract_apply_provider_event()` calcula a transição:
+  signer `viewed|signed|declined`; documento `sent → partial → completed`, `declined|cancelled|expired|error`.
+  Tolera fora de ordem (`signed` antes de `viewed`); estado terminal (`validated`) nunca regride.
+  `intermediation.contract_status` espelha (`sent|partial|declined|expired|cancelled`) enquanto não formalizada.
+- **`completed` NÃO formaliza.** A edge fn reconcilia via API, baixa o PDF assinado, calcula SHA-256, grava em
+  `intermediation-contracts/<tenant>/<int>/contrato-v<n>-assinado-*.pdf` e chama `contract_document_finalize()` →
+  `validated` → `intermediation_formalize()` (a MESMA rotina do import manual): `active`, R$ 25 idempotente, carro
+  `captado`, deal → Preparação. Formalize é idempotente (`already:true`).
+- **Webhook** `clicksign-webhook` (verify_jwt=false): acha o documento por `contract_document_by_provider_ref()`
+  (document key ou envelope id) → carrega o secret do tenant → valida `Content-Hmac: sha256=<hex>` em tempo constante →
+  aplica evento → se `completed`/todos assinaram, reconcilia. Documento desconhecido responde 200 `{ignored:true}`.
+- **Reconciliação** `contract-reconcile` (cron `*/30 * * * *`, sem JWT): `contract_documents_to_reconcile(120)` =
+  `completed` sem PDF validado, `sent|partial` sem evento há 2 h ou com `deadline_at` vencido. Mesma rotina do botão
+  "Verificar agora" (`action:'status'`).
+- **Cancelar/Reenviar**: `action:'cancel'` cancela no provedor + `contract_document_set_status(doc,'cancelled',motivo)`;
+  `action:'resend'` re-notifica. Documento cancelado/recusado/expirado sai de cena ao gerar nova versão.
+- **Import manual continua** como alternativa (assinado em papel), agora via `intermediation_formalize(mode='imported')`.
+- Quem assina pela empresa: `legal_entities.signer_email/signer_phone` alimentam o signatário `company` no registro do documento.
+- Smoke local: `scratchpad/smoke_test10.sql` (mark_sent, fora de ordem, duplicado, recusa, finalize 2× → R$25 uma vez,
+  evento tardio não regride, permissões, lookup por ref).
+
 ## Fases seguintes
 
 | Fase | Entrega | Migrations/arquivos previstos |
 |---|---|---|
-| 2 · Documentos | `contract_templates` versionados, snapshot de variáveis, renderer PDF do Contrato de Intermediação (Condições Específicas + Gerais), preview; `legal_entities` na UI | `20260912_contratos_templates.sql`, edge fn `contract-render`, `ContractPreview.tsx` |
-| 3 · Assinatura | adapter `SignatureProvider` + Clicksign, `contract_documents/signers/events/files`, webhook autenticado + idempotência + reconciliação, formalização automática (`intermediation_contract_signed`) | `20260913_assinatura.sql`, edge fns `clicksign-webhook`, `contract-send`, `contract-reconcile` |
 | 4 · Comprador & pagamento | proposta do comprador, aceite do proprietário, Termo de Compra e Venda, `payment_method` (cash/financing/mixed/consortium), subpipeline F0–FX ligado à Credere, gates de entrega | `20260914_fechamento_pagamento.sql` |
 | 5 · Alçadas | `powers_of_attorney`, `power_scopes`, `approval_requests/decisions`, `signer_authority_snapshots`, inbox de aprovações Renata/Fabiana | `20260915_alcadas.sql` |
 | 6 · Franquias | `legal_entity_id`/`location_id` por unidade, templates globais × locais, credenciais por unidade | — |
