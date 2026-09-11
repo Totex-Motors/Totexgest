@@ -1481,7 +1481,7 @@ export function PlaybooksTab() {
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/^> (.*$)/gim, '<blockquote class="border-l-4 border-primary/30 pl-4 py-1 my-2 text-muted-foreground italic">$1</blockquote>')
-      .replace(/^\- (.*$)/gim, '<li class="ml-4">• $1</li>')
+      .replace(/^- (.*$)/gim, '<li class="ml-4">• $1</li>')
       .replace(/\n/g, '<br>');
     return sanitizeHtml(html);
   };
