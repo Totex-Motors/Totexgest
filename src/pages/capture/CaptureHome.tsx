@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  Plus, AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles,
+  AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCaptureHomeStats } from "@/hooks/useCaptureLeads";
@@ -64,29 +63,13 @@ function invalidReasonPhrase(reason: string, n: number): string {
   return `${lead} de: ${reason}`;
 }
 
-/** Pulse sutil no CTA quando a promotora fica ociosa (sem tocar/rolar por 8s). */
-function useIdle(ms = 8000) {
-  const [idle, setIdle] = useState(false);
-  useEffect(() => {
-    let t: ReturnType<typeof setTimeout>;
-    const arm = () => { setIdle(false); clearTimeout(t); t = setTimeout(() => setIdle(true), ms); };
-    const evs: (keyof WindowEventMap)[] = ["pointerdown", "scroll", "keydown", "touchstart"];
-    evs.forEach((e) => window.addEventListener(e, arm, { passive: true }));
-    arm();
-    return () => { clearTimeout(t); evs.forEach((e) => window.removeEventListener(e, arm)); };
-  }, [ms]);
-  return idle;
-}
-
 export default function CaptureHome() {
   const { teamMember } = useAuth();
-  const reduce = useReducedMotion();
   const stats = useCaptureHomeStats();
   const events = useCaptureEvents({ unreadOnly: true, limit: 10 });
   const markRead = useMarkCaptureEventsRead();
   const vehicles = useMyCaptureVehicles();
   const campaign = useActiveCaptureCampaign();
-  const idle = useIdle();
 
   const s = stats.data;
   const dayIndex = Math.floor(Date.now() / 86_400_000);
@@ -169,16 +152,7 @@ export default function CaptureHome() {
         </CardContent>
       </Card>
 
-      {/* CTA principal — no fluxo da página (o bottom-nav já tem o botão central "Captar";
-          antes era fixo e cobria o conteúdo) */}
-      <motion.div
-        animate={idle && !reduce ? { scale: [1, 1.015, 1] } : { scale: 1 }}
-        transition={idle && !reduce ? { duration: 1.6, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" } : { duration: 0.2 }}
-      >
-        <Button asChild size="lg" className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20">
-          <Link to="/captacao/novo"><Plus className="h-5 w-5 mr-2" /> CAPTAR CLIENTE</Link>
-        </Button>
-      </motion.div>
+      {/* (sem CTA retangular: o botão central "Captar" do bottom-nav já é a ação principal) */}
 
       {/* Carteira — só dados do servidor */}
       <WalletCard
