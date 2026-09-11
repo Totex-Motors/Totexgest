@@ -161,6 +161,17 @@ export default function CaptureHome() {
         </CardContent>
       </Card>
 
+      {/* CTA principal — no fluxo da página (o bottom-nav já tem o botão central "Captar";
+          antes era fixo e cobria o conteúdo) */}
+      <motion.div
+        animate={idle && !reduce ? { scale: [1, 1.015, 1] } : { scale: 1 }}
+        transition={idle && !reduce ? { duration: 1.6, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" } : { duration: 0.2 }}
+      >
+        <Button asChild size="lg" className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20">
+          <Link to="/captacao/novo"><Plus className="h-5 w-5 mr-2" /> CAPTAR CLIENTE</Link>
+        </Button>
+      </motion.div>
+
       {/* Carteira — só dados do servidor */}
       <WalletCard
         earnedCents={s?.wallet?.earned_cents ?? 0}
@@ -265,19 +276,6 @@ export default function CaptureHome() {
         </Card>
       </Link>
 
-      {/* CTA principal — sticky acima do bottom-nav */}
-      <div className="fixed bottom-16 inset-x-0 z-20 pointer-events-none">
-        <div className="mx-auto max-w-[520px] px-4 pb-3 pt-6 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-auto">
-          <motion.div
-            animate={idle && !reduce ? { scale: [1, 1.02, 1] } : { scale: 1 }}
-            transition={idle && !reduce ? { duration: 1.6, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" } : { duration: 0.2 }}
-          >
-            <Button asChild size="lg" className="w-full h-14 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25">
-              <Link to="/captacao/novo"><Plus className="h-5 w-5 mr-2" /> CAPTAR CLIENTE</Link>
-            </Button>
-          </motion.div>
-        </div>
-      </div>
     </div>
   );
 }
