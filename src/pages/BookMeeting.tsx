@@ -57,6 +57,7 @@ export default function BookMeeting() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [booking, setBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<{ meeting_link?: string; scheduled_at?: string } | null>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   const qualifies = revenue !== null && revenue > 50000;
   const currentField = FIELDS[fieldIndex];
@@ -113,16 +114,27 @@ export default function BookMeeting() {
   const handleBook = async () => {
     if (!selectedDate || !selectedTime) return;
     setBooking(true);
+    setBookingError(null);
     const [h, m] = selectedTime.split(":").map(Number);
     const dt = new Date(`${selectedDate}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00-03:00`);
     try {
-      const { data } = await supabase.functions.invoke("book-meeting", {
+      const { data, error } = await supabase.functions.invoke("book-meeting", {
         body: { action: "book", name, email, phone, company, revenue, slot_datetime: dt.toISOString(), utm_source: utmSource, utm_campaign: utmCampaign, utm_content: utmContent, evento },
       });
-      setBookingResult({ meeting_link: data?.meeting_link, scheduled_at: dt.toISOString() });
-    } catch {}
-    setBooking(false);
-    setStep("done");
+      // A função responde 200 com { success:true, ... } no sucesso e erro (4xx/5xx com
+      // { error }) na falha — supabase-js só popula `error` no 2º caso, então checamos
+      // os dois: sem isso, uma falha da função silenciosamente mostrava "confirmado".
+      if (error || !data?.success) {
+        throw new Error(error?.message || data?.error || "Não foi possível confirmar o agendamento");
+      }
+      setBookingResult({ meeting_link: data?.meeting_link, scheduled_at: data?.scheduled_at ?? dt.toISOString() });
+      setStep("done");
+    } catch (err) {
+      console.error("[BookMeeting] Erro ao confirmar agendamento:", err);
+      setBookingError("Não conseguimos confirmar seu agendamento agora. Tente de novo ou escolha outro horário.");
+    } finally {
+      setBooking(false);
+    }
   };
 
   const selectedDaySlots = useMemo(() => days.find(d => d.date === selectedDate)?.slots || [], [days, selectedDate]);
@@ -271,7 +283,7 @@ export default function BookMeeting() {
                         const sel = selectedDate === day.date;
                         const has = day.slots.length > 0;
                         return (
-                          <button key={day.date} onClick={() => { setSelectedDate(day.date); setSelectedTime(null); }} disabled={!has}
+                          <button key={day.date} onClick={() => { setSelectedDate(day.date); setSelectedTime(null); setBookingError(null); }} disabled={!has}
                             className={cn("flex-1 py-3 px-2 rounded-xl border-2 transition-all text-center",
                               sel ? "border-teal-500 bg-teal-50 shadow-sm" : has ? "border-gray-100 bg-gray-50 hover:border-gray-200" : "border-gray-50 opacity-40 cursor-not-allowed")}>
                             <p className={cn("text-[10px] font-bold uppercase tracking-wider", sel ? "text-teal-600" : "text-gray-400")}>{weekday}</p>
@@ -292,7 +304,7 @@ export default function BookMeeting() {
                       ) : (
                         <div className="grid grid-cols-3 gap-2">
                           {selectedDaySlots.map(time => (
-                            <button key={time} onClick={() => setSelectedTime(time)} className={cn(
+                            <button key={time} onClick={() => { setSelectedTime(time); setBookingError(null); }} className={cn(
                               "py-3 rounded-xl text-sm font-semibold border-2 transition-all",
                               selectedTime === time ? "border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-500/25" : "border-gray-100 bg-white text-gray-700 hover:border-teal-300 hover:bg-teal-50"
                             )}>{time}</button>
@@ -301,11 +313,18 @@ export default function BookMeeting() {
                       )}
                     </div>
 
+                    {bookingError && (
+                      <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                        className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3.5 py-2.5 text-center">
+                        {bookingError}
+                      </motion.p>
+                    )}
+
                     {selectedTime && (
                       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                         <button onClick={handleBook} disabled={booking}
                           className="w-full py-3.5 rounded-xl text-sm font-bold bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25 flex items-center justify-center gap-2 transition-all">
-                          {booking ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Calendar className="w-4 h-4" />Confirmar {selectedTime} - {fmtDate(selectedDate!).day} {fmtDate(selectedDate!).month}</>}
+                          {booking ? <Loader2 className="w-4 h-4 animate-spin" /> : bookingError ? <><Calendar className="w-4 h-4" />Tentar de novo</> : <><Calendar className="w-4 h-4" />Confirmar {selectedTime} - {fmtDate(selectedDate!).day} {fmtDate(selectedDate!).month}</>}
                         </button>
                       </motion.div>
                     )}
