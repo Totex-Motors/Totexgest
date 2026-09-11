@@ -1,27 +1,29 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Flame, Users, ClipboardCheck, Handshake, AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  Plus, AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCaptureHomeStats, useCaptureLeads } from "@/hooks/useCaptureLeads";
+import { useCaptureHomeStats } from "@/hooks/useCaptureLeads";
 import { useCaptureEvents, useMarkCaptureEventsRead, type CaptureEventType } from "@/hooks/useCaptureHandoff";
-import { useCaptureRewardProgress } from "@/hooks/useCaptureRewards";
-import { RewardCard } from "@/components/capture/RewardCard";
-import { Bell, CheckCheck } from "lucide-react";
-import { TEMP_META } from "@/types/capture";
+import { useActiveCaptureCampaign, useMyCaptureVehicles } from "@/hooks/useCaptureRewards";
+import { GoalRing } from "@/components/capture/GoalRing";
+import { WalletCard } from "@/components/capture/WalletCard";
+import { VEHICLE_STATUS_META, vehicleTitle, type MyCaptureVehicle } from "@/types/capture";
 import { SCRIPT_CARDS, MICRO_LESSONS } from "./captureContent";
 import { cn } from "@/lib/utils";
 
 /**
- * Tela "Hoje" — cockpit da promotora. Em 5 segundos ela precisa saber:
- * meta, quanto já fez, qual frase usar, quem precisa de retorno e onde
- * registrar o próximo cliente.
+ * Tela "Hoje" — tela de AÇÃO, não dashboard. Em 5 segundos a promotora sabe:
+ * quanto falta pra meta (leads válidos, do servidor), quanto já ganhou, o que
+ * fazer agora (próximo passo) e a frase pra usar no corredor.
  *
- * Meta diária: placeholder (8 leads/dia) até performance_goals existir (Fase 5).
+ * Dinheiro e meta vêm SÓ de capture_home_stats — nada é calculado aqui.
  */
-const META_DIARIA_PLACEHOLDER = 8;
 
 function greeting() {
   const h = new Date().getHours();
@@ -34,8 +36,8 @@ function firstName(name?: string | null) {
   return (name ?? "").trim().split(/\s+/)[0] || "";
 }
 
-const EVENT_ICON: Record<CaptureEventType, string> = {
-  handoff: "🤝", contacted: "📞", stage: "➡️", won: "🏆", lost: "❌", reassigned: "🔁", sla: "⏰", info: "ℹ️",
+const EVENT_ICON: Record<CaptureEventType | "sold" | "reward", string> = {
+  handoff: "🤝", contacted: "📞", stage: "➡️", won: "🏆", sold: "🎉", lost: "❌", reassigned: "🔁", sla: "⏰", info: "ℹ️", reward: "🎁",
 };
 
 function relTime(iso: string) {
@@ -47,139 +49,211 @@ function relTime(iso: string) {
   return `${Math.floor(h / 24)} d`;
 }
 
+/** invalidos_motivos (motivo → qtd) vira frase concreta de próximo passo. */
+function invalidReasonPhrase(reason: string, n: number): string {
+  const pl = n > 1;
+  const lead = pl ? `${n} leads precisam` : `1 lead precisa`;
+  const r = reason.toLowerCase();
+  if (r.startsWith("invalidado")) return `${pl ? `${n} leads foram invalidados` : "1 lead foi invalidado"} pelo gestor (${reason.replace(/^invalidado:\s*/i, "")})`;
+  if (r.includes("autoriza")) return `${lead} de autorização de contato pra contar na meta`;
+  if (r.includes("ano")) return `${lead} do ano do veículo`;
+  if (r.includes("veículo") || r.includes("veiculo")) return `${lead} do modelo do carro`;
+  if (r.includes("telefone")) return `${lead} de um WhatsApp válido`;
+  if (r.includes("nome")) return `${lead} do nome completo`;
+  if (r.includes("inten")) return `${lead} da intenção (vender, trocar ou entender)`;
+  return `${lead} de: ${reason}`;
+}
+
+/** Pulse sutil no CTA quando a promotora fica ociosa (sem tocar/rolar por 8s). */
+function useIdle(ms = 8000) {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    const arm = () => { setIdle(false); clearTimeout(t); t = setTimeout(() => setIdle(true), ms); };
+    const evs: (keyof WindowEventMap)[] = ["pointerdown", "scroll", "keydown", "touchstart"];
+    evs.forEach((e) => window.addEventListener(e, arm, { passive: true }));
+    arm();
+    return () => { clearTimeout(t); evs.forEach((e) => window.removeEventListener(e, arm)); };
+  }, [ms]);
+  return idle;
+}
+
 export default function CaptureHome() {
   const { teamMember } = useAuth();
+  const reduce = useReducedMotion();
   const stats = useCaptureHomeStats();
-  const recent = useCaptureLeads();
   const events = useCaptureEvents({ unreadOnly: true, limit: 10 });
   const markRead = useMarkCaptureEventsRead();
-  const rewards = useCaptureRewardProgress();
-  // Prêmio em destaque na "Hoje": o mais próximo de ser batido (ou já batido)
-  const featuredReward = [...(rewards.data ?? [])].sort((a, b) =>
-    (b.current_value / b.goal_value) - (a.current_value / a.goal_value))[0];
+  const vehicles = useMyCaptureVehicles();
+  const campaign = useActiveCaptureCampaign();
+  const idle = useIdle();
 
-  const hoje = stats.data?.hoje ?? 0;
-  const pct = Math.min(100, Math.round((hoje / META_DIARIA_PLACEHOLDER) * 100));
+  const s = stats.data;
   const dayIndex = Math.floor(Date.now() / 86_400_000);
-  const script = SCRIPT_CARDS[dayIndex % SCRIPT_CARDS.length];
+  const staticScript = SCRIPT_CARDS.filter((c) => c.tag === "Abordagem")[dayIndex % 2];
+  const staticObjection = SCRIPT_CARDS.filter((c) => c.tag === "Objeção")[dayIndex % 3];
   const lesson = MICRO_LESSONS[dayIndex % MICRO_LESSONS.length];
-  const pendencias = [
-    { n: stats.data?.handoff_pendente ?? 0, label: "lead aguardando o 1º contato do especialista", urgent: true },
-    { n: stats.data?.pendentes_complemento ?? 0, label: "lead aguardando complemento (km / autorização)", urgent: false },
-  ].filter((p) => p.n > 0);
+
+  const focusPhrase = campaign.data?.focus_phrase?.trim() || staticScript.text;
+  const objection = campaign.data?.objection_phrase?.trim()
+    ? { q: campaign.data.objection_phrase!.trim(), a: campaign.data.objection_answer?.trim() || "" }
+    : { q: staticObjection.title.replace(/[“”"]/g, ""), a: staticObjection.text };
+
+  const nextSteps = useMemo(() => {
+    const out: { key: string; text: string; to: string; urgent: boolean }[] = [];
+    const motivos = s?.invalidos_motivos ?? {};
+    Object.entries(motivos)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([reason, n]) => {
+        if (n > 0) out.push({ key: `inv:${reason}`, text: invalidReasonPhrase(reason, n), to: "/captacao/leads", urgent: /autoriza/i.test(reason) });
+      });
+    if ((s?.handoff_pendente ?? 0) > 0) {
+      const n = s!.handoff_pendente!;
+      out.push({ key: "handoff", text: `${n} lead${n > 1 ? "s" : ""} aguardando o 1º contato do especialista`, to: "/captacao/leads", urgent: true });
+    }
+    return out;
+  }, [s]);
+
+  const myVehicles = (vehicles.data ?? []).filter((v) => v.status !== "lead" && v.status !== "perdido").slice(0, 8);
 
   return (
     <div className="space-y-4">
-      {/* Topo */}
+      {/* Topo: saudação + frase do dia */}
       <div>
         <h1 className="text-xl font-bold tracking-tight">
           {greeting()}, {firstName(teamMember?.name) || "promotora"} 👋
         </h1>
         <p className="text-sm text-muted-foreground">
           {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+          {campaign.data?.name ? ` · ${campaign.data.name}` : ""}
         </p>
       </div>
 
-      {/* Meta de hoje */}
+      <Card className="bg-zinc-950 text-white border-zinc-800 dark:bg-zinc-900">
+        <CardContent className="pt-3.5 pb-3.5">
+          <div className="flex items-center gap-2 text-[11px] font-medium text-emerald-400 uppercase tracking-wide mb-1">
+            <MessageSquareQuote className="h-3.5 w-3.5" /> Frase do dia
+          </div>
+          <p className="text-sm leading-relaxed">“{focusPhrase}”</p>
+        </CardContent>
+      </Card>
+
+      {/* Meta semanal — anel */}
       <Card className="border-emerald-200/70 dark:border-emerald-900/50">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="text-sm font-medium">Meta de hoje</span>
-            {stats.isLoading ? (
-              <Skeleton className="h-5 w-14" />
-            ) : (
-              <span className="text-sm font-semibold tabular-nums">
-                {hoje}/{META_DIARIA_PLACEHOLDER} leads
-              </span>
+        <CardContent className="pt-5 pb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold">Meta da semana</span>
+            {!stats.isLoading && (
+              <span className="text-[11px] text-muted-foreground tabular-nums">hoje: {s?.validos_hoje ?? 0} válido{(s?.validos_hoje ?? 0) === 1 ? "" : "s"}</span>
             )}
           </div>
-          <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
-            {pct >= 100 ? "Meta batida! Continue — cada lead a mais conta pro ranking." : `Faltam ${Math.max(0, META_DIARIA_PLACEHOLDER - hoje)} pra bater a meta.`}
-          </p>
-          {featuredReward && (
-            <div className="mt-3">
-              <RewardCard reward={featuredReward} compact />
-            </div>
+          <GoalRing
+            current={s?.validos_semana ?? 0}
+            goal={s?.meta_semanal ?? 40}
+            metaLabel={s?.meta_label}
+            loading={stats.isLoading}
+          />
+          {!stats.isLoading && (s?.invalidos_semana ?? 0) > 0 && (
+            <Link to="/captacao/leads" className="mt-2 block text-center text-[11px] text-amber-700 dark:text-amber-400">
+              {s!.invalidos_semana} lead{s!.invalidos_semana! > 1 ? "s" : ""} da semana ainda não conta{s!.invalidos_semana! > 1 ? "m" : ""} — ver o que falta
+            </Link>
           )}
         </CardContent>
       </Card>
 
-      {/* CTA principal */}
-      <Button asChild size="lg" className="w-full h-14 text-base font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md">
-        <Link to="/captacao/novo"><Plus className="h-5 w-5 mr-2" /> CAPTAR CLIENTE</Link>
-      </Button>
+      {/* Carteira — só dados do servidor */}
+      <WalletCard
+        earnedCents={s?.wallet?.earned_cents ?? 0}
+        pendingCents={s?.wallet?.pending_cents ?? 0}
+        vouchersPending={s?.wallet?.vouchers_pending ?? 0}
+        loading={stats.isLoading}
+      />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3">
-        <Kpi icon={Users} label="Captados (semana)" value={stats.data?.semana} loading={stats.isLoading} />
-        <Kpi icon={ClipboardCheck} label="Contatados (semana)" value={stats.data?.contatados_semana} loading={stats.isLoading} />
-        <Kpi icon={Flame} label="Quentes (semana)" value={stats.data?.quentes_semana} loading={stats.isLoading} accent="text-orange-600" />
-        <Kpi icon={Handshake} label="Carros captados (mês)" value={stats.data?.captados_mes} loading={stats.isLoading} accent="text-emerald-700" />
+      {/* Meus carros — carrossel */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold flex items-center gap-1.5"><Car className="h-4 w-4" /> Meus carros</h2>
+          <Link to="/captacao/carros" className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-0.5">
+            {s?.captados_mes != null ? `${s.captados_mes} no mês` : "Ver todos"} <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        {vehicles.isLoading ? (
+          <div className="flex gap-2 overflow-hidden">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-40 shrink-0 rounded-xl" />)}</div>
+        ) : myVehicles.length === 0 ? (
+          <Link to="/captacao/carros" className="block rounded-xl border border-dashed border-border/80 px-3 py-3 text-xs text-muted-foreground">
+            Quando um lead seu virar carro no estoque, ele aparece aqui — com o seu prêmio. 🚗
+          </Link>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 snap-x">
+            {myVehicles.map((v, i) => <MiniVehicle key={v.vehicle_id} v={v} index={i} />)}
+          </div>
+        )}
       </div>
 
-      {/* Retornos — o que aconteceu com os leads dela */}
-      {(events.data?.length ?? 0) > 0 && (
+      {/* Próximo passo */}
+      {(nextSteps.length > 0 || (events.data?.length ?? 0) > 0) && (
         <Card className="border-primary/30">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold flex items-center gap-1.5"><Bell className="h-4 w-4 text-primary" /> Retornos dos seus leads</span>
-              <button type="button" className="text-xs text-muted-foreground flex items-center gap-1" onClick={() => markRead.mutate(undefined)} disabled={markRead.isPending}>
-                <CheckCheck className="h-3.5 w-3.5" /> Lidos
-              </button>
-            </div>
-            <ul className="space-y-2">
-              {events.data!.map((e) => (
-                <li key={e.id}>
-                  <Link to={`/captacao/leads?lead=${e.lead_id}`} className="flex items-start gap-2 text-sm">
-                    <span className="shrink-0">{EVENT_ICON[e.event_type] ?? "•"}</span>
-                    <span className="flex-1 min-w-0">
-                      <span className="font-medium block truncate">{e.title}</span>
-                      {e.body && <span className="text-xs text-muted-foreground block">{e.body}</span>}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{relTime(e.created_at)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <CardContent className="pt-4 pb-3 space-y-3">
+            {nextSteps.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold flex items-center gap-1.5 mb-2"><ArrowRight className="h-4 w-4 text-emerald-600" /> Próximo passo</p>
+                <ul className="space-y-2">
+                  {nextSteps.map((p) => (
+                    <li key={p.key}>
+                      <Link to={p.to} className="flex items-center gap-2 text-sm">
+                        <AlertCircle className={cn("h-4 w-4 shrink-0", p.urgent ? "text-amber-500" : "text-muted-foreground")} />
+                        <span className="flex-1">{p.text}</span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(events.data?.length ?? 0) > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold flex items-center gap-1.5"><Bell className="h-4 w-4 text-primary" /> Retornos dos seus leads</span>
+                  <button type="button" className="text-xs text-muted-foreground flex items-center gap-1" onClick={() => markRead.mutate(undefined)} disabled={markRead.isPending}>
+                    <CheckCheck className="h-3.5 w-3.5" /> Lidos
+                  </button>
+                </div>
+                <ul className="space-y-2">
+                  {events.data!.map((e) => (
+                    <li key={e.id}>
+                      <Link to={e.event_type === "sold" || e.event_type === "won" ? "/captacao/carros" : `/captacao/leads?lead=${e.lead_id}`} className="flex items-start gap-2 text-sm">
+                        <span className="shrink-0">{EVENT_ICON[e.event_type as keyof typeof EVENT_ICON] ?? "•"}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="font-medium block truncate">{e.title}</span>
+                          {e.body && <span className="text-xs text-muted-foreground block">{e.body}</span>}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{relTime(e.created_at)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Fila de ação */}
-      {pendencias.length > 0 && (
-        <Card>
-          <CardContent className="pt-4 pb-3 space-y-2">
-            {pendencias.map((p) => (
-              <Link key={p.label} to="/captacao/leads" className="flex items-center gap-2 text-sm">
-                <AlertCircle className={cn("h-4 w-4 shrink-0", p.urgent ? "text-red-500" : "text-amber-500")} />
-                <span className="flex-1">
-                  <strong>{p.n}</strong> {p.label}{p.n > 1 ? "s" : ""}
-                </span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Script do dia */}
+      {/* Objeção do dia — 20–40s */}
       <Card className="bg-muted/40">
         <CardContent className="pt-4 pb-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-            <MessageSquareQuote className="h-3.5 w-3.5" /> Frase do dia · {script.tag}
+            <ShieldQuestion className="h-3.5 w-3.5" /> Objeção do dia
           </div>
-          <p className="text-sm leading-relaxed">“{script.text}”</p>
+          <p className="text-sm font-semibold">“{objection.q}”</p>
+          {objection.a && <p className="text-sm leading-relaxed mt-1.5 text-muted-foreground"><span className="text-foreground font-medium">Responda:</span> {objection.a}</p>}
         </CardContent>
       </Card>
 
       {/* Microtreino */}
-      <Link to="/captacao/treino" className="block">
+      <Link to="/captacao/premios?tab=treino" className="block">
         <Card className="hover:bg-muted/40 transition-colors">
           <CardContent className="pt-4 pb-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <GraduationCap className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -191,53 +265,47 @@ export default function CaptureHome() {
         </Card>
       </Link>
 
-      {/* Últimos captados */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold">Últimos captados</h2>
-          <Link to="/captacao/leads" className="text-xs text-primary">Ver todos</Link>
+      {/* CTA principal — sticky acima do bottom-nav */}
+      <div className="fixed bottom-16 inset-x-0 z-20 pointer-events-none">
+        <div className="mx-auto max-w-[520px] px-4 pb-3 pt-6 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-auto">
+          <motion.div
+            animate={idle && !reduce ? { scale: [1, 1.02, 1] } : { scale: 1 }}
+            transition={idle && !reduce ? { duration: 1.6, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" } : { duration: 0.2 }}
+          >
+            <Button asChild size="lg" className="w-full h-14 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25">
+              <Link to="/captacao/novo"><Plus className="h-5 w-5 mr-2" /> CAPTAR CLIENTE</Link>
+            </Button>
+          </motion.div>
         </div>
-        {recent.isLoading ? (
-          <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-        ) : (recent.data?.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Nenhum cliente captado ainda. Bora pro primeiro? 🚗</p>
-        ) : (
-          <ul className="divide-y divide-border/60 rounded-lg border border-border/60 bg-card">
-            {recent.data!.slice(0, 5).map((l) => {
-              const t = TEMP_META[l.temperatura] ?? TEMP_META.frio;
-              return (
-                <li key={l.id}>
-                  <Link to={`/captacao/leads?lead=${l.id}`} className="flex items-center gap-3 px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{l.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {l.vehicle?.description || [l.vehicle?.brand, l.vehicle?.model].filter(Boolean).join(" ") || "Veículo não informado"}
-                        {l.vehicle?.year_model ? ` · ${l.vehicle.year_model}` : ""}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className={cn("border text-[10px]", t.cls)}>{t.label}</Badge>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
     </div>
   );
 }
 
-function Kpi({
-  icon: Icon, label, value, loading, accent,
-}: { icon: typeof Users; label: string; value?: number; loading: boolean; accent?: string }) {
+function MiniVehicle({ v, index }: { v: MyCaptureVehicle; index: number }) {
+  const reduce = useReducedMotion();
+  const meta = VEHICLE_STATUS_META[v.status] ?? VEHICLE_STATUS_META.lead;
+  const sold = v.status === "vendido";
   return (
-    <Card>
-      <CardContent className="pt-3 pb-3">
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
-          <Icon className={cn("h-3.5 w-3.5", accent)} /> {label}
-        </div>
-        {loading ? <Skeleton className="h-7 w-10" /> : <p className={cn("text-2xl font-bold tabular-nums", accent)}>{value ?? 0}</p>}
-      </CardContent>
-    </Card>
+    <motion.div
+      initial={reduce ? false : { opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: Math.min(index * 0.05, 0.3) }}
+      className="snap-start shrink-0"
+    >
+      <Link
+        to="/captacao/carros"
+        className={cn(
+          "block w-40 rounded-xl border px-3 py-2.5 bg-card active:bg-muted/60",
+          sold ? "border-emerald-500/70" : "border-border/60",
+        )}
+      >
+        <p className="text-sm font-semibold truncate">{vehicleTitle(v)}</p>
+        <p className="text-[11px] text-muted-foreground truncate">{v.lead_name}</p>
+        <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", meta.cls)}>
+          {sold && <Sparkles className="h-3 w-3" />}{meta.label}
+        </span>
+      </Link>
+    </motion.div>
   );
 }

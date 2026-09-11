@@ -139,6 +139,26 @@ quente/morno sem 1º contato (com atraso), carros captados no mês. Forçar um e
 | Imagens | bucket público `capture-rewards` (upload no dialog) ou URL; o Outback está em `public/rewards/outback-vale-presente.jpg` |
 | Seed | "Voucher Outback R$ 100,00" — 40 leads na semana, estoque 25 (tenant Totex Motors) |
 
+## Reward Engine (PRD "Gamificação & Incentivos" — F4/F5/F7, entregue)
+
+Dinheiro nasce **só no servidor**, por evento verificável, com idempotência e ledger.
+Migration `20260911100000_captacao_reward_engine.sql`.
+
+| Peça | Onde |
+|---|---|
+| Regras configuráveis | `capture_reward_rules` (evento, limiar/período, cash/voucher, valor, cap, mínimo pra campeã) — UI em Configurações › Comercial › Prêmios da captação › Regras |
+| Eventos imutáveis | `capture_events` (`idempotency_key` UNIQUE): lead_validated, lead_invalidated, vehicle_captured, vehicle_sold, monthly_champion, reward_approved/paid/cancelled |
+| Ledger | `capture_reward_ledger` (`idempotency_key` UNIQUE; pending → approved → paid / cancelled; quem/quando/motivo). Só muda por `capture_ledger_set_status()` (admin) |
+| Lead válido | `leads.capture_valid` = nome + telefone + veículo + ano + intenção + **autorização de contato**; `capture_invalid_reason` diz o que falta. Reavaliado por trigger ao editar lead/veículo |
+| Meta semanal | ao validar o N-ésimo lead (threshold da regra, ex. 40) nasce **um** voucher no ledger pro período — sem cron, sem botão |
+| Jornada do carro | `seller_vehicles.status` lead → avaliacao → captado → preparacao → anunciado → negociacao → vendido; deal em etapa `is_won` marca **captado** automaticamente; time muda o resto por `set_seller_vehicle_status()` (card no detalhe do lead). captado → R$25, vendido → R$50 (regras) |
+| Campeã do mês | `capture_close_month()` (admin): melhor conversão captados÷válidos com mínimo de válidos → R$100 |
+| Carteira | `capture_wallet()` (pendente/aprovado/pago + extrato); `list_my_capture_vehicles()` (Meus Carros) |
+| Gestor | `capture_ranking('week'|'month')` (válidos, taxa, captados, vendidos, conversão, incentivos, custo por captação); `capture_invalidate_lead()` tira lead da meta e cancela voucher pendente se a meta cair |
+| Campanha | `capture_campaigns.focus_phrase / objection_phrase / objection_answer` — frase e objeção do dia saem do código |
+
+Testes (Postgres local, `scratchpad/smoke_test6.sql`): 39→40 libera 1 voucher; reavaliação não duplica; captado 2× paga 1×; vendido 2× paga 1×; promotora não altera ledger; aprovação/pagamento auditados; campeã idempotente; invalidação desfaz meta.
+
 ## Fora desta entrega (próximas fases)
 
 - Fase 3: KM/foto/voz, dedupe mais rica, auto-save em banco.

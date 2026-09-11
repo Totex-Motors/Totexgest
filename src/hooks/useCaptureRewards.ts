@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import type { CaptureCampaign, CaptureWallet, MyCaptureVehicle } from "@/types/capture";
 
 /**
- * Gamificação da captação: prêmios por meta (ex.: 40 leads na semana →
- * Voucher Outback). Admin gerencia em Configurações; promotora vê o
- * progresso e resgata quando bate a meta (validação no servidor).
+ * Gamificação da captação: prêmios por meta (ex.: 40 leads VÁLIDOS na semana →
+ * Voucher Outback). Admin gerencia em Configurações; promotora vê o progresso.
+ *
+ * Reward engine (migration 20260911100000): o voucher/dinheiro é gerado
+ * AUTOMATICAMENTE no servidor (ledger) — o front só lê. Nada aqui cria saldo.
  */
 
 export type RewardGoalType = "leads_semana" | "pontos_semana" | "leads_mes";
@@ -42,7 +45,8 @@ export interface CaptureRewardProgress {
   period_start: string;
   eligible: boolean;
   claim_id: string | null;
-  claim_status: "pending" | "delivered" | "cancelled" | null;
+  /** Reflete o ledger (pending/approved/paid/cancelled). `delivered` = legado das claims manuais. */
+  claim_status: "pending" | "approved" | "paid" | "delivered" | "cancelled" | null;
 }
 
 export interface CaptureRewardClaim {
@@ -135,6 +139,69 @@ export function useCaptureRewardProgress(memberId?: string | null) {
   });
 }
 
+/** Promotora: carteira (extrato do ledger). Dinheiro só nasce no servidor. */
+export function useCaptureWallet(memberId?: string | null) {
+  return useQuery({
+    queryKey: [...KEY, "wallet", memberId ?? ""],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("capture_wallet", { p_member_id: memberId ?? null });
+      if (error) throw error;
+      const w = (data ?? {}) as Partial<CaptureWallet>;
+      return {
+        pending_cents: w.pending_cents ?? 0,
+        approved_cents: w.approved_cents ?? 0,
+        paid_cents: w.paid_cents ?? 0,
+        earned_cents: w.earned_cents ?? 0,
+        vouchers_pending: w.vouchers_pending ?? 0,
+        vouchers_delivered: w.vouchers_delivered ?? 0,
+        items: w.items ?? [],
+      } satisfies CaptureWallet;
+    },
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Promotora: jornada dos carros que ela captou (list_my_capture_vehicles). */
+export function useMyCaptureVehicles(memberId?: string | null) {
+  return useQuery({
+    queryKey: ["capture", "vehicles", memberId ?? ""],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_my_capture_vehicles", { p_member_id: memberId ?? null });
+      if (error) throw error;
+      return (data ?? []) as MyCaptureVehicle[];
+    },
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Campanha ativa do tenant (is_active e ends_at null ou >= hoje) — frase/objeção do dia. */
+export function useActiveCaptureCampaign() {
+  const { tenantId } = useAuth();
+  return useQuery({
+    queryKey: ["capture", "campaign", "active", tenantId ?? ""],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from("capture_campaigns")
+        .select("id, name, is_active, starts_at, ends_at, focus_phrase, objection_phrase, objection_answer")
+        .eq("is_active", true)
+        .or(`ends_at.is.null,ends_at.gte.${today}`)
+        .order("starts_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (error) throw error;
+      return ((data ?? [])[0] as CaptureCampaign | undefined) ?? null;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * @deprecated O voucher agora é automático (ledger). Mantido só por compatibilidade
+ * com a RPC legada claim_capture_reward — nenhuma tela chama mais.
+ */
 export function useClaimCaptureReward() {
   const qc = useQueryClient();
   return useMutation({

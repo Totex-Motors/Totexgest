@@ -42,6 +42,32 @@ export function useCaptureLeads(opts?: {
   });
 }
 
+/**
+ * Validade dos leads na meta (leads.capture_valid / capture_invalid_reason).
+ * list_my_capture_leads NÃO devolve esses campos — select direto (RLS deixa
+ * a promotora ler os próprios).
+ */
+export function useCaptureLeadValidity(ids: string[]) {
+  const sorted = [...ids].sort();
+  return useQuery({
+    queryKey: ["capture", "validity", sorted.join(",")],
+    enabled: sorted.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, capture_valid, capture_invalid_reason")
+        .in("id", sorted);
+      if (error) throw error;
+      const map: Record<string, { valid: boolean; reason: string | null }> = {};
+      for (const row of (data ?? []) as { id: string; capture_valid: boolean | null; capture_invalid_reason: string | null }[]) {
+        map[row.id] = { valid: !!row.capture_valid, reason: row.capture_invalid_reason };
+      }
+      return map;
+    },
+    staleTime: 15_000,
+  });
+}
+
 export function useCaptureHomeStats(memberId?: string | null) {
   return useQuery({
     queryKey: captureKeys.stats(memberId),

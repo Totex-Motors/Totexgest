@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Home, PlusCircle, Users, GraduationCap, UserCircle, ArrowLeft } from "lucide-react";
+import { Home, PlusCircle, Users, Car, Gift, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -14,8 +14,8 @@ const NAV = [
   { to: "/captacao", label: "Hoje", icon: Home, end: true },
   { to: "/captacao/leads", label: "Meus Leads", icon: Users },
   { to: "/captacao/novo", label: "Captar", icon: PlusCircle, primary: true },
-  { to: "/captacao/treino", label: "Treino", icon: GraduationCap },
-  { to: "/captacao/perfil", label: "Perfil", icon: UserCircle },
+  { to: "/captacao/carros", label: "Meus Carros", icon: Car },
+  { to: "/captacao/premios", label: "Prêmios", icon: Gift },
 ] as const;
 
 export function CaptureLayout() {

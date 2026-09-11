@@ -158,7 +158,121 @@ export interface CaptureHomeStats {
   em_atendimento?: number;
   contatados_semana?: number;
   captados_mes?: number;
+  vendidos_mes?: number;
   retornos_nao_lidos?: number;
+  /** Reward engine (migration 20260911100000): meta = leads VÁLIDOS da semana */
+  validos_semana?: number;
+  validos_hoje?: number;
+  invalidos_semana?: number;
+  /** motivo → quantidade, ex.: {"autorização de contato": 2, "ano do veículo": 1} */
+  invalidos_motivos?: Record<string, number>;
+  meta_semanal?: number;
+  meta_label?: string | null;
+  wallet?: { pending_cents: number; earned_cents: number; vouchers_pending: number };
+}
+
+// ─── Reward engine (dinheiro nasce SÓ no servidor; o front só lê) ───────────
+
+export type CaptureLedgerStatus = "pending" | "approved" | "paid" | "cancelled";
+export type CaptureRewardType = "cash" | "voucher" | "badge";
+
+export const LEDGER_STATUS_META: Record<CaptureLedgerStatus, { label: string; cls: string; dot: string }> = {
+  pending: { label: "Pendente", cls: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900", dot: "bg-amber-500" },
+  approved: { label: "Aprovado", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500" },
+  paid: { label: "Pago", cls: "bg-emerald-600 text-white border-emerald-600", dot: "bg-emerald-600" },
+  cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground" },
+};
+
+/** Item do extrato (capture_wallet().items) */
+export interface CaptureWalletItem {
+  id: string;
+  title: string;
+  reward_type: CaptureRewardType;
+  amount_cents: number;
+  voucher_label: string | null;
+  image_url: string | null;
+  status: CaptureLedgerStatus;
+  earned_at: string;
+  paid_at: string | null;
+  cancel_reason: string | null;
+  lead_id: string | null;
+}
+
+/** Retorno de capture_wallet() */
+export interface CaptureWallet {
+  pending_cents: number;
+  approved_cents: number;
+  paid_cents: number;
+  earned_cents: number;
+  vouchers_pending: number;
+  vouchers_delivered: number;
+  items: CaptureWalletItem[];
+}
+
+export type CaptureVehicleStatus =
+  | "lead" | "avaliacao" | "captado" | "preparacao" | "anunciado" | "negociacao" | "vendido" | "perdido";
+
+/** Etapas visíveis pra promotora na jornada do carro (ordem importa). */
+export const VEHICLE_JOURNEY: { status: CaptureVehicleStatus; label: string; hint: string }[] = [
+  { status: "avaliacao", label: "Avaliação", hint: "O especialista está avaliando o carro (fotos, estado, preço de mercado)." },
+  { status: "captado", label: "Captado", hint: "O carro entrou pro estoque Totex. Seu prêmio de captação é gerado aqui." },
+  { status: "anunciado", label: "Anunciado", hint: "Já está nos portais e nas redes. Agora é atrair comprador." },
+  { status: "negociacao", label: "Negociação", hint: "Tem comprador interessado e proposta na mesa." },
+  { status: "vendido", label: "Vendido", hint: "Fechou! Seu bônus de venda é gerado aqui." },
+];
+
+export const VEHICLE_STATUS_META: Record<CaptureVehicleStatus, { label: string; cls: string; step: number }> = {
+  lead: { label: "Em contato", cls: "bg-muted text-muted-foreground border-border", step: -1 },
+  avaliacao: { label: "Avaliação", cls: "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900", step: 0 },
+  captado: { label: "Captado", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", step: 1 },
+  preparacao: { label: "Em preparação", cls: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900", step: 1 },
+  anunciado: { label: "Anunciado", cls: "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100", step: 2 },
+  negociacao: { label: "Negociação", cls: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900", step: 3 },
+  vendido: { label: "Vendido", cls: "bg-emerald-600 text-white border-emerald-600", step: 4 },
+  perdido: { label: "Perdido", cls: "bg-muted text-muted-foreground border-border line-through", step: -1 },
+};
+
+/** Linha devolvida por list_my_capture_vehicles */
+export interface MyCaptureVehicle {
+  vehicle_id: string;
+  lead_id: string;
+  lead_name: string;
+  description: string | null;
+  brand: string | null;
+  model: string | null;
+  year_model: number | null;
+  km: number | null;
+  status: CaptureVehicleStatus;
+  status_changed_at: string | null;
+  captured_at: string | null;
+  sold_at: string | null;
+  stage_name: string | null;
+  sales_rep_name: string | null;
+  reward_captured_cents: number | null;
+  reward_sold_cents: number | null;
+  ledger_captured_status: CaptureLedgerStatus | null;
+  ledger_sold_status: CaptureLedgerStatus | null;
+}
+
+export function vehicleTitle(v: Pick<MyCaptureVehicle, "description" | "brand" | "model" | "year_model">) {
+  const base = v.description?.trim() || [v.brand, v.model].filter(Boolean).join(" ") || "Veículo";
+  return v.year_model ? `${base} ${v.year_model}` : base;
+}
+
+/** capture_campaigns (select direto) */
+export interface CaptureCampaign {
+  id: string;
+  name: string;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  focus_phrase: string | null;
+  objection_phrase: string | null;
+  objection_answer: string | null;
+}
+
+export function formatBRL(cents: number | null | undefined) {
+  return ((cents ?? 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 /** Espelho em TS da regra de score do banco (compute_capture_score) — pra preview ao vivo no form. */

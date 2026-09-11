@@ -1,28 +1,31 @@
-import { Gift, PartyPopper, Loader2, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Gift, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { GOAL_TYPE_LABEL, useClaimCaptureReward, type CaptureRewardProgress } from "@/hooks/useCaptureRewards";
+import { GOAL_TYPE_LABEL, type CaptureRewardProgress } from "@/hooks/useCaptureRewards";
 
 /**
- * Prêmio + progresso da promotora. `compact` = versão da tela "Hoje"
- * (uma linha com miniatura); completo = card do Perfil com barra e resgate.
+ * Prêmio + progresso da promotora. `compact` = uma linha com miniatura (Home);
+ * completo = card do catálogo (aba Prêmios) com barra.
+ *
+ * O voucher é AUTOMÁTICO: quando a meta bate, o servidor lança no ledger e
+ * `claim_status` reflete isso. Não existe mais botão "Resgatar".
  */
-export function RewardCard({ reward, compact }: { reward: CaptureRewardProgress; compact?: boolean }) {
-  const claim = useClaimCaptureReward();
-  const g = GOAL_TYPE_LABEL[reward.goal_type];
-  const pct = Math.min(100, Math.round((reward.current_value / reward.goal_value) * 100));
-  const claimed = !!reward.claim_id && reward.claim_status !== "cancelled";
-  const remaining = Math.max(0, reward.goal_value - reward.current_value);
 
-  const doClaim = async () => {
-    try {
-      const r = await claim.mutateAsync(reward.id);
-      toast.success(r.already ? "Resgate já registrado — o gestor vai entregar." : `🎉 Resgate registrado! Fale com o gestor pra receber: ${r.reward}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não consegui resgatar");
-    }
-  };
+function statusLine(reward: CaptureRewardProgress): { text: string; tone: "done" | "wait" | null } {
+  const s = reward.claim_status;
+  if (!reward.claim_id || s === "cancelled") return { text: "", tone: null };
+  if (s === "paid" || s === "delivered") return { text: "Entregue 🎉", tone: "done" };
+  if (s === "approved") return { text: "Voucher aprovado — o gestor vai entregar", tone: "wait" };
+  return { text: "Voucher liberado — o gestor vai entregar", tone: "wait" };
+}
+
+export function RewardCard({ reward, compact }: { reward: CaptureRewardProgress; compact?: boolean }) {
+  const reduce = useReducedMotion();
+  const g = GOAL_TYPE_LABEL[reward.goal_type];
+  const pct = Math.min(100, Math.round((reward.current_value / Math.max(1, reward.goal_value)) * 100));
+  const remaining = Math.max(0, reward.goal_value - reward.current_value);
+  const st = statusLine(reward);
+  const achieved = !!st.tone;
 
   const thumb = (
     <div className={cn("shrink-0 rounded-lg overflow-hidden bg-muted/40 flex items-center justify-center", compact ? "h-12 w-12" : "h-20 w-20")}>
@@ -32,18 +35,20 @@ export function RewardCard({ reward, compact }: { reward: CaptureRewardProgress;
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-900/50 px-3 py-2">
+      <div className={cn(
+        "flex items-center gap-3 rounded-lg border px-3 py-2",
+        achieved ? "border-emerald-300/70 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-900/50" : "border-border/60 bg-card",
+      )}>
         {thumb}
         <div className="min-w-0 flex-1">
           <p className="text-xs text-muted-foreground">Bata <strong>{reward.goal_value} {g.unit}</strong> {g.period} e ganhe</p>
           <p className="text-sm font-semibold truncate">🎁 {reward.name}</p>
         </div>
-        {claimed ? (
-          <span className="text-[11px] text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Resgatado</span>
-        ) : reward.eligible ? (
-          <Button size="sm" className="h-8 bg-amber-500 hover:bg-amber-600 text-white" onClick={doClaim} disabled={claim.isPending}>
-            {claim.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><PartyPopper className="h-3.5 w-3.5 mr-1" /> Resgatar</>}
-          </Button>
+        {achieved ? (
+          <span className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 text-right">
+            {st.tone === "done" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+            {st.tone === "done" ? "Entregue" : "Liberado"}
+          </span>
         ) : (
           <span className="text-[11px] text-muted-foreground tabular-nums">faltam {remaining}</span>
         )}
@@ -52,31 +57,36 @@ export function RewardCard({ reward, compact }: { reward: CaptureRewardProgress;
   }
 
   return (
-    <div className="rounded-lg border border-border/60 p-3 space-y-2">
+    <div className={cn("rounded-xl border p-3 space-y-2 bg-card", achieved ? "border-emerald-300/70" : "border-border/60")}>
       <div className="flex gap-3">
         {thumb}
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-tight">{reward.name}</p>
           {reward.description && <p className="text-xs text-muted-foreground mt-0.5">{reward.description}</p>}
           <p className="text-xs mt-1">
-            <span className="font-medium">{reward.current_value}/{reward.goal_value} {g.unit}</span>
+            <span className="font-medium tabular-nums">{reward.current_value}/{reward.goal_value} {g.unit}</span>
             <span className="text-muted-foreground"> {g.period}</span>
             {reward.stock != null && <span className="text-muted-foreground"> · restam {reward.stock}</span>}
           </p>
         </div>
       </div>
       <div className="h-2 rounded-full bg-muted overflow-hidden">
-        <div className={cn("h-full transition-all", pct >= 100 ? "bg-amber-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+        <motion.div
+          className={cn("h-full", pct >= 100 ? "bg-emerald-500" : "bg-emerald-600/80")}
+          initial={reduce ? false : { width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: reduce ? 0 : 0.6, ease: "easeOut" }}
+        />
       </div>
-      {claimed ? (
-        <p className="text-xs text-emerald-700 flex items-center gap-1">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {reward.claim_status === "delivered" ? "Prêmio entregue 🎉" : "Resgate registrado — o gestor vai entregar"}
+      {achieved ? (
+        <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-medium">
+          {st.tone === "done" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {st.text}
         </p>
       ) : reward.eligible ? (
-        <Button className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white" onClick={doClaim} disabled={claim.isPending}>
-          {claim.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><PartyPopper className="h-4 w-4 mr-2" /> Meta batida — resgatar prêmio</>}
-        </Button>
+        <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+          <Sparkles className="h-3.5 w-3.5" /> Meta batida — o voucher é liberado automaticamente.
+        </p>
       ) : (
         <p className="text-xs text-muted-foreground">Faltam <strong>{remaining} {g.unit}</strong> pra ganhar.</p>
       )}

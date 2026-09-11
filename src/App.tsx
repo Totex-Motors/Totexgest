@@ -149,8 +149,8 @@ const CaptureLayout = React.lazy(() => import("./layouts/CaptureLayout"));
 const CaptureHome = React.lazy(() => import("./pages/capture/CaptureHome"));
 const CaptureNewLead = React.lazy(() => import("./pages/capture/CaptureNewLead"));
 const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads"));
-const CaptureTraining = React.lazy(() => import("./pages/capture/CaptureTraining"));
-const CaptureProfile = React.lazy(() => import("./pages/capture/CaptureProfile"));
+const CaptureMyVehicles = React.lazy(() => import("./pages/capture/CaptureMyVehicles"));
+const CapturePrizes = React.lazy(() => import("./pages/capture/CapturePrizes"));
 
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
@@ -257,8 +257,11 @@ const AppRoutes = () => {
         <Route index element={<React.Suspense fallback={<div />}><CaptureHome /></React.Suspense>} />
         <Route path="novo" element={<React.Suspense fallback={<div />}><CaptureNewLead /></React.Suspense>} />
         <Route path="leads" element={<React.Suspense fallback={<div />}><CaptureMyLeads /></React.Suspense>} />
-        <Route path="treino" element={<React.Suspense fallback={<div />}><CaptureTraining /></React.Suspense>} />
-        <Route path="perfil" element={<React.Suspense fallback={<div />}><CaptureProfile /></React.Suspense>} />
+        <Route path="carros" element={<React.Suspense fallback={<div />}><CaptureMyVehicles /></React.Suspense>} />
+        <Route path="premios" element={<React.Suspense fallback={<div />}><CapturePrizes /></React.Suspense>} />
+        {/* rotas antigas → abas da tela Prêmios */}
+        <Route path="treino" element={<Navigate to="/captacao/premios?tab=treino" replace />} />
+        <Route path="perfil" element={<Navigate to="/captacao/premios?tab=perfil" replace />} />
       </Route>
 
       {/* Configurações */}

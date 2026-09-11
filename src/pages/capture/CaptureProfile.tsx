@@ -5,9 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCaptureHomeStats } from "@/hooks/useCaptureLeads";
-import { useCaptureRewardProgress } from "@/hooks/useCaptureRewards";
-import { RewardCard } from "@/components/capture/RewardCard";
-import { Gift } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
@@ -42,7 +39,6 @@ export default function CaptureProfile() {
   const { teamMember, signOut, tenantId } = useAuth();
   const stats = useCaptureHomeStats();
   const { data: tenantName } = useTenantName(tenantId);
-  const rewards = useCaptureRewardProgress();
 
   const initials = (teamMember?.name ?? "?").split(/\s+/).map((n) => n[0]).join("").slice(0, 2).toUpperCase();
   const semana = stats.data?.semana ?? 0;
@@ -83,13 +79,6 @@ export default function CaptureProfile() {
         <Stat icon={Sparkles} label="Quentes" value={quentes} loading={stats.isLoading} />
         <Stat icon={Target} label="No mês" value={stats.data?.mes ?? 0} loading={stats.isLoading} />
       </div>
-
-      {(rewards.data?.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold flex items-center gap-1.5"><Gift className="h-4 w-4 text-purple-600" /> Prêmios</h2>
-          {rewards.data!.map((r) => <RewardCard key={r.id} reward={r} />)}
-        </div>
-      )}
 
       <Card className="bg-muted/40">
         <CardContent className="pt-4 pb-4 text-xs text-muted-foreground space-y-1">
