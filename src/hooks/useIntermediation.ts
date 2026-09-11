@@ -6,7 +6,10 @@ import type {
   ContractDataInput,
   ContractDocument,
   ContractDocumentType,
+  ContractEvent,
   ContractMissing,
+  ContractSignerAuthMethod,
+  ContractSignerChannel,
   ContractSnapshot,
   ContractTemplate,
   Intermediation,
@@ -39,6 +42,7 @@ export const intermediationKeys = {
   contractSnapshot: (id: string, type: ContractDocumentType) => ["intermediation", "contract-snapshot", id, type] as const,
   contractDocuments: (id: string) => ["intermediation", "contract-documents", id] as const,
   contractTemplates: ["intermediation", "contract-templates"] as const,
+  contractEvents: (documentId: string) => ["intermediation", "contract-events", documentId] as const,
 };
 
 /** Depois de qualquer mutação: intermediação + card de captação + lead. */
@@ -341,20 +345,42 @@ export class ContractRenderError extends Error {
   }
 }
 
-/** Traduz um erro do `functions.invoke` (FunctionsHttpError guarda a Response em `context`). */
-async function toRenderError(error: unknown, fallback: string): Promise<ContractRenderError> {
-  let msg = (error as { message?: string })?.message || fallback;
+interface InvokeErrorInfo {
+  message: string;
+  status: number;
+  body: Record<string, unknown> | null;
+}
+
+/**
+ * Lê o erro do `functions.invoke`: FunctionsHttpError guarda a Response em `context`,
+ * e as edge fns respondem `{error: "mensagem", ...}`. Se não for JSON, fica o fallback.
+ */
+async function readInvokeError(error: unknown, fallback: string): Promise<InvokeErrorInfo> {
+  let message = (error as { message?: string })?.message || fallback;
   let status = 0;
-  let missing: ContractMissing[] = [];
+  let body: Record<string, unknown> | null = null;
   const ctx = (error as { context?: unknown })?.context;
   if (typeof Response !== "undefined" && ctx instanceof Response) {
     status = ctx.status;
     try {
-      const j = await ctx.clone().json();
-      if (j && typeof j.error === "string" && j.error) msg = j.error;
-      if (Array.isArray(j?.missing)) missing = j.missing as ContractMissing[];
+      const j: unknown = await ctx.clone().json();
+      if (j && typeof j === "object") {
+        body = j as Record<string, unknown>;
+        if (typeof body.error === "string" && body.error) message = body.error;
+        else if (typeof body.message === "string" && body.message) message = body.message;
+      }
     } catch { /* corpo não é JSON — fica a mensagem padrão */ }
   }
+  // Mensagens genéricas do supabase-js não ajudam o usuário
+  if (/non-2xx status code/i.test(message)) message = fallback;
+  return { message, status, body };
+}
+
+/** Traduz um erro do `functions.invoke` do `contract-render`. */
+async function toRenderError(error: unknown, fallback: string): Promise<ContractRenderError> {
+  const { message, status, body } = await readInvokeError(error, fallback);
+  const missing = Array.isArray(body?.missing) ? (body!.missing as ContractMissing[]) : [];
+  let msg = message;
   if (status === 422 && missing.length && msg === fallback) msg = "Ainda faltam dados pra gerar o contrato.";
   return new ContractRenderError(msg, status, missing);
 }
@@ -416,6 +442,208 @@ export async function openContractPreview(intermediationId: string): Promise<voi
     win?.close();
     throw e;
   }
+}
+
+// ═══ Fase 3 — Assinatura eletrônica (migration 20260913100000 + edge fn contract-send) ═══
+
+/** Eventos do provedor (Clicksign) de um documento — mais recente primeiro. */
+export function useContractEvents(documentId: string | null | undefined) {
+  return useQuery({
+    queryKey: intermediationKeys.contractEvents(documentId ?? ""),
+    enabled: !!documentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("contract_events")
+        .select("*")
+        .eq("document_id", documentId!)
+        .order("received_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as ContractEvent[];
+    },
+    staleTime: 15_000,
+  });
+}
+
+/** Erro da edge fn `contract-send` (status HTTP + corpo JSON quando houver). */
+export class ContractSendError extends Error {
+  status: number;
+  body: Record<string, unknown> | null;
+  constructor(message: string, status: number, body: Record<string, unknown> | null = null) {
+    super(message);
+    this.name = "ContractSendError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/** Signatário como a UI manda pro `contract-send` (action `send`). */
+export interface ContractSendSignerInput {
+  signer_id: string;
+  channel: ContractSignerChannel;
+  auth_method: ContractSignerAuthMethod;
+  /** Se vierem, a edge fn atualiza `contract_signers` antes de criar o envelope. */
+  email?: string;
+  phone?: string;
+}
+
+/**
+ * Body aceito pela edge fn `contract-send` (verify_jwt; roles admin/comercial/closer).
+ * Mantém 1:1 com a spec da fase 3 — se mudar lá, muda aqui.
+ */
+export type ContractSendBody =
+  | { action: "send"; document_id: string; signers: ContractSendSignerInput[]; deadline_days: number; message?: string }
+  | { action: "resend"; document_id: string; message?: string }
+  | { action: "cancel"; document_id: string; reason: string }
+  | { action: "status"; document_id: string }
+  | { action: "register_webhook" }
+  | { action: "test_connection" };
+
+/** Chama `contract-send` e devolve o JSON; erros HTTP viram `ContractSendError` com a mensagem do servidor. */
+async function invokeContractSend<T extends object>(body: ContractSendBody, fallback: string): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("contract-send", { body });
+  if (error) {
+    const { message, status, body: errBody } = await readInvokeError(error, fallback);
+    throw new ContractSendError(message, status, errBody);
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  if (typeof r.error === "string" && r.error) throw new ContractSendError(r.error, 400, r);
+  if (r.ok === false) throw new ContractSendError(typeof r.message === "string" ? r.message : fallback, 400, r);
+  return r as T;
+}
+
+/** Resposta padrão das actions que devolvem o documento. */
+export interface ContractSendDocumentResult {
+  ok?: boolean;
+  document: ContractDocument;
+}
+
+/** A edge fn pode devolver `{document}` ou o documento direto — normaliza. */
+function pickDocument(r: Record<string, unknown>): ContractDocument | null {
+  if (r.document && typeof r.document === "object") return r.document as ContractDocument;
+  if (typeof r.id === "string" && typeof r.status === "string") return r as unknown as ContractDocument;
+  return null;
+}
+
+/**
+ * Envia o contrato gerado pra assinatura eletrônica (cria o envelope no provedor,
+ * marca o doc como `sent`). Doc precisa estar em generated|ready|error.
+ */
+export function useContractSend() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ documentId, signers, deadlineDays, message }: {
+      documentId: string;
+      leadId?: string | null;
+      signers: ContractSendSignerInput[];
+      deadlineDays: number;
+      message?: string | null;
+    }) => {
+      const days = Math.min(30, Math.max(1, Math.round(deadlineDays || 7)));
+      const body: ContractSendBody = {
+        action: "send",
+        document_id: documentId,
+        signers,
+        deadline_days: days,
+        ...(message?.trim() ? { message: message.trim() } : {}),
+      };
+      const r = await invokeContractSend<Record<string, unknown>>(body, "Não consegui enviar o contrato pra assinatura.");
+      const document = pickDocument(r);
+      if (!document) throw new ContractSendError("O envio não devolveu o documento atualizado.", 500, r);
+      return { ok: r.ok !== false, document } satisfies ContractSendDocumentResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Reenvia os convites (notificação do envelope). Doc em sent|partial. */
+export function useContractResend() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ documentId, message }: { documentId: string; leadId?: string | null; message?: string | null }) => {
+      const body: ContractSendBody = {
+        action: "resend",
+        document_id: documentId,
+        ...(message?.trim() ? { message: message.trim() } : {}),
+      };
+      return invokeContractSend<{ ok?: boolean; document?: ContractDocument }>(body, "Não consegui reenviar os convites.");
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Cancela o envio no provedor e marca o doc como `cancelled` (com motivo). */
+export function useContractCancel() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ documentId, reason }: { documentId: string; leadId?: string | null; reason: string }) => {
+      const clean = reason.trim();
+      if (clean.length < 3) throw new ContractSendError("Descreva o motivo do cancelamento.", 400);
+      const body: ContractSendBody = { action: "cancel", document_id: documentId, reason: clean };
+      return invokeContractSend<{ ok?: boolean; document?: ContractDocument }>(body, "Não consegui cancelar o envio.");
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+export interface ContractStatusResult {
+  document: ContractDocument | null;
+  /** Quantos eventos novos foram aplicados nessa conferência. */
+  applied: number;
+  /** true quando o PDF assinado foi baixado, conferido e a intermediação formalizada agora. */
+  finalized: boolean;
+}
+
+/** "Verificar agora": consulta o provedor, aplica eventos pendentes e, se fechado, baixa/valida o PDF assinado. */
+export function useContractStatus() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ documentId }: { documentId: string; leadId?: string | null }) => {
+      const body: ContractSendBody = { action: "status", document_id: documentId };
+      const r = await invokeContractSend<Record<string, unknown>>(body, "Não consegui consultar o status da assinatura.");
+      return {
+        document: pickDocument(r),
+        applied: typeof r.applied === "number" ? r.applied : Array.isArray(r.applied) ? r.applied.length : r.applied === true ? 1 : 0,
+        finalized: r.finalized === true,
+      } satisfies ContractStatusResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+export interface ClicksignRegisterWebhookResult {
+  ok: boolean;
+  webhook_id: string | null;
+  endpoint: string | null;
+}
+
+/** Admin: registra o webhook `clicksign-webhook` na Clicksign e guarda o secret no servidor (nunca volta pra UI). */
+export function useClicksignRegisterWebhook() {
+  return useMutation({
+    mutationFn: async () => {
+      const r = await invokeContractSend<Record<string, unknown>>({ action: "register_webhook" }, "Não consegui registrar o webhook na Clicksign.");
+      return {
+        ok: r.ok !== false,
+        webhook_id: typeof r.webhook_id === "string" ? r.webhook_id : null,
+        endpoint: typeof r.endpoint === "string" ? r.endpoint : null,
+      } satisfies ClicksignRegisterWebhookResult;
+    },
+  });
+}
+
+export interface ClicksignTestResult {
+  ok: boolean;
+  env: "sandbox" | "production" | string;
+}
+
+/** Faz um GET leve na Clicksign com a chave do tenant — confirma token + ambiente. */
+export function useClicksignTest() {
+  return useMutation({
+    mutationFn: async () => {
+      const r = await invokeContractSend<Record<string, unknown>>({ action: "test_connection" }, "Não consegui conectar na Clicksign.");
+      return { ok: r.ok !== false, env: typeof r.env === "string" ? r.env : "sandbox" } satisfies ClicksignTestResult;
+    },
+  });
 }
 
 // ─── Templates (jurídico) ───────────────────────────────────────────────────
@@ -514,6 +742,8 @@ export function useSaveLegalEntity() {
         signer_name: clean(input.signer_name),
         signer_cpf: clean(input.signer_cpf),
         signer_role: input.signer_role ?? null,
+        signer_email: clean(input.signer_email)?.toLowerCase() ?? null,
+        signer_phone: clean(input.signer_phone),
         contract_city: clean(input.contract_city),
         ...(input.is_default != null ? { is_default: input.is_default } : {}),
         ...(input.is_active != null ? { is_active: input.is_active } : {}),

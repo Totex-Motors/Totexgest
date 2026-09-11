@@ -133,6 +133,9 @@ export interface LegalEntity {
   signer_name: string | null;
   signer_cpf: string | null;
   signer_role: LegalEntitySignerRole | null;
+  /** Fase 3: pra onde vai o convite de assinatura eletrônica de quem assina pela empresa. */
+  signer_email: string | null;
+  signer_phone: string | null;
   /** Cidade que aparece em "Local e data" do contrato (default: city_name). */
   contract_city: string | null;
   is_default: boolean;
@@ -158,6 +161,8 @@ export type LegalEntityInput = Partial<
     | "signer_name"
     | "signer_cpf"
     | "signer_role"
+    | "signer_email"
+    | "signer_phone"
     | "contract_city"
     | "is_default"
     | "is_active"
@@ -214,6 +219,10 @@ export type ContractDocumentStatus =
 
 export type ContractSignerPartyType = "owner" | "company" | "buyer" | "witness";
 export type ContractSignerStatus = "pending" | "sent" | "viewed" | "signed" | "declined";
+/** Por onde o signatário recebe o convite. */
+export type ContractSignerChannel = "email" | "whatsapp" | "sms";
+/** Como o signatário prova quem é na hora de assinar. */
+export type ContractSignerAuthMethod = "email" | "whatsapp" | "sms" | "pix";
 
 /** Linha de `contract_signers` (signatários previstos de um documento). */
 export interface ContractSigner {
@@ -229,10 +238,20 @@ export interface ContractSigner {
   signing_order: number;
   provider_signer_id: string | null;
   status: ContractSignerStatus;
+  /** Fase 3 (assinatura eletrônica). */
+  channel: ContractSignerChannel | null;
+  auth_method: ContractSignerAuthMethod | null;
+  sent_at: string | null;
   viewed_at: string | null;
   signed_at: string | null;
+  refused_at: string | null;
+  refusal_reason: string | null;
+  provider_meta: Record<string, unknown>;
   created_at: string;
 }
+
+/** Status do envelope no provedor (Clicksign: draft|running|closed|canceled). */
+export type ContractProviderStatus = "draft" | "running" | "closed" | "canceled" | string;
 
 /** Linha de `contract_documents` (cada geração = uma versão; regenerar cancela a anterior). */
 export interface ContractDocument {
@@ -251,6 +270,16 @@ export interface ContractDocument {
   signed_sha256: string | null;
   provider: string | null;
   provider_document_id: string | null;
+  /** Fase 3: envelope no provedor + estado bruto lá. */
+  provider_envelope_id: string | null;
+  provider_status: ContractProviderStatus | null;
+  provider_meta: Record<string, unknown>;
+  /** Prazo pra assinar (ISO). */
+  deadline_at: string | null;
+  last_event_at: string | null;
+  last_reconciled_at: string | null;
+  /** Preenchido quando status = error (envio falhou). */
+  error_message: string | null;
   generated_at: string | null;
   sent_at: string | null;
   completed_at: string | null;
@@ -262,6 +291,36 @@ export interface ContractDocument {
   updated_at: string;
   /** Embed `contract_signers(*)`. */
   contract_signers?: ContractSigner[];
+}
+
+/** event_type normalizado de `contract_events`. */
+export type ContractEventType =
+  | "created"
+  | "sent"
+  | "viewed"
+  | "signed"
+  | "refused"
+  | "completed"
+  | "canceled"
+  | "expired"
+  | "error"
+  | "info";
+
+/** Linha de `contract_events` (trilha bruta do provedor; só leitura no front). */
+export interface ContractEvent {
+  id: string;
+  tenant_id: string;
+  document_id: string;
+  provider: string;
+  provider_event_id: string | null;
+  event_type: ContractEventType | string;
+  raw_event_name: string | null;
+  /** provider_signer_id, e-mail ou telefone do signatário afetado. */
+  signer_ref: string | null;
+  payload: Record<string, unknown>;
+  occurred_at: string | null;
+  received_at: string;
+  idempotency_key: string;
 }
 
 export type ContractMissingSource = "terms" | "contract_data.owner" | "contract_data.vehicle" | "legal_entity" | "other";
@@ -443,26 +502,60 @@ export const CONTRACT_STATUS_META: Record<ContractStatus, BadgeMeta> = {
 
 export const CONTRACT_DOCUMENT_STATUS_META: Record<ContractDocumentStatus, BadgeMeta> = {
   draft: { label: "Rascunho", cls: CLS.muted },
-  generated: { label: "Gerado · aguardando assinatura", cls: CLS.sky },
+  generated: { label: "Gerado · aguardando envio", cls: CLS.sky },
   ready: { label: "Pronto pra envio", cls: CLS.sky },
-  sent: { label: "Enviado pra assinatura", cls: CLS.sky },
+  sent: { label: "Enviado p/ assinatura", cls: CLS.sky },
   partial: { label: "Parcialmente assinado", cls: CLS.amber },
-  completed: { label: "Assinado", cls: CLS.emerald },
+  completed: { label: "Assinado — conferindo PDF", cls: CLS.emerald },
   validated: { label: "Assinado e validado", cls: CLS.emeraldSolid },
   declined: { label: "Recusado", cls: CLS.red },
-  expired: { label: "Expirado", cls: CLS.red },
-  cancelled: { label: "Cancelado (substituído)", cls: CLS.muted },
-  error: { label: "Erro na geração", cls: CLS.red },
+  expired: { label: "Prazo expirado", cls: CLS.red },
+  cancelled: { label: "Cancelado", cls: CLS.muted },
+  error: { label: "Erro no envio", cls: CLS.red },
   archived: { label: "Arquivado", cls: CLS.muted },
 };
 
 export const CONTRACT_SIGNER_STATUS_META: Record<ContractSignerStatus, BadgeMeta> = {
-  pending: { label: "Aguardando", cls: CLS.muted },
-  sent: { label: "Enviado", cls: CLS.sky },
+  pending: { label: "Aguardando envio", cls: CLS.muted },
+  sent: { label: "Convite enviado", cls: CLS.sky },
   viewed: { label: "Visualizou", cls: CLS.amber },
   signed: { label: "Assinou", cls: CLS.emerald },
   declined: { label: "Recusou", cls: CLS.red },
 };
+
+export const SIGNER_CHANNEL_LABEL: Record<ContractSignerChannel, string> = {
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+  sms: "SMS",
+};
+
+export const SIGNER_AUTH_LABEL: Record<ContractSignerAuthMethod, string> = {
+  email: "Token por e-mail",
+  whatsapp: "Token por WhatsApp",
+  sms: "Token por SMS",
+  pix: "PIX (valida CPF)",
+};
+
+/** Label em PT dos event_type normalizados de `contract_events`. */
+export const CONTRACT_EVENT_TYPE_LABEL: Record<ContractEventType, string> = {
+  created: "Envelope criado",
+  sent: "Convite enviado",
+  viewed: "Documento visualizado",
+  signed: "Assinatura registrada",
+  refused: "Assinatura recusada",
+  completed: "Todos assinaram",
+  canceled: "Envio cancelado",
+  expired: "Prazo expirado",
+  error: "Erro no provedor",
+  info: "Atualização do provedor",
+};
+
+/** Documento ainda pode ser enviado pro provedor (bate com `contract_document_mark_sent`). */
+export const CONTRACT_SENDABLE_STATUSES: ContractDocumentStatus[] = ["generated", "ready", "error"];
+/** Documento em trânsito no provedor (mostra chips, prazo, reenviar/verificar/cancelar). */
+export const CONTRACT_IN_FLIGHT_STATUSES: ContractDocumentStatus[] = ["sent", "partial", "completed"];
+/** Terminou sem assinatura — mostra motivo e libera "Enviar novamente"/"Regenerar". */
+export const CONTRACT_FAILED_STATUSES: ContractDocumentStatus[] = ["declined", "expired", "cancelled", "error"];
 
 export const COMMISSION_STATUS_META: Record<CommissionStatus, BadgeMeta> = {
   pending: { label: "Pendente", cls: CLS.amber },
@@ -512,6 +605,12 @@ export const INTERMEDIATION_EVENT_LABEL: Record<string, string> = {
   commercial_terms_set: "Condições comerciais atualizadas",
   intermediation_contract_signed: "Contrato assinado",
   intermediation_contract_generated: "Contrato gerado (PDF)",
+  intermediation_contract_sent: "Contrato enviado p/ assinatura eletrônica",
+  contract_provider_event: "Atualização da assinatura eletrônica",
+  contract_validated: "PDF assinado conferido (hash)",
+  contract_document_cancelled: "Envio pra assinatura cancelado",
+  contract_document_error: "Erro no envio pra assinatura",
+  contract_document_ready: "Contrato pronto pra envio",
   contract_data_set: "Dados do contrato atualizados",
   intermediation_activated: "Intermediação formalizada",
   vehicle_published: "Carro anunciado",

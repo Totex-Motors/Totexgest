@@ -18,6 +18,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { maskCep, maskCnpj, maskCpf, maskUF } from "@/lib/brMasks";
+import { maskPhoneBR, onlyDigits } from "@/lib/phone";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractTemplates, useLegalEntities, useSaveContractTemplate, useSaveLegalEntity } from "@/hooks/useIntermediation";
 import {
@@ -57,11 +58,14 @@ export function IntermediationSettingsSection() {
 interface EntityForm {
   legal_name: string; trade_name: string; cnpj: string; address: string; city_name: string; state: string; zip: string;
   phone: string; email: string; contract_city: string; signer_name: string; signer_cpf: string; signer_role: LegalEntitySignerRole | "";
+  signer_email: string;
+  /** só dígitos */
+  signer_phone: string;
 }
 
 const emptyEntityForm = (): EntityForm => ({
   legal_name: "", trade_name: "", cnpj: "", address: "", city_name: "", state: "", zip: "", phone: "", email: "",
-  contract_city: "", signer_name: "", signer_cpf: "", signer_role: "",
+  contract_city: "", signer_name: "", signer_cpf: "", signer_role: "", signer_email: "", signer_phone: "",
 });
 
 function toEntityForm(e: LegalEntity | null): EntityForm {
@@ -80,8 +84,12 @@ function toEntityForm(e: LegalEntity | null): EntityForm {
     signer_name: e.signer_name ?? "",
     signer_cpf: e.signer_cpf ? maskCpf(e.signer_cpf) : "",
     signer_role: e.signer_role ?? "",
+    signer_email: e.signer_email ?? "",
+    signer_phone: onlyDigits(e.signer_phone),
   };
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function Field({ label, hint, className, children }: { label: string; hint?: string; className?: string; children: ReactNode }) {
   return (
@@ -117,6 +125,8 @@ function LegalEntityCard() {
     if (f.cnpj && f.cnpj.replace(/\D/g, "").length !== 14) { toast.error("CNPJ precisa ter 14 dígitos."); return; }
     if (f.signer_cpf && f.signer_cpf.replace(/\D/g, "").length !== 11) { toast.error("CPF de quem assina precisa ter 11 dígitos."); return; }
     if (f.signer_name && !f.signer_role) { toast.error("Informe em que qualidade a pessoa assina (Administradora, Procurador…)."); return; }
+    if (f.signer_email && !EMAIL_RE.test(f.signer_email.trim())) { toast.error("E-mail de quem assina parece inválido."); return; }
+    if (f.signer_phone && (f.signer_phone.length < 10 || f.signer_phone.length > 13)) { toast.error("Telefone de quem assina precisa ter DDD + número (10 ou 11 dígitos)."); return; }
     try {
       const saved = await save.mutateAsync({
         id: entity?.id,
@@ -133,6 +143,8 @@ function LegalEntityCard() {
         signer_name: f.signer_name,
         signer_cpf: f.signer_cpf,
         signer_role: f.signer_role || null,
+        signer_email: f.signer_email,
+        signer_phone: f.signer_phone,
       });
       setDirty(false);
       setSelectedId(saved.id);
@@ -143,6 +155,7 @@ function LegalEntityCard() {
   };
 
   const signerMissing = !f.signer_name || !f.signer_cpf || !f.signer_role;
+  const signerContactMissing = !signerMissing && !f.signer_email && !f.signer_phone;
 
   return (
     <Card>
@@ -198,6 +211,8 @@ function LegalEntityCard() {
                 <p className="text-sm font-medium flex items-center gap-1.5"><Scale className="h-4 w-4 text-violet-600" /> Quem assina pela empresa</p>
                 {signerMissing ? (
                   <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 text-[11px]">Incompleto — o contrato não gera</Badge>
+                ) : signerContactMissing ? (
+                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 text-[11px]">Sem e-mail/telefone — não recebe convite de assinatura</Badge>
                 ) : (
                   <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]"><CheckCircle2 className="h-3 w-3 mr-1" /> Completo</Badge>
                 )}
@@ -214,8 +229,14 @@ function LegalEntityCard() {
                     </SelectContent>
                   </Select>
                 </Field>
+                <Field label="E-mail de quem assina" hint="Recebe o convite da assinatura eletrônica (Clicksign)." className="sm:col-span-2">
+                  <Input type="email" className="h-9" value={f.signer_email} disabled={readOnly} placeholder="nome@empresa.com.br" onChange={(e) => set("signer_email", e.target.value.trim().toLowerCase())} />
+                </Field>
+                <Field label="Telefone/WhatsApp de quem assina" hint="Pra convite por WhatsApp/SMS.">
+                  <Input type="tel" inputMode="tel" className="h-9" maxLength={19} value={maskPhoneBR(f.signer_phone)} disabled={readOnly} placeholder="(11) 99999-9999" onChange={(e) => set("signer_phone", onlyDigits(e.target.value))} />
+                </Field>
               </div>
-              <p className="text-[11px] text-muted-foreground flex items-start gap-1"><Info className="h-3 w-3 shrink-0 mt-0.5" /> Administrador(a) = sócio com poderes no contrato social. Procurador(a) = tem procuração vigente. Na fase de alçadas isso passa a ser validado automaticamente.</p>
+              <p className="text-[11px] text-muted-foreground flex items-start gap-1"><Info className="h-3 w-3 shrink-0 mt-0.5" /> Administrador(a) = sócio com poderes no contrato social. Procurador(a) = tem procuração vigente. Na fase de alçadas isso passa a ser validado automaticamente. E-mail/telefone daqui viram o contato do signatário da empresa nos contratos gerados a partir de agora.</p>
             </div>
 
             {canEdit && (

@@ -281,13 +281,13 @@ export const INTERMEDIATION_STATUS_NOTE: Partial<Record<IntermediationStatus, { 
 export const CONTRACT_STATUS_LABEL: Record<IntermediationContractStatus, string> = {
   none: "Contrato: aguardando",
   generated: "Contrato: em assinatura",
-  sent: "Contrato: em assinatura",
-  partial: "Contrato: em assinatura",
+  sent: "Contrato enviado p/ assinatura",
+  partial: "Contrato enviado p/ assinatura",
   signed: "Contrato: assinado",
   imported: "Contrato: assinado",
-  declined: "Contrato: pendente de revisão",
-  expired: "Contrato: pendente de revisão",
-  cancelled: "Contrato: pendente de revisão",
+  declined: "Contrato pendente",
+  expired: "Contrato pendente",
+  cancelled: "Contrato pendente",
 };
 
 /** Cor do badge de contrato: aguardando = neutro, em assinatura = âmbar, assinado = verde, revisão = vermelho suave. */

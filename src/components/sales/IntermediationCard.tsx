@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   FileSignature, Loader2, Save, Lock, Upload, ExternalLink, Pause, Play, FileWarning, XCircle,
   ChevronDown, ChevronRight, History, Building2, UserRound, CalendarClock, Coins, Info, AlertTriangle,
-  Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers,
+  Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers, Send, Ban, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,8 +27,12 @@ import {
   ContractRenderError,
   getContractSignedUrl,
   openContractPreview,
+  useContractCancel,
   useContractDocuments,
+  useContractEvents,
+  useContractResend,
   useContractSnapshot,
+  useContractStatus,
   useGenerateContract,
   useImportSignedContract,
   useIntermediationByLead,
@@ -39,21 +43,29 @@ import {
   useSetIntermediationStatus,
   useSetIntermediationTerms,
 } from "@/hooks/useIntermediation";
+import { ContractSignatureDialog } from "@/components/sales/ContractSignatureDialog";
 import {
   COMMISSION_STATUS_META,
   CONTRACT_DOCUMENT_STATUS_META,
+  CONTRACT_EVENT_TYPE_LABEL,
+  CONTRACT_FAILED_STATUSES,
+  CONTRACT_IN_FLIGHT_STATUSES,
   CONTRACT_MISSING_SOURCE_LABEL,
+  CONTRACT_SENDABLE_STATUSES,
   CONTRACT_SIGNER_STATUS_META,
   CONTRACT_STATUS_META,
   CUSTODY_MODE_LABEL,
   INTERMEDIATION_EVENT_LABEL,
   INTERMEDIATION_STATUS_META,
+  SIGNER_CHANNEL_LABEL,
   SIGNER_PARTY_LABEL,
   TEST_DRIVE_POLICY_LABEL,
   missingTerms,
   type CommissionStatus,
   type CommissionType,
   type ContractDocument,
+  type ContractEvent,
+  type ContractEventType,
   type ContractMissing,
   type ContractMissingSource,
   type ContractSnapshot,
@@ -586,25 +598,111 @@ function renderErrorToast(e: unknown, fallback: string) {
 
 const LIVE_DOC_STATUSES = ["draft", "generated", "ready", "error"];
 
-function DocumentSigners({ doc }: { doc: ContractDocument }) {
+/** Data mais relevante do signatário conforme o status (assinou > recusou > viu > convite). */
+function signerWhen(s: NonNullable<ContractDocument["contract_signers"]>[number]): string | null {
+  if (s.status === "signed" && s.signed_at) return `assinou em ${fmtDateTime(s.signed_at)}`;
+  if (s.status === "declined" && s.refused_at) return `recusou em ${fmtDateTime(s.refused_at)}`;
+  if (s.status === "viewed" && s.viewed_at) return `viu em ${fmtDateTime(s.viewed_at)}`;
+  if (s.status === "sent" && s.sent_at) return `convite em ${fmtDateTime(s.sent_at)}`;
+  return null;
+}
+
+function DocumentSigners({ doc, inFlight }: { doc: ContractDocument; inFlight: boolean }) {
   const signers = doc.contract_signers ?? [];
   if (signers.length === 0) return null;
   return (
     <div className="space-y-0.5">
-      <p className="text-muted-foreground">Signatários previstos</p>
+      <p className="text-muted-foreground">{inFlight ? "Signatários" : "Signatários previstos"}</p>
       <ul className="space-y-0.5">
         {signers.map((s) => {
           const sm = CONTRACT_SIGNER_STATUS_META[s.status] ?? CONTRACT_SIGNER_STATUS_META.pending;
+          const when = signerWhen(s);
+          const channel = s.channel ? SIGNER_CHANNEL_LABEL[s.channel] : null;
           return (
             <li key={s.id} className="flex flex-wrap items-center gap-1.5">
               <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", sm.cls)}>{sm.label}</Badge>
-              <span>{SIGNER_PARTY_LABEL[s.party_type] ?? s.party_type}: <strong className="text-foreground">{s.name}</strong>{s.cpf_cnpj ? <span className="text-muted-foreground"> · {s.cpf_cnpj}</span> : null}{s.signed_at ? <span className="text-muted-foreground"> · {fmtDate(s.signed_at)}</span> : null}</span>
+              <span>
+                {SIGNER_PARTY_LABEL[s.party_type] ?? s.party_type}: <strong className="text-foreground">{s.name}</strong>
+                {s.cpf_cnpj ? <span className="text-muted-foreground"> · {s.cpf_cnpj}</span> : null}
+                {inFlight && channel ? <span className="text-muted-foreground"> · via {channel}</span> : null}
+                {when ? <span className="text-muted-foreground"> · {when}</span> : null}
+              </span>
+              {s.status === "declined" && s.refusal_reason && <span className="basis-full text-[11px] text-red-700 dark:text-red-300 pl-1">Motivo: {s.refusal_reason}</span>}
             </li>
           );
         })}
       </ul>
     </div>
   );
+}
+
+/** Nome do signatário a partir do `signer_ref` do evento (provider id, e-mail ou telefone). */
+function eventSignerName(ev: ContractEvent, doc: ContractDocument): string | null {
+  const ref = ev.signer_ref?.trim();
+  if (!ref) return null;
+  const digits = ref.replace(/\D/g, "");
+  const s = (doc.contract_signers ?? []).find(
+    (x) => x.provider_signer_id === ref || (x.email ?? "").toLowerCase() === ref.toLowerCase() || (digits.length >= 8 && (x.phone ?? "").replace(/\D/g, "") === digits),
+  );
+  return s ? `${SIGNER_PARTY_LABEL[s.party_type] ?? s.party_type} · ${s.name}` : ref;
+}
+
+function ContractEventsBlock({ doc }: { doc: ContractDocument }) {
+  const [open, setOpen] = useState(false);
+  const eventsQ = useContractEvents(open ? doc.id : null);
+  const events = eventsQ.data ?? [];
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button type="button" className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          <Activity className="h-3.5 w-3.5" /> Eventos da assinatura
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-1.5">
+        {eventsQ.isLoading ? (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando…</p>
+        ) : eventsQ.isError ? (
+          <p className="text-[11px] text-muted-foreground">Não consegui carregar os eventos.</p>
+        ) : events.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">Nenhum evento recebido do provedor ainda.</p>
+        ) : (
+          <ul className="space-y-1.5 border-l border-border/60 pl-3">
+            {events.map((ev) => {
+              const label = CONTRACT_EVENT_TYPE_LABEL[ev.event_type as ContractEventType] ?? ev.event_type;
+              const who = eventSignerName(ev, doc);
+              const p = ev.payload ?? {};
+              const reason = typeof p.reason === "string" && p.reason.trim() ? p.reason : typeof p.message === "string" && p.message.trim() ? p.message : null;
+              const synthetic = (ev.provider_event_id ?? "").startsWith("reconcile:");
+              return (
+                <li key={ev.id} className="text-[11px] relative">
+                  <span className="absolute -left-[17px] top-1.5 h-2 w-2 rounded-full bg-border" />
+                  <p className="font-medium text-xs">
+                    {label}
+                    {ev.raw_event_name && ev.raw_event_name !== ev.event_type ? <span className="text-muted-foreground font-normal"> ({ev.raw_event_name})</span> : null}
+                    {synthetic ? <span className="text-muted-foreground font-normal"> · conferência</span> : null}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {fmtDateTime(ev.occurred_at ?? ev.received_at)}{who ? ` · ${who}` : ""}{reason ? ` · ${reason}` : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** Prazo de assinatura (`deadline_at`) em texto curto. */
+function deadlineText(iso: string | null): { text: string; overdue: boolean } | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  const days = Math.ceil(ms / 86_400_000);
+  if (ms < 0) return { text: `Prazo venceu em ${fmtDate(iso)}`, overdue: true };
+  if (days <= 1) return { text: `Prazo: até ${fmtDateTime(iso)} (hoje/amanhã)`, overdue: false };
+  return { text: `Prazo: até ${fmtDate(iso)} (${days} dias)`, overdue: false };
 }
 
 function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, currentDoc, onJump }: {
@@ -619,6 +717,9 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
   const { isAdmin, isPromotora } = useAuth();
   const importContract = useImportSignedContract();
   const generate = useGenerateContract();
+  const resend = useContractResend();
+  const cancelSend = useContractCancel();
+  const checkStatus = useContractStatus();
   const [importOpen, setImportOpen] = useState(false);
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenReason, setRegenReason] = useState("");
@@ -628,6 +729,9 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
   const [opening, setOpening] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const meta = CONTRACT_STATUS_META[i.contract_status] ?? CONTRACT_STATUS_META.none;
   const termsMissing = missingTerms(i);
@@ -641,9 +745,55 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
   const canRegenerate = canGenerate && !!currentDoc && LIVE_DOC_STATUSES.includes(currentDoc.status);
   const history = docs.filter((d) => d.id !== currentDoc?.id);
 
-  const badgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando assinatura` : meta.label;
+  // Fase 3: assinatura eletrônica
+  const docSendable = !!currentDoc && CONTRACT_SENDABLE_STATUSES.includes(currentDoc.status);
+  const docInFlight = !!currentDoc && CONTRACT_IN_FLIGHT_STATUSES.includes(currentDoc.status);
+  const docFailed = !!currentDoc && CONTRACT_FAILED_STATUSES.includes(currentDoc.status);
+  const canSend = canGenerate && docSendable && termsMissing.length === 0;
+  const signatureBusy = resend.isPending || cancelSend.isPending || checkStatus.isPending;
+  const deadline = currentDoc && docInFlight ? deadlineText(currentDoc.deadline_at) : null;
+
+  const badgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando envio` : meta.label;
 
   const resetImport = () => { setFile(null); setSignedAt(todayISO()); setReason(""); };
+
+  const runResend = async () => {
+    if (!currentDoc) return;
+    try {
+      await resend.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id });
+      toast.success("Convites reenviados pelos canais escolhidos.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui reenviar os convites.");
+    }
+  };
+
+  const runCheck = async () => {
+    if (!currentDoc) return;
+    try {
+      const r = await checkStatus.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id });
+      if (r.finalized) toast.success(`Contrato v${currentDoc.version} assinado e conferido — ${i.code} formalizada.`);
+      else if (r.applied > 0) toast.success(`Status atualizado (${r.applied} ${r.applied === 1 ? "evento novo" : "eventos novos"}).`);
+      else {
+        const st = r.document ? CONTRACT_DOCUMENT_STATUS_META[r.document.status]?.label ?? r.document.status : null;
+        toast.info(st ? `Sem novidades — ${st.toLowerCase()}.` : "Sem novidades por enquanto.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui consultar o status da assinatura.");
+    }
+  };
+
+  const confirmCancelSend = async () => {
+    if (!currentDoc) return;
+    if (cancelReason.trim().length < 3) { toast.error("Descreva o motivo do cancelamento."); return; }
+    try {
+      await cancelSend.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id, reason: cancelReason.trim() });
+      toast.success(`Envio da v${currentDoc.version} cancelado. Gere uma nova versão quando quiser enviar de novo.`);
+      setCancelOpen(false);
+      setCancelReason("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui cancelar o envio.");
+    }
+  };
 
   const confirmImport = async () => {
     if (!file) { toast.error("Escolha o PDF do contrato assinado."); return; }
@@ -721,7 +871,11 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
       {/* Assinado/importado: resumo (mantido da fase 1) */}
       {hasContract && (
         <div className="text-xs text-muted-foreground space-y-0.5">
-          <p>Assinado em <strong className="text-foreground">{fmtDate(i.contract_signed_at)}</strong>{i.contract_imported_by && memberName(i.contract_imported_by) ? <> · importado por <strong className="text-foreground">{memberName(i.contract_imported_by)}</strong></> : null}</p>
+          <p>
+            Assinado em <strong className="text-foreground">{fmtDate(i.contract_signed_at)}</strong>
+            {i.contract_status === "signed" ? " · assinatura eletrônica" : null}
+            {i.contract_imported_by && memberName(i.contract_imported_by) ? <> · importado por <strong className="text-foreground">{memberName(i.contract_imported_by)}</strong></> : null}
+          </p>
           {i.contract_sha256 && <p>Hash SHA-256: <code className="text-[11px]">{i.contract_sha256.slice(0, 12)}…</code></p>}
           {i.contract_import_reason && <p>Origem: {i.contract_import_reason}</p>}
           {i.contract_file_path && (
@@ -772,8 +926,8 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
           <Button size="sm" variant="outline" onClick={preview} disabled={previewing}>
             {previewing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Eye className="h-4 w-4 mr-1" />} Pré-visualizar
           </Button>
-          {!currentDoc || !LIVE_DOC_STATUSES.includes(currentDoc.status) ? (
-            <Button size="sm" disabled={!ready || !canGenerate || generate.isPending} onClick={() => runGenerate()} title={!ready ? "Preencha o que falta antes de gerar" : undefined}>
+          {docInFlight ? null : !currentDoc || !LIVE_DOC_STATUSES.includes(currentDoc.status) ? (
+            <Button size="sm" variant={docFailed ? "outline" : "default"} disabled={!ready || !canGenerate || generate.isPending} onClick={() => runGenerate()} title={!ready ? "Preencha o que falta antes de gerar" : undefined}>
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />} Gerar contrato v{nextVersion}
             </Button>
           ) : (
@@ -781,21 +935,55 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
               <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
             </Button>
           )}
+          {docSendable && currentDoc && (
+            <Button size="sm" disabled={!canSend || generate.isPending} onClick={() => setSendOpen(true)} title={termsMissing.length > 0 ? `Preencha nas condições comerciais: ${termsMissing.join(", ")}` : undefined}>
+              <Send className="h-4 w-4 mr-1" /> {currentDoc.status === "error" ? "Enviar novamente" : "Enviar para assinatura"}
+            </Button>
+          )}
+          {docInFlight && currentDoc && (
+            <>
+              {currentDoc.status !== "completed" && (
+                <Button size="sm" variant="outline" disabled={signatureBusy} onClick={runResend}>
+                  {resend.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />} Reenviar convites
+                </Button>
+              )}
+              <Button size="sm" variant={currentDoc.status === "completed" ? "default" : "outline"} disabled={signatureBusy} onClick={runCheck}>
+                {checkStatus.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />} Verificar agora
+              </Button>
+              {currentDoc.status !== "completed" && (
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={signatureBusy} onClick={() => setCancelOpen(true)}>
+                  <Ban className="h-4 w-4 mr-1" /> Cancelar envio
+                </Button>
+              )}
+            </>
+          )}
           {canImportStatus && (
             isAdmin ? (
-              <Button size="sm" variant={currentDoc ? "outline" : "ghost"} disabled={termsMissing.length > 0} onClick={() => setImportOpen(true)}>
-                <Upload className="h-4 w-4 mr-1" /> {currentDoc ? `Importar o PDF assinado desta versão (v${currentDoc.version})` : "Importar contrato assinado (PDF)"}
+              <Button size="sm" variant="ghost" disabled={termsMissing.length > 0} onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-1" /> {currentDoc ? `Importar assinado em papel (v${currentDoc.version})` : "Importar contrato assinado (PDF)"}
               </Button>
             ) : (
-              <span className="text-[11px] text-muted-foreground">Depois de assinado, o admin importa o PDF aqui.</span>
+              !docInFlight && <span className="text-[11px] text-muted-foreground">Se for assinado em papel, o admin importa o PDF aqui.</span>
             )
           )}
         </div>
       )}
-      {!hasContract && !isPromotora && isAdmin && canImportStatus && termsMissing.length > 0 && (
-        <p className="text-[11px] text-muted-foreground">Antes de importar, preencha nas condições comerciais: {termsMissing.join(", ")}.</p>
+      {!hasContract && !isPromotora && docInFlight && currentDoc && (
+        <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+          <Info className="h-3 w-3 shrink-0 mt-0.5" />
+          {currentDoc.status === "completed"
+            ? "Todos assinaram. Estamos baixando e conferindo o PDF assinado — clique em \"Verificar agora\" pra concluir na hora."
+            : "Enquanto o envio estiver em andamento não dá pra gerar outra versão. Pra alterar o contrato, cancele o envio primeiro."}
+        </p>
       )}
-      {!hasContract && isPromotora && <p className="text-xs text-muted-foreground">{currentDoc ? `Contrato v${currentDoc.version} gerado, aguardando assinatura.` : "Sem contrato assinado."}</p>}
+      {!hasContract && !isPromotora && isAdmin && canImportStatus && termsMissing.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">Antes de enviar ou importar, preencha nas condições comerciais: {termsMissing.join(", ")}.</p>
+      )}
+      {!hasContract && isPromotora && (
+        <p className="text-xs text-muted-foreground">
+          {!currentDoc ? "Sem contrato assinado." : docInFlight ? `Contrato v${currentDoc.version} enviado pra assinatura.` : `Contrato v${currentDoc.version} gerado, aguardando assinatura.`}
+        </p>
+      )}
 
       {/* Documento atual */}
       {currentDoc && docMeta && (
@@ -824,8 +1012,26 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
               </button>
             )}
           </div>
-          {currentDoc.cancel_reason && currentDoc.status === "cancelled" && <p className="text-muted-foreground">Cancelado: {currentDoc.cancel_reason}</p>}
-          <DocumentSigners doc={currentDoc} />
+          {docInFlight && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+              {currentDoc.sent_at && <span>Enviado em {fmtDateTime(currentDoc.sent_at)}</span>}
+              {deadline && <span className={cn("inline-flex items-center gap-1", deadline.overdue && "text-red-700 dark:text-red-300")}><CalendarClock className="h-3 w-3" /> {deadline.text}</span>}
+              {currentDoc.last_event_at && <span>Última atualização {fmtDateTime(currentDoc.last_event_at)}</span>}
+            </div>
+          )}
+          {docFailed && (
+            <p className={cn("flex items-start gap-1", currentDoc.status === "cancelled" ? "text-muted-foreground" : "text-red-700 dark:text-red-300")}>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>
+                {currentDoc.status === "error"
+                  ? `Erro no envio: ${currentDoc.error_message ?? "sem detalhes"}`
+                  : `${CONTRACT_DOCUMENT_STATUS_META[currentDoc.status].label}${currentDoc.cancel_reason ? `: ${currentDoc.cancel_reason}` : ""}${currentDoc.cancelled_at ? ` · ${fmtDateTime(currentDoc.cancelled_at)}` : ""}`}
+                {currentDoc.status !== "error" && !isPromotora ? " — gere uma nova versão pra enviar de novo." : null}
+              </span>
+            </p>
+          )}
+          <DocumentSigners doc={currentDoc} inFlight={docInFlight || docFailed || currentDoc.status === "validated"} />
+          {(currentDoc.provider_envelope_id || docInFlight || docFailed) && !isPromotora && <ContractEventsBlock doc={currentDoc} />}
         </div>
       )}
 
@@ -865,7 +1071,39 @@ function ContractBlock({ i, memberName, snapshot, snapshotLoading, docs, current
         </Collapsible>
       )}
 
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Info className="h-3 w-3" /> Assinatura eletrônica (Clicksign) chega na fase 3.</p>
+      {/* Enviar para assinatura (Clicksign) */}
+      {currentDoc && docSendable && (
+        <ContractSignatureDialog
+          open={sendOpen}
+          onOpenChange={setSendOpen}
+          doc={currentDoc}
+          intermediationCode={i.code}
+          leadId={i.owner_lead_id}
+        />
+      )}
+
+      {/* Cancelar envio */}
+      <Dialog open={cancelOpen} onOpenChange={(o) => { if (!cancelSend.isPending) { setCancelOpen(o); if (!o) setCancelReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar envio pra assinatura — {i.code}</DialogTitle>
+            <DialogDescription>
+              O envelope da <strong>v{currentDoc?.version ?? "—"}</strong> é cancelado na Clicksign e os links dos convites param de funcionar.
+              Quem já assinou perde a assinatura — pra enviar de novo, gere uma nova versão.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo *</Label>
+            <Textarea rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Ex.: proprietário pediu pra mudar o prazo / e-mail errado" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCancelOpen(false); setCancelReason(""); }} disabled={cancelSend.isPending}>Voltar</Button>
+            <Button variant="destructive" onClick={confirmCancelSend} disabled={cancelSend.isPending}>
+              {cancelSend.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />} Cancelar envio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Regenerar */}
       <Dialog open={regenOpen} onOpenChange={(o) => { if (!generate.isPending) { setRegenOpen(o); if (!o) setRegenReason(""); } }}>
@@ -1231,7 +1469,7 @@ export function IntermediationCard({ leadId }: Props) {
   const contractMeta = CONTRACT_STATUS_META[i.contract_status] ?? CONTRACT_STATUS_META.none;
   const currentDoc =
     docs.find((d) => d.id === i.contract_document_id) ?? docs.find((d) => d.status !== "cancelled" && d.status !== "archived") ?? null;
-  const contractBadgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando assinatura` : contractMeta.label;
+  const contractBadgeLabel = i.contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando envio` : contractMeta.label;
   const promoterName = memberName(i.promoter_id);
   const entity = legalEntities.find((e) => e.id === (i.legal_entity_id ?? snapshot?.legal_entity_id)) ?? null;
   const canEdit = !isPromotora;

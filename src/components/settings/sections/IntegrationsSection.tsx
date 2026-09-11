@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { toast as sonner } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useClicksignRegisterWebhook, useClicksignTest } from "@/hooks/useIntermediation";
 import {
   Eye,
   EyeOff,
@@ -14,6 +17,9 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
+  PlugZap,
+  Webhook,
+  Info,
 } from "lucide-react";
 
 // =====================================================
@@ -26,11 +32,13 @@ interface IntegrationDef {
   description: string;
   placeholder: string;
   docsUrl?: string;
-  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "other";
+  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "signature" | "other";
   // "tenant" → chave da loja (cada lojista paga a própria), gravada via RPC
   //            set_my_tenant_integration_key. "global" → infra central da Totex
   //            (Google OAuth, webhook secret do marketplace), gravada em `config`.
   scope?: "tenant" | "global";
+  /** Valor de lista fechada (ex.: ambiente) — vira <Select> em vez de input mascarado. */
+  options?: { value: string; label: string }[];
 }
 
 // Chaves que as edge functions leem por-tenant (espelha o allowlist da RPC
@@ -49,6 +57,7 @@ const TENANT_SCOPED_KEYS = new Set<string>([
   "RESEND_API_KEY",
   "CLICKSIGN_API_KEY",
   "CLICKSIGN_ENV",
+  "CLICKSIGN_WEBHOOK_SECRET",
 ]);
 
 const isTenantScoped = (key: string) => TENANT_SCOPED_KEYS.has(key);
@@ -154,18 +163,31 @@ const INTEGRATIONS: IntegrationDef[] = [
     key: "CLICKSIGN_API_KEY",
     label: "Clicksign — Access Token",
     description:
-      "Assinatura eletrônica dos contratos de intermediação. Gere em Clicksign › Configurações › API › Access Tokens. Fica guardado só no servidor; a fase 3 (envio e webhook) usa esta chave.",
+      "Assinatura eletrônica dos contratos de intermediação. Pegue em Clicksign › Configurações › API › Access Tokens. Sandbox e produção têm tokens DIFERENTES — o token precisa bater com o ambiente escolhido abaixo. Fica guardado só no servidor.",
     placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     docsUrl: "https://developers.clicksign.com",
-    category: "other",
+    category: "signature",
   },
   {
     key: "CLICKSIGN_ENV",
     label: "Clicksign — Ambiente",
-    description: "\"sandbox\" pra testar sem valor jurídico, \"production\" pra valer. Padrão: sandbox.",
+    description: "Sandbox pra testar sem valor jurídico (sandbox.clicksign.com); Produção pra valer (app.clicksign.com). Vazio = Sandbox.",
     placeholder: "sandbox",
     docsUrl: "https://developers.clicksign.com",
-    category: "other",
+    category: "signature",
+    options: [
+      { value: "sandbox", label: "Sandbox (testes)" },
+      { value: "production", label: "Produção" },
+    ],
+  },
+  {
+    key: "CLICKSIGN_WEBHOOK_SECRET",
+    label: "Clicksign — Webhook Secret (HMAC)",
+    description:
+      "Preenchido automaticamente por \"Registrar webhook na Clicksign\". Só edite na mão se você cadastrou o webhook direto no painel da Clicksign — cole aqui o secret que ela mostrou.",
+    placeholder: "preenchido ao registrar o webhook",
+    docsUrl: "https://developers.clicksign.com",
+    category: "signature",
   },
   // Marketplace
   {
@@ -202,8 +224,87 @@ const CATEGORY_LABELS: Record<string, string> = {
   payment: "Pagamentos",
   email: "Email",
   marketplace: "Marketplace",
+  signature: "Assinatura eletrônica (Clicksign)",
   other: "Google & Outros",
 };
+
+// =====================================================
+// CLICKSIGN — testar conexão / registrar webhook
+// =====================================================
+
+function ClicksignActions({ hasToken, env, hasSecret, onRegistered }: {
+  hasToken: boolean;
+  env: string;
+  hasSecret: boolean;
+  onRegistered: () => void;
+}) {
+  const test = useClicksignTest();
+  const register = useClicksignRegisterWebhook();
+  const [endpoint, setEndpoint] = useState<string | null>(null);
+  const envLabel = env === "production" ? "Produção" : "Sandbox";
+
+  const runTest = async () => {
+    try {
+      const r = await test.mutateAsync();
+      sonner.success(`Conectado na Clicksign (${r.env === "production" ? "Produção" : "Sandbox"}).`);
+    } catch (e) {
+      sonner.error(e instanceof Error ? e.message : "Não consegui conectar na Clicksign.", {
+        description: "Confira se o Access Token é do mesmo ambiente escolhido (sandbox × produção).",
+      });
+    }
+  };
+
+  const runRegister = async () => {
+    try {
+      const r = await register.mutateAsync();
+      setEndpoint(r.endpoint);
+      sonner.success("Webhook registrado na Clicksign. O secret foi guardado no servidor.", {
+        description: r.endpoint ?? undefined,
+      });
+      onRegistered();
+    } catch (e) {
+      sonner.error(e instanceof Error ? e.message : "Não consegui registrar o webhook na Clicksign.");
+    }
+  };
+
+  return (
+    <Card className="border-dashed">
+      <CardContent className="pt-4 pb-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-medium text-sm">Conexão e webhook</p>
+            <p className="text-xs text-muted-foreground">
+              Ambiente atual: <strong>{envLabel}</strong>. Salve o token e o ambiente antes de testar. O webhook avisa o CRM quando alguém visualiza, assina ou recusa o contrato.
+            </p>
+          </div>
+          <Badge
+            variant="secondary"
+            className={`text-[10px] px-1.5 py-0 ${hasSecret ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-muted text-muted-foreground"}`}
+          >
+            {hasSecret ? "Webhook registrado" : "Webhook pendente"}
+          </Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" className="h-9" onClick={runTest} disabled={!hasToken || test.isPending || register.isPending}>
+            {test.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <PlugZap className="h-3.5 w-3.5 mr-1" />} Testar conexão
+          </Button>
+          <Button size="sm" className="h-9" onClick={runRegister} disabled={!hasToken || test.isPending || register.isPending}>
+            {register.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Webhook className="h-3.5 w-3.5 mr-1" />} Registrar webhook na Clicksign
+          </Button>
+          {!hasToken && <span className="text-[11px] text-muted-foreground">Salve o Access Token primeiro.</span>}
+        </div>
+        {endpoint && (
+          <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+            <Info className="h-3 w-3 shrink-0 mt-0.5" /> Endpoint registrado: <code className="break-all">{endpoint}</code>
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+          <Info className="h-3 w-3 shrink-0 mt-0.5" /> Registrar de novo cria outro webhook na Clicksign e troca o secret aqui — se fizer isso, apague o antigo no painel dela (Configurações › Webhooks). Trocou de ambiente? Registre de novo.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 // =====================================================
 // MAIN COMPONENT
@@ -232,7 +333,7 @@ export function IntegrationsSection() {
       if (tenantErr) {
         console.error("Error loading tenant integration keys:", tenantErr);
       } else {
-        (tenantData || []).forEach((row: any) => {
+        ((tenantData || []) as { key: string; value: string | null }[]).forEach((row) => {
           keyMap[row.key] = row.value || "";
         });
       }
@@ -249,7 +350,7 @@ export function IntegrationsSection() {
         if (globalErr) {
           console.error("Error loading global config keys:", globalErr);
         } else {
-          (globalData || []).forEach((row: any) => {
+          ((globalData || []) as { key: string; value: string | null }[]).forEach((row) => {
             keyMap[row.key] = row.value || "";
           });
         }
@@ -376,31 +477,45 @@ export function IntegrationsSection() {
                           {integration.description}
                         </p>
                         <div className="flex items-center gap-2">
-                          <div className="relative flex-1">
-                            <Input
-                              type={isVisible ? "text" : "password"}
-                              value={keys[integration.key] || ""}
-                              onChange={(e) =>
-                                setKeys((prev) => ({
-                                  ...prev,
-                                  [integration.key]: e.target.value,
-                                }))
-                              }
-                              placeholder={integration.placeholder}
-                              className="pr-10 font-mono text-xs h-9"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => toggleVisibility(integration.key)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          {integration.options ? (
+                            <Select
+                              value={value || integration.options[0].value}
+                              onValueChange={(v) => setKeys((prev) => ({ ...prev, [integration.key]: v }))}
                             >
-                              {isVisible ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
+                              <SelectTrigger className="h-9 flex-1 text-xs"><SelectValue placeholder={integration.placeholder} /></SelectTrigger>
+                              <SelectContent>
+                                {integration.options.map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="relative flex-1">
+                              <Input
+                                type={isVisible ? "text" : "password"}
+                                value={keys[integration.key] || ""}
+                                onChange={(e) =>
+                                  setKeys((prev) => ({
+                                    ...prev,
+                                    [integration.key]: e.target.value,
+                                  }))
+                                }
+                                placeholder={integration.placeholder}
+                                className="pr-10 font-mono text-xs h-9"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleVisibility(integration.key)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {isVisible ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -432,6 +547,14 @@ export function IntegrationsSection() {
                 </Card>
               );
             })}
+            {category === "signature" && (
+              <ClicksignActions
+                hasToken={!!keys.CLICKSIGN_API_KEY}
+                env={keys.CLICKSIGN_ENV || "sandbox"}
+                hasSecret={!!keys.CLICKSIGN_WEBHOOK_SECRET}
+                onRegistered={() => { void loadKeys(); }}
+              />
+            )}
           </div>
         </div>
       ))}
