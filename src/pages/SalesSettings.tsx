@@ -45,7 +45,7 @@ import {
   templateCategoryLabels,
   type AnalysisTemplate,
 } from "@/hooks/useAnalysisTemplates";
-import { useAllProducts, useCreateProduct, useUpdateProduct, useToggleProductActive } from "@/hooks/useProducts";
+import { useAllProducts, useCreateProduct, useUpdateProduct, useToggleProductActive, type Product } from "@/hooks/useProducts";
 import { useSalesPlaybook, useUpdatePlaybook } from "@/hooks/useSalesPlaybook";
 import {
   CommissionSummaryCard,
@@ -128,6 +128,7 @@ import {
   useCreateWavoipDevice,
   useUpdateWavoipDevice,
   useDeleteWavoipDevice,
+  type WavoipDevice,
 } from "@/hooks/useWavoip";
 
 export default function SalesSettings() {
@@ -506,7 +507,7 @@ export function ProductsTab() {
   const toggleActive = useToggleProductActive();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     price: "",
@@ -521,7 +522,7 @@ export function ProductsTab() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (product: any) => {
+  const openEditModal = (product: Product) => {
     setEditingProduct(product);
     setFormData({
       name: product.name || "",
@@ -556,7 +557,7 @@ export function ProductsTab() {
     }
   };
 
-  const handleToggleActive = async (product: any) => {
+  const handleToggleActive = async (product: Product) => {
     try {
       await toggleActive.mutateAsync({
         id: product.id,
@@ -799,7 +800,7 @@ export function TeamTab() {
   const [wavoipName, setWavoipName] = useState("");
 
   const getMemberWavoip = (memberId: string) =>
-    (wavoipDevices || []).find((d: any) => d.team_member_id === memberId && d.is_active);
+    (wavoipDevices || []).find((d: WavoipDevice) => d.team_member_id === memberId && d.is_active);
 
   const handleSaveWavoip = async () => {
     if (!wavoipModalMember || !wavoipToken.trim()) {
@@ -825,8 +826,8 @@ export function TeamTab() {
       setWavoipModalMember(null);
       setWavoipToken("");
       setWavoipName("");
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro ao salvar WaVoIP", variant: "destructive" });
     }
   };
 
@@ -837,8 +838,8 @@ export function TeamTab() {
     try {
       await deleteWavoip.mutateAsync(existing.id);
       toast({ title: "WaVoIP removido" });
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro ao remover WaVoIP", variant: "destructive" });
     }
   };
 
@@ -1728,7 +1729,7 @@ function InstagramAccountModal({
 interface InstagramRuleFormData {
   name: string;
   description?: string;
-  trigger_type: string;
+  trigger_type: SocialSellerRule["trigger_type"];
   trigger_config: string;
   from_stage_id?: string;
   to_stage_id: string;
@@ -1786,7 +1787,7 @@ function InstagramRuleModal({
       const ruleData = {
         name: data.name,
         description: data.description || null,
-        trigger_type: data.trigger_type as any,
+        trigger_type: data.trigger_type,
         trigger_config: JSON.parse(data.trigger_config),
         from_stage_id: data.from_stage_id === "any" ? null : data.from_stage_id,
         to_stage_id: data.to_stage_id,
@@ -2268,14 +2269,14 @@ export function InstagramTab() {
                         </TableCell>
                         <TableCell>
                           <span className="text-muted-foreground">
-                            {(rule.from_stage as any)?.name || "Qualquer"}
+                            {rule.from_stage?.name || "Qualquer"}
                           </span>
                           {" → "}
                           <span
                             className="font-medium"
-                            style={{ color: (rule.to_stage as any)?.color }}
+                            style={{ color: rule.to_stage?.color }}
                           >
-                            {(rule.to_stage as any)?.name}
+                            {rule.to_stage?.name}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -2339,13 +2340,30 @@ export function InstagramTab() {
   );
 }
 
+// ceo_bot_config / content_agent_config e whatsapp_instances (select parcial) ainda não
+// estão nos tipos gerados do Supabase (`database.types.ts` desatualizado) — tipagem local.
+interface BotWhatsAppInstance {
+  id: string;
+  name: string | null;
+  phone_number: string | null;
+  api_url: string | null;
+}
+
+interface CeoBotConfig {
+  id: string;
+  is_active: boolean | null;
+  instance_id: string | null;
+  max_messages_per_hour: number | null;
+  allowed_phones: string[] | null;
+}
+
 // ============================================
 // CEO BOT CONFIG TAB
 // ============================================
 export function CEOBotConfigTab() {
   const { toast } = useToast();
-  const [config, setConfig] = useState<any>(null);
-  const [instances, setInstances] = useState<any[]>([]);
+  const [config, setConfig] = useState<CeoBotConfig | null>(null);
+  const [instances, setInstances] = useState<BotWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newPhone, setNewPhone] = useState("");
@@ -2571,13 +2589,23 @@ export function CEOBotConfigTab() {
   );
 }
 
+interface ContentAgentConfig {
+  id: string;
+  is_active: boolean | null;
+  instance_id: string | null;
+  max_messages_per_hour: number | null;
+  allowed_phones: string[] | null;
+  api_key: string | null;
+  api_base_url: string | null;
+}
+
 // ============================================
 // CONTENT AGENT CONFIG TAB
 // ============================================
 export function ContentAgentConfigTab() {
   const { toast } = useToast();
-  const [config, setConfig] = useState<any>(null);
-  const [instances, setInstances] = useState<any[]>([]);
+  const [config, setConfig] = useState<ContentAgentConfig | null>(null);
+  const [instances, setInstances] = useState<BotWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newPhone, setNewPhone] = useState("");
