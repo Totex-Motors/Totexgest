@@ -93,6 +93,33 @@ Storage: bucket privado `intermediation-contracts` (`<tenant_id>/<intermediation
 1 `lead_distribution_config` e 2 automações repontadas, `legal_entities` semeada com a Totex Digital Mídia.
 Smoke test local: `scratchpad/smoke_test8.sql`.
 
+## Fase 2 — Documentos (entregue 2026-09-12)
+
+Migration `20260912100000_intermediacao_contratos.sql` (aplicada em prod em 2 partes) + edge fn `contract-render`.
+
+- **Templates jurídicos versionados** (`contract_templates`): global (`tenant_id` NULL, só superadmin) ou do tenant
+  (admin). Body em markdown-lite (`#`/`##`/`###`, `- ` bullets, `**bold**`, `{{variável}}`, `[[signature:owner|company]]`).
+  Publicado é **imutável** (trigger); publicar um draft aposenta o anterior. `contract_template_current(tenant, tipo)`
+  escolhe o do tenant, senão o global. v1 = Parte I do PRD (Condições Específicas + Gerais + assinaturas), 22 variáveis obrigatórias.
+- **Snapshot** `intermediation_contract_snapshot(id)` monta as variáveis (entidade jurídica, quem assina, proprietário,
+  veículo, condições, data por extenso) e devolve `missing` com rótulo PT e origem (`terms` | `contract_data.owner` |
+  `contract_data.vehicle` | `legal_entity`) — a UI mostra "Falta: …" e leva ao campo.
+- **Dados do contrato** `intermediation_set_contract_data(id, {owner, vehicle})`: CPF/RG/endereço do proprietário
+  (`intermediations.owner_data` + espelho no lead), placa/Renavam/chassi/cor/combustível do carro
+  (`seller_vehicles.plate/renavam/chassis`). Bloqueado pra comercial depois de assinado.
+- **Geração** (edge fn `contract-render`, JWT comercial/admin): snapshot → 422 com faltantes, ou PDF A4 via `pdf-lib`
+  → bucket `intermediation-contracts` → `contract_document_register()` (service_role): versão n+1, anteriores
+  `cancelled`, signatários previstos (proprietário + empresa), `intermediation.contract_status='generated'`,
+  evento `intermediation_contract_generated`. `{preview:true}` devolve o PDF sem gravar.
+- **Importar assinado** agora marca o documento gerado como `validated` (+ signers `signed`) e formaliza. Sem documento
+  gerado, cria um registro `manual_import`.
+- **Quem assina pela Totex** hoje: `legal_entities.signer_name/cpf/role` (Fabiana, Administradora). Fase 5 troca por procurações.
+- **Clicksign**: `CLICKSIGN_API_KEY` e `CLICKSIGN_ENV` em Configurações › Integrações › API Keys (por tenant; allowlist
+  da RPC `set_my_tenant_integration_key`). A fase 3 lê via `getIntegrationKey`.
+- UI: `IntermediationCard` (Dados do contrato, checklist, Pré-visualizar, Gerar v{n}, Regenerar com motivo, histórico de
+  versões, signatários), Configurações › Comercial › Intermediação (entidade jurídica + templates).
+- Smoke local: `scratchpad/smoke_test9.sql`.
+
 ## Fases seguintes
 
 | Fase | Entrega | Migrations/arquivos previstos |

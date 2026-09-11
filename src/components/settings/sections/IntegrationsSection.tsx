@@ -47,6 +47,8 @@ const TENANT_SCOPED_KEYS = new Set<string>([
   "WAVOIP_API_KEY",
   "ASAAS_API_KEY",
   "RESEND_API_KEY",
+  "CLICKSIGN_API_KEY",
+  "CLICKSIGN_ENV",
 ]);
 
 const isTenantScoped = (key: string) => TENANT_SCOPED_KEYS.has(key);
@@ -146,6 +148,24 @@ const INTEGRATIONS: IntegrationDef[] = [
     placeholder: "re_...",
     docsUrl: "https://resend.com/api-keys",
     category: "email",
+  },
+  // Assinatura eletrônica (Intermediação — fase 3)
+  {
+    key: "CLICKSIGN_API_KEY",
+    label: "Clicksign — Access Token",
+    description:
+      "Assinatura eletrônica dos contratos de intermediação. Gere em Clicksign › Configurações › API › Access Tokens. Fica guardado só no servidor; a fase 3 (envio e webhook) usa esta chave.",
+    placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    docsUrl: "https://developers.clicksign.com",
+    category: "other",
+  },
+  {
+    key: "CLICKSIGN_ENV",
+    label: "Clicksign — Ambiente",
+    description: "\"sandbox\" pra testar sem valor jurídico, \"production\" pra valer. Padrão: sandbox.",
+    placeholder: "sandbox",
+    docsUrl: "https://developers.clicksign.com",
+    category: "other",
   },
   // Marketplace
   {
