@@ -186,3 +186,7 @@ verify_jwt = true
 # captação: cron pg_cron (sem JWT) + botão "Sincronizar agora" (valida o usuário por dentro)
 [functions.capture-listing-sync]
 verify_jwt = false
+
+# intermediação: gera o PDF do contrato (só UI, JWT do usuário; promotora → 403)
+[functions.contract-render]
+verify_jwt = true
