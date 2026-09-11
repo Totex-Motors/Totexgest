@@ -190,3 +190,15 @@ verify_jwt = false
 # intermediação: gera o PDF do contrato (só UI, JWT do usuário; promotora → 403)
 [functions.contract-render]
 verify_jwt = true
+
+# intermediação: envia/reenvia/cancela/consulta a assinatura eletrônica (só UI, JWT do usuário)
+[functions.contract-send]
+verify_jwt = true
+
+# intermediação: webhook da Clicksign (sem JWT; autentica por HMAC com o secret do tenant)
+[functions.clicksign-webhook]
+verify_jwt = false
+
+# intermediação: cron pg_cron (*/30) reconcilia documentos enviados com o provedor
+[functions.contract-reconcile]
+verify_jwt = false
