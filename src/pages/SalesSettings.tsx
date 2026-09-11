@@ -1202,7 +1202,6 @@ export function TeamTab() {
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="comercial">Comercial</SelectItem>
-                    <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="geral">Geral</SelectItem>
                     <SelectItem value="promotora">Promotora (captação)</SelectItem>
                   </SelectContent>
@@ -1217,7 +1216,6 @@ export function TeamTab() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="comercial">Comercial</SelectItem>
-                    <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="marketing">Marketing</SelectItem>
                     <SelectItem value="suporte">Suporte</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
@@ -1273,7 +1271,6 @@ export function TeamTab() {
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="comercial">Comercial</SelectItem>
-                    <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="geral">Geral</SelectItem>
                     <SelectItem value="promotora">Promotora (captação)</SelectItem>
                   </SelectContent>
@@ -1285,7 +1282,6 @@ export function TeamTab() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="comercial">Comercial</SelectItem>
-                    <SelectItem value="cs">CS</SelectItem>
                     <SelectItem value="marketing">Marketing</SelectItem>
                     <SelectItem value="suporte">Suporte</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>

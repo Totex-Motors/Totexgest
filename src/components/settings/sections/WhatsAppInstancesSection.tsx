@@ -562,7 +562,6 @@ export function WhatsAppInstancesSection() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="comercial">Comercial</SelectItem>
-                  <SelectItem value="cs">Customer Success</SelectItem>
                   <SelectItem value="suporte">Suporte</SelectItem>
                 </SelectContent>
               </Select>
