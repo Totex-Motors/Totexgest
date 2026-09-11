@@ -59,6 +59,7 @@ import { SidebarDeals } from "@/components/sales/SidebarDeals";
 import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard";
 import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
+import { CaptureVehicleCard } from "@/components/sales/CaptureVehicleCard";
 import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
 import { CancelRefundModal } from "@/components/sales/CancelRefundModal";
@@ -1513,6 +1514,9 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               {/* Comercial Tab */}
               <TabsContent value="comercial">
                 <div className="space-y-6">
+                  {/* Captação — só renderiza se o lead foi captado por promotora */}
+                  {id && <CaptureVehicleCard leadId={id} />}
+
                   {/* Oportunidades movidas pra sidebar — só mantém participações secundárias */}
 
                       {/* Participação em outros deals como contato secundário (filtra os que já aparecem em contactDeals) */}

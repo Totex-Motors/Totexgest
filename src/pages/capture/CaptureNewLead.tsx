@@ -28,8 +28,9 @@ import { SCRIPT_CARDS } from "./captureContent";
 /**
  * QUICK CAPTURE — cadastro em 20–30 segundos, de pé, no corredor do shopping.
  *
- * Passo 1 (obrigatório): nome, WhatsApp, carro, ano, intenção, prazo.
- * Passo 2 (opcional, 10s): KM, proprietário, aceita avaliação, autoriza contato, observação.
+ * Passo 1 (obrigatório): nome, WhatsApp, carro, ano, intenção, prazo, autoriza contato
+ *   (consentimento LGPD — sem ele o lead NÃO conta na meta semanal).
+ * Passo 2 (opcional, 10s): KM, proprietário, aceita avaliação, observação.
  *
  * Reaproveita PhoneInput + useCheckLeadDuplicate; NÃO expõe o CreateLeadOrDealModal.
  * Grava via RPC create_capture_lead (carimba tenant, captured_by, intent, score).
@@ -121,7 +122,8 @@ export default function CaptureNewLead() {
     d.vehicle.trim().length >= 2 &&
     /^\d{4}$/.test(d.year) &&
     !!d.intent &&
-    !!d.prazo;
+    !!d.prazo &&
+    typeof d.autoriza_contato === "boolean";
 
   const previewScore = useMemo(
     () => computeCaptureScore(
@@ -187,6 +189,15 @@ export default function CaptureNewLead() {
           </Badge>
           <span className="text-sm text-muted-foreground">Score {done.score}/100</span>
         </div>
+        {d.autoriza_contato === true ? (
+          <p className="text-sm font-medium text-emerald-700 flex items-center justify-center gap-1">
+            <Check className="h-4 w-4" /> Conta na meta semanal
+          </p>
+        ) : (
+          <p className="text-sm font-medium text-amber-700 flex items-center justify-center gap-1">
+            <AlertTriangle className="h-4 w-4" /> Não conta na meta — sem autorização de contato
+          </p>
+        )}
         {done.handoff?.assigned ? (
           <p className="text-sm">
             🤝 Passado pra <strong>{done.handoff.specialist_name?.split(" ")[0] ?? "especialista"}</strong>
@@ -228,7 +239,7 @@ export default function CaptureNewLead() {
         <div className="flex-1">
           <h1 className="text-lg font-bold leading-tight">{step === 1 ? "Capte uma oportunidade" : "Mais 10 segundos?"}</h1>
           <p className="text-xs text-muted-foreground">
-            {step === 1 ? "6 campos. Dá pra fazer de pé." : "Esses dados deixam o lead quente pro especialista. Pode pular."}
+            {step === 1 ? "7 campos. Dá pra fazer de pé." : "Esses dados deixam o lead quente pro especialista. Pode pular."}
           </p>
         </div>
         <span className="text-xs text-muted-foreground tabular-nums">{step}/2</span>
@@ -286,6 +297,19 @@ export default function CaptureNewLead() {
               onChange={(prazo) => setD({ ...d, prazo })}
             />
           </div>
+          <div className="space-y-1.5">
+            <Label>Autoriza nosso especialista a chamar no WhatsApp?</Label>
+            <Segment
+              value={d.autoriza_contato === true ? "sim" : d.autoriza_contato === false ? "nao" : undefined}
+              options={[{ value: "sim", label: "Sim, autoriza" }, { value: "nao", label: "Não" }]}
+              onChange={(v) => setD({ ...d, autoriza_contato: v === "sim" })}
+            />
+            <p className={cn("text-[11px]", d.autoriza_contato === false ? "text-amber-700" : "text-muted-foreground")}>
+              {d.autoriza_contato === false
+                ? "Sem autorização o lead é salvo, mas não conta na meta semanal."
+                : "Consentimento pra contato (LGPD). Sem ele o lead não conta na meta."}
+            </p>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -308,14 +332,6 @@ export default function CaptureNewLead() {
               value={d.aceita_avaliacao}
               options={[{ value: "sim", label: "Sim" }, { value: "talvez", label: "Talvez" }, { value: "nao", label: "Não" }]}
               onChange={(aceita_avaliacao) => setD({ ...d, aceita_avaliacao })}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Autoriza nosso especialista a chamar no WhatsApp?</Label>
-            <Segment
-              value={d.autoriza_contato === true ? "sim" : d.autoriza_contato === false ? "nao" : undefined}
-              options={[{ value: "sim", label: "Sim, pode chamar" }, { value: "nao", label: "Ainda não" }]}
-              onChange={(v) => setD({ ...d, autoriza_contato: v === "sim" })}
             />
           </div>
           <div className="space-y-1.5">

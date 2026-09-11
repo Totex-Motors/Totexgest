@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Flame, Phone, Car, UserCheck, Clock } from "lucide-react";
+import { Search, Flame, Phone, Car, UserCheck, Clock, Check, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskPhoneBR } from "@/lib/phone";
-import { useCaptureLeads } from "@/hooks/useCaptureLeads";
+import { useCaptureLeads, useCaptureLeadValidity } from "@/hooks/useCaptureLeads";
 import { useLeadCaptureEvents } from "@/hooks/useCaptureHandoff";
 import { SellerQualificationCard } from "@/components/capture/SellerQualificationCard";
 import { TEMP_META, INTENT_LABEL, HANDOFF_STATUS_LABEL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
@@ -63,6 +63,20 @@ function fmtDateTime(iso?: string | null) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+/** Badge de validade na meta (leads.capture_valid) — verde conta, âmbar falta algo. */
+function ValidityBadge({ v }: { v?: { valid: boolean; reason: string | null } }) {
+  if (!v) return null;
+  return v.valid ? (
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+      Conta na meta <Check className="h-3 w-3" />
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+      <AlertTriangle className="h-3 w-3" /> Falta: {v.reason ?? "dados"}
+    </span>
+  );
+}
+
 function LeadTimeline({ leadId }: { leadId: string }) {
   const events = useLeadCaptureEvents(leadId);
   if (!events.data?.length) return null;
@@ -88,6 +102,9 @@ export default function CaptureMyLeads() {
   const leads = useCaptureLeads({ search, temperatura: temp });
   const selectedId = params.get("lead");
   const selected = useMemo(() => leads.data?.find((l) => l.id === selectedId) ?? null, [leads.data, selectedId]);
+  const leadIds = useMemo(() => (leads.data ?? []).map((l) => l.id), [leads.data]);
+  const validity = useCaptureLeadValidity(leadIds);
+  const selectedValidity = selected ? validity.data?.[selected.id] : undefined;
 
   const open = (id: string | null) => {
     const p = new URLSearchParams(params);
@@ -162,6 +179,11 @@ export default function CaptureMyLeads() {
                       {na.text}
                     </span>
                   </div>
+                  {validity.data?.[l.id] && (
+                    <div className="mt-1.5">
+                      <ValidityBadge v={validity.data[l.id]} />
+                    </div>
+                  )}
                 </button>
               </li>
             );
@@ -205,6 +227,20 @@ export default function CaptureMyLeads() {
                     <Phone className="h-4 w-4 mr-2" /> {maskPhoneBR(selected.phone)}
                   </a>
                 </Button>
+              )}
+
+              {selectedValidity && !selectedValidity.valid && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+                  <span>
+                    Complete <strong>{selectedValidity.reason ?? "os dados"}</strong> pra esse lead contar na meta.
+                  </span>
+                </div>
+              )}
+              {selectedValidity?.valid && (
+                <p className="text-xs font-medium text-emerald-700 flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" /> Esse lead conta na meta semanal.
+                </p>
               )}
 
               <SellerQualificationCard lead={selected} />
