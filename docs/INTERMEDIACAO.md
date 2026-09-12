@@ -182,6 +182,36 @@ de contrato/assinatura da Fase 3 — o Termo de Compra e Venda é só outro `doc
 - Smoke local: `scratchpad/smoke_test11.sql` (proposta+aceite, 3 signatários, espelho por tipo, finalize sem R$25,
   trava de conclusão sem pagamento, R$50 na conclusão, import papel, permissões).
 
+## Fase 5 — Representação e Alçadas (entregue 2026-09-15)
+
+Migrations `20260915100000_intermediacao_procuracoes.sql` (5a) e `20260915140000_intermediacao_alcadas.sql` (5b). PRD v4 §14.
+
+**5a — Procurações (representação).** `powers_of_attorney`: quem assina pela empresa (administradora ou procurador),
+com escopo (`scopes` = document_types ou `['*']`), alçada de valor (`max_value`), poder de aprovar exceções (`can_approve`),
+validade e `is_default`. Seed: administradora padrão de cada tenant (migrada de `legal_entities.signer_*`) + **Renata** como
+2ª administradora da Totex (preencher CPF/ato na UI). `poa_upsert`/`poa_set_status`/`poa_set_default` (definir padrão espelha
+em `legal_entities.signer_*`, então o snapshot/contrato não muda). `poa_active_default(tenant, entidade, tipo)` escolhe quem
+assina; `contract_document_register` grava `company_authority` (auditoria: qual procuração assinou). `member_can_approve()`
+= superadmin, ou membro com procuração `can_approve` ativa, ou admin do tenant.
+
+**5b — Alçadas (fila de aprovação).** `approval_requests` + `approval_open`/`approval_decide`/`approval_cancel`. Quatro atos
+passam por aprovação de uma administradora antes de acontecer: **vender abaixo do preço mínimo** (`sell_below_minimum`),
+**alterar comissão** (`commission_change`), **renunciar comissão** (`commission_waive`), **encerrar intermediação ativa**
+(`cancel_active`), **concessão financeira excepcional** (`financial_concession`). Regra de ouro: **quem tem a alçada
+(`member_can_approve`) age direto; quem não tem abre um pedido**. As RPCs de domínio (`intermediation_decide_proposal`,
+`intermediation_set_status`, `intermediation_change_commission`, `intermediation_set_commission` waived,
+`intermediation_request_concession`) ganharam `p_via_approval` e devolvem `{needs_approval:true, request_id}` quando precisam
+de aprovação. **Aprovar aplica o efeito** (`approval_decide` chama a ação de domínio com bypass). `intermediations` ganhou
+`financial_concessions`/`concession_total`. Smoke: `scratchpad/smoke_test12.sql`.
+
+## Fase 6 — Rede de franquias (entregue 2026-09-16)
+
+**Franquia = tenant.** O sistema já é multi-tenant: entidade jurídica (`legal_entities`), templates globais (`contract_templates.tenant_id`
+NULL) × locais (por tenant), procurações, alçadas e credenciais (`tenant_integration_keys`) **já são por tenant** — nada a criar
+nesse eixo. Migration `20260916100000_intermediacao_rede.sql`: RPC **`intermediation_network_dashboard(period)`** (superadmin)
+agrega a intermediação por franquia (ativas, vencendo, vendidas/valor no período, comissão, promotoras, aprovações pendentes) +
+total da rede e contagem de templates globais. UI: página de rede do superadmin.
+
 ## Fases seguintes
 
 | Fase | Entrega | Migrations/arquivos previstos |
