@@ -130,6 +130,9 @@ export interface CreateCaptureLeadInput {
     km?: number | null;
     brand?: string;
     model?: string;
+    plate?: string;
+    color?: string;
+    fuel?: string;
   };
   qualification: Omit<SellerQualification, "score" | "temperatura" | "qualificado_em" | "origem" | "versao" | "intent">;
   location_id?: string | null;

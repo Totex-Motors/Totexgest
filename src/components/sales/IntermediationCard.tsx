@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   FileSignature, Loader2, Save, Lock, Upload, ExternalLink, Pause, Play, FileWarning, XCircle,
   ChevronDown, ChevronRight, History, Building2, UserRound, CalendarClock, Coins, Info, AlertTriangle,
-  Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers, Send, Ban, Activity,
+  Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers, Send, Ban, Activity, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,7 @@ import {
   useSetIntermediationTerms,
 } from "@/hooks/useIntermediation";
 import { ContractSignatureDialog } from "@/components/sales/ContractSignatureDialog";
+import { useVehicleLookup } from "@/hooks/useVehicleLookup";
 import {
   COMMISSION_STATUS_META,
   CONTRACT_DOCUMENT_STATUS_META,
@@ -431,6 +432,7 @@ function ContractDataBlock({ i, lead, vehicle, open, onOpenChange, canEdit, miss
 }) {
   const { isAdmin } = useAuth();
   const setData = useSetContractData();
+  const plateLookup = useVehicleLookup();
   const [f, setF] = useState<ContractDataForm>(() => toContractDataForm(i, lead, vehicle));
   const [dirty, setDirty] = useState(false);
 
@@ -445,6 +447,35 @@ function ContractDataBlock({ i, lead, vehicle, open, onOpenChange, canEdit, miss
   const missingCount = ownerMissing.length + vehicleMissing.length;
 
   const set = (k: keyof ContractDataForm, v: string) => { setF((prev) => ({ ...prev, [k]: v })); setDirty(true); };
+
+  const consultarPlaca = async () => {
+    const placa = f.plate.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (placa.length !== 7) { toast.error("Preencha a placa (7 caracteres, ex.: ABC1D23) antes de consultar."); return; }
+    try {
+      const res = await plateLookup.mutateAsync({ placa, lead_id: i.owner_lead_id });
+      if (!res.found) { toast.warning("Não achei os dados dessa placa. Preencha na mão."); return; }
+      const v = res.vehicle;
+      setF((prev) => ({
+        ...prev,
+        plate: res.plate,
+        brand: v.marca ?? prev.brand,
+        model: v.modelo ?? prev.model,
+        year_model: v.ano_modelo ? String(v.ano_modelo) : (v.ano_fabricacao ? String(v.ano_fabricacao) : prev.year_model),
+        color: v.cor ?? prev.color,
+        fuel: v.combustivel ?? prev.fuel,
+        chassis: v.chassi ? String(v.chassi).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 17) : prev.chassis,
+        renavam: v.renavam ? String(v.renavam).replace(/\D/g, "").slice(0, 11) : prev.renavam,
+      }));
+      setDirty(true);
+      toast.success(`Dados da placa preenchidos${res.cached ? " (consulta recente)" : ""}. Confira e salve.`);
+    } catch (e) {
+      if (e instanceof Error && "status" in e && (e as { status: number }).status === 412) {
+        toast.error("Consulta de placa não configurada (Configurações › Integrações › PuxaPlaca).");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Não consegui consultar a placa.");
+      }
+    }
+  };
 
   const save = async () => {
     if (f.year_model && !/^\d{4}$/.test(f.year_model)) { toast.error("Ano do veículo precisa ter 4 dígitos (ex.: 2021)."); return; }
@@ -539,7 +570,15 @@ function ContractDataBlock({ i, lead, vehicle, open, onOpenChange, canEdit, miss
 
           {/* Veículo */}
           <div className="space-y-2">
-            <p className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground"><Car className="h-3.5 w-3.5" /> Veículo</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground"><Car className="h-3.5 w-3.5" /> Veículo</p>
+              {vehicle && !readOnly && (
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
+                  disabled={plateLookup.isPending || f.plate.replace(/[^A-Za-z0-9]/g, "").length !== 7} onClick={consultarPlaca}>
+                  {plateLookup.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Search className="h-3.5 w-3.5 mr-1" /> Consultar placa</>}
+                </Button>
+              )}
+            </div>
             {!vehicle && <p className="text-[11px] text-amber-700 dark:text-amber-300">Esse lead ainda não tem veículo cadastrado. Cadastre o carro no card Captação e volte aqui.</p>}
             {vehicleMissing.length > 0 && <p className="text-[11px] text-amber-700 dark:text-amber-300">Falta: {vehicleMissing.map((m) => m.label).join(" · ")}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

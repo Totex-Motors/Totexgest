@@ -32,7 +32,7 @@ interface IntegrationDef {
   description: string;
   placeholder: string;
   docsUrl?: string;
-  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "signature" | "other";
+  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "signature" | "vehicle" | "other";
   // "tenant" → chave da loja (cada lojista paga a própria), gravada via RPC
   //            set_my_tenant_integration_key. "global" → infra central da Totex
   //            (Google OAuth, webhook secret do marketplace), gravada em `config`.
@@ -58,6 +58,7 @@ const TENANT_SCOPED_KEYS = new Set<string>([
   "CLICKSIGN_API_KEY",
   "CLICKSIGN_ENV",
   "CLICKSIGN_WEBHOOK_SECRET",
+  "PUXAPLACA_TOKEN",
 ]);
 
 const isTenantScoped = (key: string) => TENANT_SCOPED_KEYS.has(key);
@@ -198,6 +199,16 @@ const INTEGRATIONS: IntegrationDef[] = [
     placeholder: "ex: cc64bf7e...984a5327 (32 bytes hex)",
     category: "marketplace",
   },
+  // Consulta de placa
+  {
+    key: "PUXAPLACA_TOKEN",
+    label: "PuxaPlaca — Token",
+    description:
+      "Token da API PuxaPlaca (consulta de veículo por placa). Autopreenche marca, modelo, ano, cor e combustível no cadastro da promotora e nos dados do contrato. Cada consulta é cobrada; o sistema guarda em cache por 30 dias e limita por dia.",
+    placeholder: "ex: 07bffdef-c8d9-4c15-9088-...",
+    docsUrl: "https://painel.puxaplaca.app",
+    category: "vehicle",
+  },
   // Google
   {
     key: "GOOGLE_CLIENT_ID",
@@ -225,6 +236,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   email: "Email",
   marketplace: "Marketplace",
   signature: "Assinatura eletrônica (Clicksign)",
+  vehicle: "Consulta de placa",
   other: "Google & Outros",
 };
 

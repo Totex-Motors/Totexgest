@@ -202,3 +202,7 @@ verify_jwt = false
 # intermediação: cron pg_cron (*/30) reconcilia documentos enviados com o provedor
 [functions.contract-reconcile]
 verify_jwt = false
+
+# captação: consulta de veículo por placa (só UI, JWT do usuário)
+[functions.vehicle-lookup]
+verify_jwt = true

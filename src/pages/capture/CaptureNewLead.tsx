@@ -12,6 +12,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { cn } from "@/lib/utils";
 import { useCheckLeadDuplicate } from "@/hooks/useMergeLeads";
 import { useCreateCaptureLead } from "@/hooks/useCaptureLeads";
+import { useVehicleLookup } from "@/hooks/useVehicleLookup";
 import {
   computeCaptureScore,
   temperatureFromScore,
@@ -52,9 +53,20 @@ interface Draft {
   aceita_avaliacao?: CaptureAceitaAvaliacao;
   autoriza_contato?: boolean;
   observacao: string;
+  plate: string;
+  brand: string;
+  model: string;
+  color: string;
+  fuel: string;
 }
 
-const EMPTY: Draft = { name: "", phone: "", vehicle: "", year: "", km: "", observacao: "" };
+const EMPTY: Draft = { name: "", phone: "", vehicle: "", year: "", km: "", observacao: "", plate: "", brand: "", model: "", color: "", fuel: "" };
+
+/** Placa em MAIÚSCULAS, sem separador, no máximo 7 caracteres (AAA9999 ou AAA9A99). */
+function maskPlateBR(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+}
+const PLATE_RE = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
 
 function loadDraft(): Draft {
   try {
@@ -97,6 +109,45 @@ export default function CaptureNewLead() {
   const [dupe, setDupe] = useState<{ id: string; name: string } | null>(null);
   const checkDup = useCheckLeadDuplicate();
   const create = useCreateCaptureLead();
+  const plateLookup = useVehicleLookup();
+  const [plateInfo, setPlateInfo] = useState<string | null>(null);
+  const [plateDupe, setPlateDupe] = useState<string | null>(null);
+
+  const buscarPlaca = async () => {
+    const placa = maskPlateBR(d.plate);
+    if (!PLATE_RE.test(placa)) { toast.error("Placa incompleta. Use o padrão ABC1D23."); return; }
+    setPlateInfo(null);
+    setPlateDupe(null);
+    try {
+      const res = await plateLookup.mutateAsync({ placa });
+      if (res.already_captured) {
+        setPlateDupe(
+          `Essa placa já foi captada${res.already_captured.promoter_name ? ` por ${res.already_captured.promoter_name}` : ""}` +
+          `${res.already_captured.lead_name ? ` (cliente ${res.already_captured.lead_name})` : ""}.`,
+        );
+      }
+      if (!res.found) { toast.warning("Não achei os dados dessa placa. Pode preencher na mão."); return; }
+      const v = res.vehicle;
+      const desc = [v.marca, v.modelo].filter(Boolean).join(" ").trim();
+      setD((cur) => ({
+        ...cur,
+        plate: res.plate,
+        brand: v.marca ?? cur.brand,
+        model: v.modelo ?? cur.model,
+        vehicle: desc || cur.vehicle,
+        year: v.ano_modelo ? String(v.ano_modelo) : (v.ano_fabricacao ? String(v.ano_fabricacao) : cur.year),
+        color: v.cor ?? cur.color,
+        fuel: v.combustivel ?? cur.fuel,
+      }));
+      setPlateInfo(res.cached ? "Dados da placa preenchidos (consulta recente)." : "Dados da placa preenchidos.");
+    } catch (e) {
+      if (e instanceof Error && "status" in e && (e as { status: number }).status === 412) {
+        toast.error("Consulta de placa ainda não configurada. Preencha o carro na mão.");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Não consegui consultar a placa.");
+      }
+    }
+  };
 
   // Auto-save do rascunho — se a tela recarregar no meio, não perde o cliente.
   useEffect(() => {
@@ -141,7 +192,16 @@ export default function CaptureNewLead() {
         name: d.name.trim(),
         phone: d.phone,
         intent: d.intent,
-        vehicle: { description: d.vehicle.trim(), year_model: Number(d.year), km: d.km ? Number(d.km) : null },
+        vehicle: {
+          description: d.vehicle.trim(),
+          year_model: Number(d.year),
+          km: d.km ? Number(d.km) : null,
+          brand: d.brand.trim() || undefined,
+          model: d.model.trim() || undefined,
+          plate: PLATE_RE.test(maskPlateBR(d.plate)) ? maskPlateBR(d.plate) : undefined,
+          color: d.color.trim() || undefined,
+          fuel: d.fuel.trim() || undefined,
+        },
         qualification: {
           prazo_venda: d.prazo,
           is_owner: d.is_owner,
@@ -260,6 +320,21 @@ export default function CaptureNewLead() {
                 <AlertTriangle className="h-3.5 w-3.5" /> Já existe no CRM como <strong>{dupe.name}</strong> — vou só atualizar, sem duplicar.
               </p>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="plate">Placa do carro <span className="text-muted-foreground font-normal">(opcional — preenche o resto sozinho)</span></Label>
+            <div className="flex gap-2">
+              <Input id="plate" className="h-12 text-base uppercase font-mono tracking-wider" placeholder="ABC1D23" maxLength={7}
+                value={d.plate} inputMode="text"
+                onChange={(e) => { setD({ ...d, plate: maskPlateBR(e.target.value) }); setPlateInfo(null); setPlateDupe(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarPlaca(); } }} autoComplete="off" />
+              <Button type="button" variant="secondary" className="h-12 shrink-0"
+                disabled={plateLookup.isPending || !PLATE_RE.test(maskPlateBR(d.plate))} onClick={buscarPlaca}>
+                {plateLookup.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
+              </Button>
+            </div>
+            {plateInfo && <p className="text-[11px] text-emerald-700 flex items-center gap-1"><Check className="h-3.5 w-3.5" /> {plateInfo}</p>}
+            {plateDupe && <p className="text-[11px] text-amber-700 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> {plateDupe}</p>}
           </div>
           <div className="grid grid-cols-[1fr_110px] gap-3">
             <div className="space-y-1.5">
