@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, History, Building2, UserRound, CalendarClock, Coins, Info, AlertTriangle,
   Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers, Send, Ban, Activity, Search,
   UserPlus, Handshake, Wallet, BadgeCheck, Trophy, Check, DollarSign,
+  ShieldAlert, ShieldCheck, Gift, Scale,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,8 @@ import {
   getContractSignedUrl,
   openContractPreview,
   useAddProposal,
+  useApprovalRequests,
+  useChangeCommission,
   useConcludeSale,
   useConfirmPayment,
   useContractCancel,
@@ -45,11 +48,14 @@ import {
   useIntermediationEvents,
   useIntermediationProposals,
   useLegalEntities,
+  usePowersOfAttorney,
+  useRequestConcession,
   useSetBuyer,
   useSetContractData,
   useSetIntermediationCommission,
   useSetIntermediationStatus,
   useSetIntermediationTerms,
+  useWaiveCommission,
 } from "@/hooks/useIntermediation";
 import { ContractSignatureDialog } from "@/components/sales/ContractSignatureDialog";
 import { useVehicleLookup } from "@/hooks/useVehicleLookup";
@@ -73,6 +79,8 @@ import {
   SIGNER_CHANNEL_LABEL,
   SIGNER_PARTY_LABEL,
   TEST_DRIVE_POLICY_LABEL,
+  POA_ROLE,
+  isNeedsApproval,
   missingTerms,
   type BuyerData,
   type CommissionStatus,
@@ -93,6 +101,9 @@ import {
   type ProposalInput,
   type TestDrivePolicy,
 } from "@/types/intermediation";
+
+/** Toast padrão quando uma RPC de domínio devolve needs_approval (não é erro nem sucesso aplicado). */
+const APPROVAL_TOAST = "Enviado para aprovação de uma administradora.";
 
 /**
  * Card "Intermediação" no detalhe do lead (aba Comercial) — fica ACIMA do
@@ -1235,11 +1246,19 @@ function StateBlock({ i, vehicleListed }: { i: Intermediation; vehicleListed: bo
   }
 
   const isPausedLike = i.status === "paused" || i.status === "docs_pending";
-  const closingNeedsAdmin = i.status === "active" && !isAdmin;
+  // Fase 5: encerrar uma intermediação ativa sem alçada NÃO é mais bloqueado —
+  // a RPC abre um pedido de aprovação (needs_approval). Só sinalizamos isso.
+  const closingNeedsApproval = i.status === "active" && !isAdmin;
 
   const run = async (action: IntermediationStatusAction, r?: string) => {
     try {
       const res = await setStatus.mutateAsync({ id: i.id, leadId: i.owner_lead_id, status: action, reason: r ?? null });
+      if (isNeedsApproval(res)) {
+        toast.info(APPROVAL_TOAST, { description: "Encerrar uma intermediação formalizada precisa de alçada." });
+        setPending(null);
+        setReason("");
+        return;
+      }
       const label = INTERMEDIATION_STATUS_META[res.status]?.label ?? res.status;
       toast.success(
         action === "reactivate"
@@ -1280,7 +1299,7 @@ function StateBlock({ i, vehicleListed }: { i: Intermediation; vehicleListed: bo
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive" disabled={setStatus.isPending || closingNeedsAdmin}>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive" disabled={setStatus.isPending}>
               <XCircle className="h-3.5 w-3.5 mr-1" /> Encerrar <ChevronDown className="h-3 w-3 ml-1" />
             </Button>
           </DropdownMenuTrigger>
@@ -1292,8 +1311,8 @@ function StateBlock({ i, vehicleListed }: { i: Intermediation; vehicleListed: bo
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {closingNeedsAdmin && (
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Lock className="h-3 w-3" /> Encerrar uma intermediação com contrato assinado é só admin. Pausar ou marcar documentação pendente você pode.</p>
+      {closingNeedsApproval && (
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1"><ShieldAlert className="h-3 w-3" /> Encerrar uma intermediação formalizada precisa da aprovação de uma administradora — seu pedido vai pra fila de aprovações.</p>
       )}
       {i.status_reason && isPausedLike && (
         <p className="text-xs text-muted-foreground">Motivo: {i.status_reason}</p>
@@ -1343,8 +1362,9 @@ function CommissionBlock({ i }: { i: Intermediation }) {
   const change = async (status: CommissionStatus) => {
     if (status === i.commission_status) return;
     try {
-      await setCommission.mutateAsync({ id: i.id, leadId: i.owner_lead_id, status });
-      toast.success(`Comissão: ${COMMISSION_STATUS_META[status].label}.`);
+      const r = await setCommission.mutateAsync({ id: i.id, leadId: i.owner_lead_id, status });
+      if (isNeedsApproval(r)) toast.info(APPROVAL_TOAST, { description: "Renunciar comissão precisa de alçada." });
+      else toast.success(`Comissão: ${COMMISSION_STATUS_META[status].label}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui atualizar a comissão.");
     }
@@ -1592,8 +1612,9 @@ function ProposalSubBlock({ i }: { i: Intermediation }) {
   const accept = async (p: Proposal) => {
     setDeciding(p.id);
     try {
-      await decide.mutateAsync({ proposalId: p.id, leadId: i.owner_lead_id, decision: "accepted" });
-      toast.success("Proposta aceita — venda carimbada. Agora é gerar o Termo de Compra e Venda.");
+      const r = await decide.mutateAsync({ proposalId: p.id, leadId: i.owner_lead_id, decision: "accepted" });
+      if (isNeedsApproval(r)) toast.info(APPROVAL_TOAST, { description: "Aceitar abaixo do preço mínimo precisa de alçada." });
+      else toast.success("Proposta aceita — venda carimbada. Agora é gerar o Termo de Compra e Venda.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui aceitar a proposta.");
     } finally {
@@ -2314,6 +2335,167 @@ function ClosingBlock({ i, memberName }: { i: Intermediation; memberName: (id: s
   );
 }
 
+// ─── Fase 5: Exceções (alçadas) — alterar/renunciar comissão + concessão ─────
+
+function ExceptionsBlock({ i }: { i: Intermediation }) {
+  const changeCommission = useChangeCommission();
+  const waive = useWaiveCommission();
+  const concession = useRequestConcession();
+  const pendingQ = useApprovalRequests("pending");
+  const pending = useMemo(
+    () => (pendingQ.data ?? []).filter((r) => r.intermediation_id === i.id),
+    [pendingQ.data, i.id],
+  );
+
+  const [comType, setComType] = useState<CommissionType | "">(i.commission_type ?? "");
+  const [comValue, setComValue] = useState(() => moneyToInput(i.commission_value));
+  const [comReason, setComReason] = useState("");
+  const [concAmount, setConcAmount] = useState("");
+  const [concDesc, setConcDesc] = useState("");
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveAmount, setWaiveAmount] = useState(() => moneyToInput(i.commission_due));
+
+  const alreadyWaived = i.commission_status === "waived";
+  const concessions = i.financial_concessions ?? [];
+
+  const submitChange = async () => {
+    if (!comType) { toast.error("Escolha o tipo de comissão."); return; }
+    const value = parseMoney(comValue);
+    if (value == null || value < 0) { toast.error("Informe o valor da comissão."); return; }
+    if (comType === "percent" && (value <= 0 || value > 30)) { toast.error("Comissão em % precisa ficar entre 0 e 30."); return; }
+    try {
+      const r = await changeCommission.mutateAsync({ id: i.id, leadId: i.owner_lead_id, type: comType, value, reason: comReason.trim() || null });
+      if (isNeedsApproval(r)) toast.info(APPROVAL_TOAST, { description: "Alterar a comissão precisa de alçada." });
+      else toast.success("Comissão alterada.");
+      setComReason("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui alterar a comissão.");
+    }
+  };
+
+  const confirmWaive = async () => {
+    const amount = parseMoney(waiveAmount);
+    try {
+      const r = await waive.mutateAsync({ id: i.id, leadId: i.owner_lead_id, amount });
+      if (isNeedsApproval(r)) toast.info(APPROVAL_TOAST, { description: "Renunciar comissão precisa de alçada." });
+      else toast.success("Comissão renunciada.");
+      setWaiveOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui renunciar a comissão.");
+    }
+  };
+
+  const submitConcession = async () => {
+    const amount = parseMoney(concAmount);
+    if (amount == null || amount <= 0) { toast.error("Informe o valor da concessão."); return; }
+    if (concDesc.trim().length < 3) { toast.error("Descreva a concessão."); return; }
+    try {
+      const r = await concession.mutateAsync({ id: i.id, leadId: i.owner_lead_id, amount, description: concDesc.trim() });
+      if (isNeedsApproval(r)) toast.info(APPROVAL_TOAST, { description: "Concessão financeira precisa de alçada." });
+      else toast.success("Concessão financeira registrada.");
+      setConcAmount("");
+      setConcDesc("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui registrar a concessão.");
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-violet-200/70 dark:border-violet-900/60 p-3 space-y-3">
+      <p className="text-sm font-semibold flex items-center gap-1.5"><ShieldAlert className="h-4 w-4 text-violet-600" /> Exceções (alçadas)</p>
+
+      {pending.length > 0 && (
+        <a href="/comercial/aprovacoes" className="flex items-center gap-1.5 text-[11px] rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 px-2.5 py-1.5 hover:underline">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {pending.length} {pending.length === 1 ? "aprovação pendente" : "aprovações pendentes"} nesta intermediação — abrir a fila
+        </a>
+      )}
+
+      {/* Alterar comissão */}
+      <div className="rounded-md border border-border/60 p-2.5 space-y-2">
+        <p className="text-xs font-medium flex items-center gap-1.5"><Coins className="h-3.5 w-3.5 text-sky-600" /> Alterar comissão</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="flex gap-2">
+            <Select value={comType || "__none__"} onValueChange={(v) => setComType(v === "__none__" ? "" : (v as CommissionType))}>
+              <SelectTrigger className="h-9 w-[150px] shrink-0"><SelectValue placeholder="Tipo" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Tipo…</SelectItem>
+                <SelectItem value="fixed">Fixa (R$)</SelectItem>
+                <SelectItem value="percent">Percentual (%)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input inputMode="decimal" className="h-9" placeholder={comType === "percent" ? "Ex.: 5" : "Ex.: 3000"} value={comValue} disabled={!comType} onChange={(e) => setComValue(e.target.value)} />
+          </div>
+          <Input className="h-9" placeholder="Motivo (opcional)" value={comReason} onChange={(e) => setComReason(e.target.value)} />
+        </div>
+        <div className="flex justify-end">
+          <Button size="sm" className="h-8 text-xs" onClick={submitChange} disabled={changeCommission.isPending}>
+            {changeCommission.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />} Alterar comissão
+          </Button>
+        </div>
+      </div>
+
+      {/* Renunciar comissão */}
+      <div className="rounded-md border border-border/60 p-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs">
+          <p className="font-medium flex items-center gap-1.5"><Scale className="h-3.5 w-3.5 text-violet-600" /> Renunciar comissão</p>
+          <p className="text-[11px] text-muted-foreground">{alreadyWaived ? "Comissão já dispensada." : `A empresa abre mão da comissão apurada (${fmtBRL(i.commission_due)}).`}</p>
+        </div>
+        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={alreadyWaived || waive.isPending} onClick={() => { setWaiveAmount(moneyToInput(i.commission_due)); setWaiveOpen(true); }}>
+          <Ban className="h-3.5 w-3.5 mr-1" /> Renunciar
+        </Button>
+      </div>
+
+      {/* Concessão financeira */}
+      <div className="rounded-md border border-border/60 p-2.5 space-y-2">
+        <p className="text-xs font-medium flex items-center gap-1.5"><Gift className="h-3.5 w-3.5 text-emerald-600" /> Concessão financeira</p>
+        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-2">
+          <Input inputMode="decimal" className="h-9" placeholder="Valor (R$)" value={concAmount} onChange={(e) => setConcAmount(e.target.value)} />
+          <Input className="h-9" placeholder="Descrição (ex.: desconto na transferência)" value={concDesc} onChange={(e) => setConcDesc(e.target.value)} />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">{concessions.length > 0 ? `Total concedido: ${fmtBRL(i.concession_total)}` : ""}</span>
+          <Button size="sm" className="h-8 text-xs" onClick={submitConcession} disabled={concession.isPending}>
+            {concession.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <DollarSign className="h-3.5 w-3.5 mr-1" />} Registrar concessão
+          </Button>
+        </div>
+        {concessions.length > 0 && (
+          <ul className="space-y-1 pt-1 border-t border-border/60">
+            {concessions.map((c, idx) => (
+              <li key={idx} className="text-[11px] text-muted-foreground flex flex-wrap gap-x-2">
+                <span className="font-medium text-foreground">{fmtBRL(c.amount)}</span>
+                <span>{c.description}</span>
+                {c.at ? <span>· {fmtDate(c.at)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Confirmar renúncia */}
+      <Dialog open={waiveOpen} onOpenChange={(o) => { if (!waive.isPending) setWaiveOpen(o); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Renunciar comissão — {i.code}</DialogTitle>
+            <DialogDescription>
+              A empresa abre mão da comissão desta intermediação. Sem alçada, o pedido vai pra aprovação de uma administradora.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Valor renunciado (R$)</Label>
+            <Input inputMode="decimal" className="h-9" value={waiveAmount} onChange={(e) => setWaiveAmount(e.target.value)} placeholder="Ex.: 3000" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWaiveOpen(false)} disabled={waive.isPending}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmWaive} disabled={waive.isPending}>
+              {waive.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />} Renunciar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ─── Card ───────────────────────────────────────────────────────────────────
 
 export function IntermediationCard({ leadId }: Props) {
@@ -2321,6 +2503,7 @@ export function IntermediationCard({ leadId }: Props) {
   const q = useIntermediationByLead(leadId);
   const { data: members = [] } = useAllTeamMembers();
   const { data: legalEntities = [] } = useLegalEntities();
+  const { data: powers = [] } = usePowersOfAttorney();
   const { data: leadData } = useSalesLead(leadId);
   const lead = (leadData ?? null) as LeadContractFields | null;
 
@@ -2395,6 +2578,14 @@ export function IntermediationCard({ leadId }: Props) {
   const entity = legalEntities.find((e) => e.id === (i.legal_entity_id ?? snapshot?.legal_entity_id)) ?? null;
   const canEdit = !isPromotora;
 
+  // Fase 5: procuração padrão que assina por esta intermediação (autoridade).
+  const leId = i.legal_entity_id ?? snapshot?.legal_entity_id ?? null;
+  const activePowers = powers.filter((p) => p.status === "active");
+  const authority =
+    activePowers.find((p) => p.is_default && p.legal_entity_id === leId) ??
+    activePowers.find((p) => p.is_default && p.legal_entity_id == null) ??
+    null;
+
   const days = daysUntil(i.ends_at);
   const deadlineBadge = (() => {
     if (i.status !== "active" || !i.ends_at) return null;
@@ -2419,6 +2610,9 @@ export function IntermediationCard({ leadId }: Props) {
             <p className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
               <span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" /> Promotora: <strong>{promoterName ?? "—"}</strong></span>
               <span className="inline-flex items-center gap-1"><Building2 className="h-3 w-3" /> {entity?.trade_name ?? entity?.legal_name ?? "Entidade jurídica não definida"}</span>
+              {!isPromotora && authority && (
+                <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Assina: <strong>{authority.signer_name}</strong> ({POA_ROLE[authority.signer_role]})</span>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -2457,6 +2651,10 @@ export function IntermediationCard({ leadId }: Props) {
 
         {!isPromotora && (i.status === "active" || i.status === "docs_pending" || i.status === "completed") && (
           <ClosingBlock i={i} memberName={memberName} />
+        )}
+
+        {!isPromotora && (i.status === "active" || i.status === "docs_pending" || i.status === "completed") && (
+          <ExceptionsBlock i={i} />
         )}
 
         {i.status === "completed" && <CommissionBlock i={i} />}

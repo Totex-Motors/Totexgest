@@ -33,6 +33,7 @@ import {
   Instagram,
   HandCoins,
   Handshake,
+  ShieldCheck,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -106,6 +107,7 @@ const sections: NavSection[] = [
       // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
       { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins },
       { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake },
+      { title: "Aprovações", url: "/comercial/aprovacoes", icon: ShieldCheck },
     ],
   },
   {

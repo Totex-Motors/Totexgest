@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Building2, CheckCircle2, Eye, FileText, Info, Loader2, Lock, Plus, Save, Scale, Send,
+  AlertTriangle, Ban, Building2, CheckCircle2, Eye, FileText, Info, Loader2, Lock, Pencil, Plus,
+  RotateCcw, Save, Scale, Send, ShieldCheck, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,16 +23,34 @@ import { cn } from "@/lib/utils";
 import { maskCep, maskCnpj, maskCpf, maskUF } from "@/lib/brMasks";
 import { maskPhoneBR, onlyDigits } from "@/lib/phone";
 import { useAuth } from "@/contexts/AuthContext";
-import { useContractTemplates, useLegalEntities, useSaveContractTemplate, useSaveLegalEntity } from "@/hooks/useIntermediation";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import {
+  useContractTemplates,
+  useLegalEntities,
+  usePoaSetDefault,
+  usePoaSetStatus,
+  usePoaUpsert,
+  usePowersOfAttorney,
+  useSaveContractTemplate,
+  useSaveLegalEntity,
+} from "@/hooks/useIntermediation";
 import {
   CONTRACT_TEMPLATE_STATUS_LABEL,
   DOCUMENT_TYPE_LABEL,
+  POA_ROLE,
+  POA_SIGNATURE_MODE_LABEL,
+  POA_STATUS_META,
   SIGNER_ROLE_OPTIONS,
+  poaScopesLabel,
   type ContractDocumentType,
   type ContractTemplate,
   type ContractTemplateStatus,
   type LegalEntity,
   type LegalEntitySignerRole,
+  type PoaRole,
+  type PoaSignatureMode,
+  type PowerOfAttorney,
+  type PowerOfAttorneyInput,
 } from "@/types/intermediation";
 
 /**
@@ -48,8 +69,397 @@ export function IntermediationSettingsSection() {
   return (
     <div className="space-y-6">
       <LegalEntityCard />
+      <PowersOfAttorneyCard />
       <ContractTemplatesCard />
     </div>
+  );
+}
+
+// ─── (c) Representação / procurações (Fase 5a) ──────────────────────────────
+
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const fmtBRL = (v?: number | null) => (v == null ? "—" : brl.format(Number(v)));
+/** Converte "80.000,00" / "80000" → número (ou null). */
+function parseMoney(raw: string): number | null {
+  const clean = raw.replace(/[^\d,.]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", ".");
+  if (!clean) return null;
+  const n = parseFloat(clean);
+  return Number.isFinite(n) ? n : null;
+}
+
+const DOC_TYPES = Object.keys(DOCUMENT_TYPE_LABEL) as ContractDocumentType[];
+
+interface PoaForm {
+  id: string | null;
+  signer_name: string;
+  signer_cpf: string;
+  signer_role: PoaRole;
+  signature_mode: PoaSignatureMode;
+  legal_entity_id: string; // "" = qualquer entidade
+  member_id: string; // "" = nenhum
+  doc_number: string;
+  doc_url: string;
+  all_scopes: boolean;
+  scopes: ContractDocumentType[];
+  max_value: string; // "" = ilimitada
+  can_approve: boolean;
+  valid_from: string;
+  valid_until: string;
+  notes: string;
+}
+
+function emptyPoaForm(): PoaForm {
+  return {
+    id: null, signer_name: "", signer_cpf: "", signer_role: "Procurador", signature_mode: "isolated",
+    legal_entity_id: "", member_id: "", doc_number: "", doc_url: "", all_scopes: true, scopes: [],
+    max_value: "", can_approve: false, valid_from: "", valid_until: "", notes: "",
+  };
+}
+
+function toPoaForm(p: PowerOfAttorney): PoaForm {
+  const all = !p.scopes || p.scopes.length === 0 || p.scopes.includes("*");
+  return {
+    id: p.id,
+    signer_name: p.signer_name ?? "",
+    signer_cpf: p.signer_cpf ? maskCpf(p.signer_cpf) : "",
+    signer_role: p.signer_role ?? "Procurador",
+    signature_mode: p.signature_mode ?? "isolated",
+    legal_entity_id: p.legal_entity_id ?? "",
+    member_id: p.member_id ?? "",
+    doc_number: p.doc_number ?? "",
+    doc_url: p.doc_url ?? "",
+    all_scopes: all,
+    scopes: all ? [] : (p.scopes.filter((s) => DOC_TYPES.includes(s as ContractDocumentType)) as ContractDocumentType[]),
+    max_value: p.max_value == null ? "" : String(p.max_value).replace(".", ","),
+    can_approve: !!p.can_approve,
+    valid_from: p.valid_from ?? "",
+    valid_until: p.valid_until ?? "",
+    notes: p.notes ?? "",
+  };
+}
+
+/** Procuração com can_approve/Administrador(a) mas sem CPF ou nº do ato — precisa completar (ex.: Renata). */
+function poaNeedsInfo(p: PowerOfAttorney): boolean {
+  if (p.status !== "active") return false;
+  const authority = p.can_approve || p.signer_role === "Administradora" || p.signer_role === "Administrador";
+  return authority && (!p.signer_cpf || !p.doc_number);
+}
+
+function PowersOfAttorneyCard() {
+  const { isAdmin, isSuperAdmin } = useAuth();
+  const canEdit = isAdmin || isSuperAdmin;
+  const poasQ = usePowersOfAttorney();
+  const entitiesQ = useLegalEntities();
+  const membersQ = useTeamMembers();
+  const upsert = usePoaUpsert();
+  const setStatus = usePoaSetStatus();
+  const setDefault = usePoaSetDefault();
+
+  const poas = useMemo(() => poasQ.data ?? [], [poasQ.data]);
+  const entities = useMemo(() => (entitiesQ.data ?? []).filter((e) => e.is_active), [entitiesQ.data]);
+  const members = membersQ.data ?? [];
+  const entityName = (id: string | null) => {
+    if (!id) return "Qualquer entidade";
+    const e = entities.find((x) => x.id === id);
+    return e ? e.trade_name ?? e.legal_name : "Entidade";
+  };
+
+  const [form, setForm] = useState<PoaForm | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<PowerOfAttorney | null>(null);
+  const needsInfo = useMemo(() => poas.filter(poaNeedsInfo), [poas]);
+
+  const set = <K extends keyof PoaForm>(k: K, v: PoaForm[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+
+  const openNew = () => setForm(emptyPoaForm());
+  const openEdit = (p: PowerOfAttorney) => setForm(toPoaForm(p));
+
+  const toggleScope = (t: ContractDocumentType, checked: boolean) =>
+    setForm((f) => (f ? { ...f, scopes: checked ? [...f.scopes, t] : f.scopes.filter((s) => s !== t) } : f));
+
+  const save = async () => {
+    if (!form) return;
+    if (form.signer_name.trim().length < 3) { toast.error("Informe o nome de quem assina (mínimo 3 letras)."); return; }
+    if (form.signer_cpf && onlyDigits(form.signer_cpf).length !== 11) { toast.error("CPF precisa ter 11 dígitos."); return; }
+    if (!form.all_scopes && form.scopes.length === 0) { toast.error("Escolha ao menos um tipo de documento (ou marque “Todos”)."); return; }
+    const maxValue = form.max_value.trim() ? parseMoney(form.max_value) : null;
+    if (form.max_value.trim() && maxValue == null) { toast.error("Alçada de valor inválida."); return; }
+    if (form.valid_from && form.valid_until && form.valid_until < form.valid_from) { toast.error("A validade final não pode ser antes do início."); return; }
+    const input: PowerOfAttorneyInput = {
+      id: form.id ?? undefined,
+      signer_name: form.signer_name.trim(),
+      signer_cpf: onlyDigits(form.signer_cpf) || null,
+      signer_role: form.signer_role,
+      signature_mode: form.signature_mode,
+      legal_entity_id: form.legal_entity_id || null,
+      member_id: form.member_id || null,
+      doc_number: form.doc_number.trim() || null,
+      doc_url: form.doc_url.trim() || null,
+      scopes: form.all_scopes ? ["*"] : form.scopes,
+      max_value: maxValue,
+      can_approve: form.can_approve,
+      valid_from: form.valid_from || null,
+      valid_until: form.valid_until || null,
+      notes: form.notes.trim() || null,
+    };
+    try {
+      await upsert.mutateAsync(input);
+      toast.success(form.id ? "Procuração atualizada." : "Procuração cadastrada.");
+      setForm(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui salvar a procuração.");
+    }
+  };
+
+  const makeDefault = async (p: PowerOfAttorney) => {
+    try {
+      await setDefault.mutateAsync(p.id);
+      toast.success(`${p.signer_name} agora assina os contratos por padrão.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui definir o padrão.");
+    }
+  };
+
+  const reactivate = async (p: PowerOfAttorney) => {
+    try {
+      await setStatus.mutateAsync({ id: p.id, status: "active" });
+      toast.success("Procuração reativada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui reativar.");
+    }
+  };
+
+  const confirmRevoke = async () => {
+    if (!revokeTarget) return;
+    try {
+      await setStatus.mutateAsync({ id: revokeTarget.id, status: "revoked" });
+      toast.success("Procuração revogada.");
+      setRevokeTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui revogar.");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-violet-600" /> Representação (procurações)</CardTitle>
+            <CardDescription className="mt-1">
+              Quem assina pela empresa e quem pode aprovar exceções (alçadas). A procuração <strong>padrão</strong> é a que assina os contratos; quem tem <strong>“pode aprovar”</strong> decide os pedidos que exigem alçada.
+            </CardDescription>
+          </div>
+          {canEdit && (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Nova procuração
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!canEdit && (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Lock className="h-3 w-3" /> Só admin cadastra e altera procurações.</p>
+        )}
+
+        {needsInfo.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 px-3 py-2 space-y-1">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Falta preencher CPF e nº do ato</p>
+            <ul className="text-[11px] text-amber-800 dark:text-amber-300">
+              {needsInfo.map((p) => (
+                <li key={p.id}>
+                  <strong>{p.signer_name}</strong> ({POA_ROLE[p.signer_role]}) — {!p.signer_cpf && !p.doc_number ? "CPF e nº do ato" : !p.signer_cpf ? "CPF" : "nº do ato"}.
+                  {canEdit && <button type="button" className="underline ml-1" onClick={() => openEdit(p)}>Preencher</button>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {poasQ.isLoading ? (
+          <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…</p>
+        ) : poas.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhuma procuração cadastrada ainda.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-border/60">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Quem assina</TableHead>
+                  <TableHead className="text-xs">Papel</TableHead>
+                  <TableHead className="text-xs">Escopo</TableHead>
+                  <TableHead className="text-xs">Alçada de valor</TableHead>
+                  <TableHead className="text-xs">Aprova</TableHead>
+                  <TableHead className="text-xs">Validade</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {poas.map((p) => {
+                  const sm = POA_STATUS_META[p.status];
+                  return (
+                    <TableRow key={p.id} className={cn(poaNeedsInfo(p) && "bg-amber-50/40 dark:bg-amber-950/10")}>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          {p.is_default && p.status === "active" && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0" aria-label="Padrão" />}
+                          <span>{p.signer_name}</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">
+                          {p.signer_cpf ? maskCpf(p.signer_cpf) : "sem CPF"} · {entityName(p.legal_entity_id)}
+                          {p.doc_number ? ` · ato ${p.doc_number}` : ""}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {POA_ROLE[p.signer_role]}
+                        <span className="block text-[11px] text-muted-foreground">{POA_SIGNATURE_MODE_LABEL[p.signature_mode]}</span>
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate" title={poaScopesLabel(p.scopes)}>{poaScopesLabel(p.scopes)}</TableCell>
+                      <TableCell className="text-xs">{p.max_value == null ? "Ilimitada" : fmtBRL(p.max_value)}</TableCell>
+                      <TableCell className="text-xs">
+                        {p.can_approve
+                          ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 text-[10px] px-1.5 py-0">Sim</Badge>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {p.valid_from || p.valid_until
+                          ? `${fmtDate(p.valid_from)} → ${p.valid_until ? fmtDate(p.valid_until) : "sem fim"}`
+                          : "Sem prazo"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0 w-fit", sm.cls)}>{sm.label}</Badge>
+                          {p.is_default && p.status === "active" && <span className="text-[10px] text-amber-600 dark:text-amber-400">Padrão (assina)</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canEdit && (
+                          <div className="inline-flex flex-wrap justify-end gap-1">
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>
+                            {p.status === "active" && !p.is_default && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={setDefault.isPending} onClick={() => makeDefault(p)}><Star className="h-3.5 w-3.5 mr-1" /> Tornar padrão</Button>
+                            )}
+                            {p.status === "active" ? (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive" disabled={setStatus.isPending} onClick={() => setRevokeTarget(p)}><Ban className="h-3.5 w-3.5 mr-1" /> Revogar</Button>
+                            ) : (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={setStatus.isPending} onClick={() => reactivate(p)}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Reativar</Button>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+
+      {/* Criar / editar procuração */}
+      <Dialog open={!!form} onOpenChange={(o) => { if (!o && !upsert.isPending) setForm(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+          {form && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{form.id ? "Editar procuração" : "Nova procuração"}</DialogTitle>
+                <DialogDescription>
+                  Quem assina pela empresa (ou aprova exceções), com escopo, alçada de valor e validade.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 min-h-0 overflow-auto space-y-3 pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field label="Nome de quem assina *" className="sm:col-span-2"><Input className="h-9" value={form.signer_name} placeholder="Nome completo" onChange={(e) => set("signer_name", e.target.value)} /></Field>
+                  <Field label="CPF"><Input inputMode="numeric" className="h-9" value={form.signer_cpf} placeholder="000.000.000-00" onChange={(e) => set("signer_cpf", maskCpf(e.target.value))} /></Field>
+                  <Field label="Papel *">
+                    <Select value={form.signer_role} onValueChange={(v) => set("signer_role", v as PoaRole)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>{SIGNER_ROLE_OPTIONS.map((r) => <SelectItem key={r} value={r}>{POA_ROLE[r]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Modo de assinatura">
+                    <Select value={form.signature_mode} onValueChange={(v) => set("signature_mode", v as PoaSignatureMode)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>{(Object.keys(POA_SIGNATURE_MODE_LABEL) as PoaSignatureMode[]).map((k) => <SelectItem key={k} value={k}>{POA_SIGNATURE_MODE_LABEL[k]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Entidade jurídica">
+                    <Select value={form.legal_entity_id || "__any__"} onValueChange={(v) => set("legal_entity_id", v === "__any__" ? "" : v)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__any__">Qualquer entidade</SelectItem>
+                        {entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.trade_name ?? e.legal_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Vincular a um membro (opcional)">
+                    <Select value={form.member_id || "__none__"} onValueChange={(v) => set("member_id", v === "__none__" ? "" : v)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Nenhum</SelectItem>
+                        {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Nº da procuração / ato societário"><Input className="h-9" value={form.doc_number} placeholder="Ex.: 12ª alteração contratual" onChange={(e) => set("doc_number", e.target.value)} /></Field>
+                  <Field label="Link do documento (opcional)" className="sm:col-span-2"><Input className="h-9" value={form.doc_url} placeholder="https://…" onChange={(e) => set("doc_url", e.target.value)} /></Field>
+                  <Field label="Alçada de valor por ato (R$)" hint="Vazio = ilimitada."><Input inputMode="decimal" className="h-9" value={form.max_value} placeholder="Ex.: 150000" onChange={(e) => set("max_value", e.target.value)} /></Field>
+                  <Field label="Válida de"><Input type="date" className="h-9" value={form.valid_from} onChange={(e) => set("valid_from", e.target.value)} /></Field>
+                  <Field label="Válida até"><Input type="date" className="h-9" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} /></Field>
+                </div>
+
+                <div className="rounded-md border border-border/60 p-3 space-y-2">
+                  <label className="flex items-center gap-2 text-xs">
+                    <Checkbox checked={form.all_scopes} onCheckedChange={(c) => set("all_scopes", c === true)} />
+                    Pode assinar <strong>todos</strong> os tipos de documento
+                  </label>
+                  {!form.all_scopes && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                      {DOC_TYPES.map((t) => (
+                        <label key={t} className="flex items-center gap-2 text-xs">
+                          <Checkbox checked={form.scopes.includes(t)} onCheckedChange={(c) => toggleScope(t, c === true)} />
+                          {DOCUMENT_TYPE_LABEL[t]}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <label className="flex items-center justify-between rounded-md border border-input px-3 h-10 text-xs">
+                  <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-violet-600" /> Pode aprovar exceções (alçadas)</span>
+                  <Switch checked={form.can_approve} onCheckedChange={(v) => set("can_approve", v)} />
+                </label>
+
+                <Field label="Observações"><Textarea rows={2} value={form.notes} placeholder="Ex.: sócia-administradora — alteração societária formalizada" onChange={(e) => set("notes", e.target.value)} /></Field>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setForm(null)} disabled={upsert.isPending}>Cancelar</Button>
+                <Button onClick={save} disabled={upsert.isPending}>
+                  {upsert.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />} Salvar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Revogar */}
+      <AlertDialog open={!!revokeTarget} onOpenChange={(o) => { if (!o && !setStatus.isPending) setRevokeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar a procuração de {revokeTarget?.signer_name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ela deixa de assinar e de aprovar exceções. Se era a padrão, escolha outra procuração como padrão depois. Dá pra reativar quando quiser.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={setStatus.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmRevoke(); }} disabled={setStatus.isPending}>
+              {setStatus.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />} Revogar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
   );
 }
 

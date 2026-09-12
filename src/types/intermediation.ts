@@ -46,6 +46,14 @@ export type SaleContractStatus = ContractStatus;
 /** Fase 4 — status de uma proposta do comprador. */
 export type ProposalStatus = "pending" | "accepted" | "rejected" | "countered" | "withdrawn" | "superseded";
 
+/** Item de `intermediations.financial_concessions` (Fase 5 — concessão financeira aprovada). */
+export interface FinancialConcession {
+  amount: number;
+  description: string;
+  by?: string | null;
+  at?: string | null;
+}
+
 /** Linha da tabela `intermediations`. */
 export interface Intermediation {
   id: string;
@@ -102,6 +110,9 @@ export interface Intermediation {
   commission_due: number | null;
   commission_status: CommissionStatus;
   commission_paid_at: string | null;
+  // fase 5: concessões financeiras excepcionais (alçada)
+  financial_concessions: FinancialConcession[];
+  concession_total: number;
   // fase 4: comprador + Termo de Compra e Venda + pagamento
   /** Dados do comprador (o que o lead do comprador não tem). */
   buyer_data: BuyerData;
@@ -823,7 +834,161 @@ export const INTERMEDIATION_EVENT_LABEL: Record<string, string> = {
   commission_paid: "Comissão paga",
   commission_invoiced: "Comissão faturada",
   commission_status_changed: "Status da comissão alterado",
+  approval_requested: "Aprovação solicitada",
+  approval_approved: "Aprovação concedida",
+  approval_rejected: "Aprovação recusada",
+  approval_cancelled: "Pedido de aprovação cancelado",
+  commission_changed: "Comissão alterada",
+  financial_concession: "Concessão financeira",
+  intermediation_document_generated: "Documento gerado (PDF)",
 };
+
+// ─── Fase 5: Representação (procurações) + Alçadas (aprovações) ───────────────
+// migrations 20260915100000_intermediacao_procuracoes + 20260915140000_intermediacao_alcadas.
+// Escrita SÓ via RPCs (`poa_*`, `approval_*`, `intermediation_*`); RLS bloqueia promotora.
+
+/** Papel de quem assina/aprova (mesma união de legal_entities.signer_role). */
+export type PoaRole = LegalEntitySignerRole;
+export type PoaSignatureMode = "isolated" | "joint";
+export type PoaStatus = "active" | "revoked" | "expired";
+
+/** Linha de `powers_of_attorney` (representação: quem assina/aprova pela empresa). */
+export interface PowerOfAttorney {
+  id: string;
+  tenant_id: string;
+  /** null = vale pra qualquer entidade jurídica do tenant. */
+  legal_entity_id: string | null;
+  /** team_member correspondente (opcional). */
+  member_id: string | null;
+  signer_name: string;
+  signer_cpf: string | null;
+  signer_role: PoaRole;
+  signature_mode: PoaSignatureMode;
+  /** nº da procuração / ato societário. */
+  doc_number: string | null;
+  doc_url: string | null;
+  /** document_types que pode assinar, ou ['*']. */
+  scopes: string[];
+  /** alçada de valor por ato (null = ilimitada). */
+  max_value: number | null;
+  /** decide exceções (alçadas) — administradora = true. */
+  can_approve: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  is_default: boolean;
+  status: PoaStatus;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+}
+
+/** `p_data` de `poa_upsert` (valores brutos; o servidor normaliza). */
+export interface PowerOfAttorneyInput {
+  id?: string | null;
+  legal_entity_id?: string | null;
+  member_id?: string | null;
+  signer_name: string;
+  signer_cpf?: string | null;
+  signer_role?: PoaRole;
+  signature_mode?: PoaSignatureMode;
+  doc_number?: string | null;
+  doc_url?: string | null;
+  scopes?: string[];
+  max_value?: number | null;
+  can_approve?: boolean;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  notes?: string | null;
+}
+
+export const POA_ROLE: Record<PoaRole, string> = {
+  Administradora: "Administradora",
+  Administrador: "Administrador",
+  Procuradora: "Procuradora",
+  Procurador: "Procurador",
+};
+
+export const POA_SIGNATURE_MODE_LABEL: Record<PoaSignatureMode, string> = {
+  isolated: "Assinatura isolada",
+  joint: "Assinatura em conjunto",
+};
+
+export const POA_STATUS_META: Record<PoaStatus, BadgeMeta> = {
+  active: { label: "Ativa", cls: CLS.emerald },
+  revoked: { label: "Revogada", cls: CLS.red },
+  expired: { label: "Expirada", cls: CLS.muted },
+};
+
+/** Atos que passam por alçada (aprovação de uma administradora). */
+export type ApprovalKind =
+  | "sell_below_minimum"
+  | "commission_change"
+  | "commission_waive"
+  | "cancel_active"
+  | "financial_concession";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+/** Linha de `approval_requests` (fila de aprovação). */
+export interface ApprovalRequest {
+  id: string;
+  tenant_id: string;
+  intermediation_id: string | null;
+  kind: ApprovalKind;
+  title: string | null;
+  params: Record<string, unknown>;
+  amount: number | null;
+  status: ApprovalStatus;
+  requested_by: string | null;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  applied_at: string | null;
+  created_at: string;
+  /** join opcional (`useApprovalRequests`). */
+  intermediation?: { code: string; owner_lead_id: string } | null;
+  /** nome do lead do proprietário (resolvido no hook). */
+  lead_name?: string | null;
+}
+
+export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
+  sell_below_minimum: "Venda abaixo do mínimo",
+  commission_change: "Alteração de comissão",
+  commission_waive: "Renúncia de comissão",
+  cancel_active: "Encerrar intermediação ativa",
+  financial_concession: "Concessão financeira",
+};
+
+export const APPROVAL_STATUS_META: Record<ApprovalStatus, BadgeMeta> = {
+  pending: { label: "Pendente", cls: CLS.amber },
+  approved: { label: "Aprovado", cls: CLS.emerald },
+  rejected: { label: "Recusado", cls: CLS.red },
+  cancelled: { label: "Cancelado", cls: CLS.muted },
+};
+
+/**
+ * Retorno das RPCs de domínio quando o ator não tem alçada: o pedido foi
+ * enfileirado (NÃO é erro nem sucesso aplicado). A UI mostra "Enviado para
+ * aprovação de uma administradora".
+ */
+export interface NeedsApproval {
+  ok: false;
+  needs_approval: true;
+  request_id: string;
+  kind: ApprovalKind;
+}
+
+/** true quando a RPC devolveu `{ ok:false, needs_approval:true, ... }`. */
+export function isNeedsApproval(x: unknown): x is NeedsApproval {
+  return !!x && typeof x === "object" && (x as { needs_approval?: unknown }).needs_approval === true;
+}
+
+/** Escopo de uma procuração em texto pt-BR (['*'] = todos os documentos). */
+export function poaScopesLabel(scopes: string[] | null | undefined): string {
+  if (!scopes || scopes.length === 0 || scopes.includes("*")) return "Todos os documentos";
+  return scopes.map((s) => DOCUMENT_TYPE_LABEL[s as ContractDocumentType] ?? s).join(" · ");
+}
 
 /** Termos obrigatórios pra formalizar (preço pretendido + comissão + prazo final). */
 export function missingTerms(i: Pick<Intermediation, "asking_price" | "commission_type" | "commission_value" | "ends_at">): string[] {

@@ -2,8 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import type {
+  ApprovalKind,
+  ApprovalRequest,
   BuyerData,
   CommissionStatus,
+  CommissionType,
   ContractDataInput,
   ContractDocument,
   ContractDocumentType,
@@ -35,6 +38,9 @@ import type {
   IntermediationTermsInput,
   LegalEntity,
   LegalEntityInput,
+  PowerOfAttorney,
+  PowerOfAttorneyInput,
+  PoaStatus,
   Proposal,
   ProposalInput,
   SaleContractStatus,
@@ -63,6 +69,10 @@ export const intermediationKeys = {
   contractTemplates: ["intermediation", "contract-templates"] as const,
   contractEvents: (documentId: string) => ["intermediation", "contract-events", documentId] as const,
   proposals: (id: string) => ["intermediation", "proposals", id] as const,
+  // Fase 5 — representação (procurações) + alçadas (aprovações)
+  powers: ["intermediation", "powers-of-attorney"] as const,
+  approvals: (filter: "pending" | "all") => ["intermediation", "approvals", filter] as const,
+  canApprove: ["intermediation", "can-approve"] as const,
 };
 
 /** Depois de qualquer mutação: intermediação + card de captação + lead. */
@@ -370,6 +380,10 @@ export interface SetStatusResult {
   ok: boolean;
   status: Intermediation["status"];
   unpublish_task?: string | null;
+  /** Fase 5: encerrar uma intermediação ATIVA sem alçada abre um pedido em vez de aplicar. */
+  needs_approval?: boolean;
+  request_id?: string;
+  kind?: ApprovalKind;
 }
 
 export function useSetIntermediationStatus() {
@@ -384,12 +398,22 @@ export function useSetIntermediationStatus() {
   });
 }
 
+/** Resultado das RPCs de comissão/status/concessão: sucesso aplicado OU pedido de alçada. */
+export interface CommissionActionResult {
+  ok: boolean;
+  status?: CommissionStatus;
+  needs_approval?: boolean;
+  request_id?: string;
+  kind?: ApprovalKind;
+}
+
 export function useSetIntermediationCommission() {
   const invalidate = useInvalidateIntermediation();
   return useMutation({
     mutationFn: async ({ id, status, amount }: { id: string; leadId?: string | null; status: CommissionStatus; amount?: number | null }) => {
-      const { error } = await supabase.rpc("intermediation_set_commission", { p_id: id, p_status: status, p_amount: amount ?? null });
+      const { data, error } = await supabase.rpc("intermediation_set_commission", { p_id: id, p_status: status, p_amount: amount ?? null });
       if (error) throw error;
+      return (data ?? { ok: false }) as CommissionActionResult;
     },
     onSuccess: (_d, { leadId }) => invalidate(leadId),
   });
@@ -841,7 +865,14 @@ export function useDecideProposal() {
     mutationFn: async ({ proposalId, decision, note }: { proposalId: string; leadId?: string | null; decision: "accepted" | "rejected"; note?: string | null }) => {
       const { data, error } = await supabase.rpc("intermediation_decide_proposal", { p_proposal_id: proposalId, p_decision: decision, p_note: note ?? null });
       if (error) throw error;
-      return (data ?? { ok: false, decision }) as { ok: boolean; decision: "accepted" | "rejected" };
+      // Aceitar abaixo do mínimo sem alçada devolve { ok:false, needs_approval:true, ... } — não é erro.
+      return (data ?? { ok: false, decision }) as {
+        ok: boolean;
+        decision?: "accepted" | "rejected";
+        needs_approval?: boolean;
+        request_id?: string;
+        kind?: ApprovalKind;
+      };
     },
     onSuccess: (_d, { leadId }) => invalidate(leadId),
   });
@@ -1043,5 +1074,196 @@ export function useSaveLegalEntity() {
       qc.invalidateQueries({ queryKey: intermediationKeys.legalEntities });
       qc.invalidateQueries({ queryKey: ["intermediation", "contract-snapshot"] });
     },
+  });
+}
+
+// ═══ Fase 5a — Representação / procurações (migration 20260915100000) ═════════
+// Só admin escreve (RPCs poa_*). Promotora não enxerga a tabela (RLS).
+
+/** Invalida procurações + o que depende delas (entidade jurídica espelhada, alçada, snapshot). */
+function useInvalidatePoa() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: intermediationKeys.powers });
+    qc.invalidateQueries({ queryKey: intermediationKeys.legalEntities });
+    qc.invalidateQueries({ queryKey: intermediationKeys.canApprove });
+    qc.invalidateQueries({ queryKey: ["intermediation", "contract-snapshot"] });
+  };
+}
+
+export function usePowersOfAttorney() {
+  return useQuery({
+    queryKey: intermediationKeys.powers,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("powers_of_attorney").select("*").order("created_at");
+      if (error) throw error;
+      return (data ?? []) as PowerOfAttorney[];
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Cria/edita uma procuração (poa_upsert). */
+export function usePoaUpsert() {
+  const invalidate = useInvalidatePoa();
+  return useMutation({
+    mutationFn: async (input: PowerOfAttorneyInput) => {
+      const { data, error } = await supabase.rpc("poa_upsert", { p_data: input });
+      if (error) throw error;
+      return (data ?? { ok: false }) as { ok: boolean; id?: string };
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Ativa / revoga / expira uma procuração (poa_set_status). */
+export function usePoaSetStatus() {
+  const invalidate = useInvalidatePoa();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: PoaStatus }) => {
+      const { error } = await supabase.rpc("poa_set_status", { p_id: id, p_status: status });
+      if (error) throw error;
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Torna a procuração padrão E espelha em legal_entities.signer_* (poa_set_default). */
+export function usePoaSetDefault() {
+  const invalidate = useInvalidatePoa();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc("poa_set_default", { p_id: id });
+      if (error) throw error;
+      return (data ?? { ok: false }) as { ok: boolean };
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+// ═══ Fase 5b — Alçadas / fila de aprovação (migration 20260915140000) ════════
+
+/** Quem pode aprovar exceções (procuração com can_approve, ou admin/superadmin). */
+export function useCanApprove() {
+  return useQuery({
+    queryKey: intermediationKeys.canApprove,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("member_can_approve");
+      if (error) throw error;
+      return data === true;
+    },
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Pedidos de aprovação. Traz code + owner_lead_id da intermediação (embed) e
+ * resolve o nome do lead do proprietário numa segunda consulta (evita a
+ * ambiguidade owner_lead_id/buyer_lead_id do embed aninhado de `leads`).
+ */
+export function useApprovalRequests(filter: "pending" | "all" = "pending") {
+  return useQuery({
+    queryKey: intermediationKeys.approvals(filter),
+    queryFn: async () => {
+      let q = supabase
+        .from("approval_requests")
+        .select("*, intermediation:intermediations(code, owner_lead_id)")
+        .order("requested_at", { ascending: false });
+      if (filter === "pending") q = q.eq("status", "pending");
+      const { data, error } = await q;
+      if (error) throw error;
+      const rows = (data ?? []) as ApprovalRequest[];
+      const leadIds = Array.from(
+        new Set(rows.map((r) => r.intermediation?.owner_lead_id).filter((x): x is string => !!x)),
+      );
+      const names = new Map<string, string>();
+      if (leadIds.length) {
+        const { data: leads, error: le } = await supabase.from("leads").select("id, name").in("id", leadIds);
+        if (le) throw le;
+        (leads ?? []).forEach((l) => names.set(l.id as string, (l.name as string) ?? ""));
+      }
+      return rows.map((r) => ({
+        ...r,
+        lead_name: r.intermediation ? names.get(r.intermediation.owner_lead_id) ?? null : null,
+      }));
+    },
+    staleTime: 15_000,
+  });
+}
+
+/** Aprovar um pedido — APLICA o efeito (approval_decide). Só quem tem alçada. */
+export function useApproveRequest() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ requestId, note }: { requestId: string; note?: string | null }) => {
+      const { data, error } = await supabase.rpc("approval_decide", { p_request_id: requestId, p_decision: "approved", p_note: note ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false, decision: "approved" }) as { ok: boolean; decision: string; result?: unknown };
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Recusar um pedido (approval_decide). Só quem tem alçada. */
+export function useRejectRequest() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ requestId, note }: { requestId: string; note?: string | null }) => {
+      const { data, error } = await supabase.rpc("approval_decide", { p_request_id: requestId, p_decision: "rejected", p_note: note ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false, decision: "rejected" }) as { ok: boolean; decision: string };
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Cancela um pedido pendente (quem abriu ou admin) — approval_cancel. */
+export function useCancelApproval() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ requestId, note }: { requestId: string; note?: string | null }) => {
+      const { error } = await supabase.rpc("approval_cancel", { p_request_id: requestId, p_note: note ?? null });
+      if (error) throw error;
+    },
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Alterar termos da comissão (intermediation_change_commission). Sem alçada → needs_approval. */
+export function useChangeCommission() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, type, value, reason }: { id: string; leadId?: string | null; type: CommissionType; value: number; reason?: string | null }) => {
+      const { data, error } = await supabase.rpc("intermediation_change_commission", { p_id: id, p_type: type, p_value: value, p_reason: reason ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false }) as CommissionActionResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Renunciar comissão (intermediation_set_commission 'waived'). Sem alçada → needs_approval. */
+export function useWaiveCommission() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, amount }: { id: string; leadId?: string | null; amount?: number | null }) => {
+      const { data, error } = await supabase.rpc("intermediation_set_commission", { p_id: id, p_status: "waived", p_amount: amount ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false }) as CommissionActionResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Concessão financeira excepcional (intermediation_request_concession). Sem alçada → needs_approval. */
+export function useRequestConcession() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, amount, description }: { id: string; leadId?: string | null; amount: number; description: string }) => {
+      const { data, error } = await supabase.rpc("intermediation_request_concession", { p_id: id, p_amount: amount, p_description: description });
+      if (error) throw error;
+      return (data ?? { ok: false }) as CommissionActionResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
   });
 }

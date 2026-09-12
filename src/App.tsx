@@ -142,6 +142,7 @@ const InstagramCampaigns = React.lazy(() => import("./pages/marketing/InstagramC
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
 const OperationTower = React.lazy(() => import("./pages/OperationTower"));
 const IntermediationDashboard = React.lazy(() => import("./pages/IntermediationDashboard"));
+const ApprovalsInbox = React.lazy(() => import("./pages/ApprovalsInbox"));
 const ImportLeads = React.lazy(() => import("./pages/ImportLeads"));
 const MarketingForms = React.lazy(() => import("./pages/MarketingForms"));
 
@@ -289,6 +290,7 @@ const AppRoutes = () => {
       {/* Sales/Commercial routes */}
       <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/intermediacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><IntermediationDashboard /></React.Suspense></ProtectedRoute>} />
+      <Route path="/comercial/aprovacoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><ApprovalsInbox /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/cockpit" element={<ProtectedRoute><CockpitShell /></ProtectedRoute>} />
       <Route path="/comercial/meu-dia" element={<Navigate to="/comercial/cockpit" replace />} />
       <Route path="/comercial/agenda" element={<ProtectedRoute><SalesAgenda /></ProtectedRoute>} />
