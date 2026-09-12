@@ -527,6 +527,95 @@ export interface IntermediationFunnel {
 
 export type IntermediationFunnelPeriod = "week" | "month" | "all";
 
+// ─── Painel de gestão (RPC `intermediation_dashboard`) ───────────────────────
+// migration 20260914160000_intermediacao_painel. Uma chamada carrega o painel
+// do gestor: KPIs, listas acionáveis, ranking de promotoras e prêmios.
+
+export type IntermediationDashboardPeriod = "week" | "month" | "quarter" | "all";
+
+/** KPIs do painel. Valores de comissão/venda são `numeric` em reais. */
+export interface IntermediationDashboardKpis {
+  ativas: number;
+  vencendo: number;
+  aguardando_contrato: number;
+  aguardando_termo: number;
+  aguardando_pagamento: number;
+  prontas_concluir: number;
+  vendidas_periodo: number;
+  encerradas_periodo: number;
+  valor_vendido_periodo: number;
+  comissao_apurada: number;
+  comissao_paga: number;
+  comissao_pendente: number;
+}
+
+/** Campos comuns a toda linha das listas "precisa de atenção". */
+interface DashboardAtencaoBase {
+  intermediation_id: string;
+  owner_lead_id: string;
+  code: string;
+  lead_name: string | null;
+}
+
+export interface DashboardPrazoItem extends DashboardAtencaoBase {
+  ends_at: string | null;
+  deadline_status: DeadlineStatus;
+}
+
+export interface DashboardContratoPendenteItem extends DashboardAtencaoBase {
+  contract_status: ContractStatus;
+}
+
+export interface DashboardTermoPendenteItem extends DashboardAtencaoBase {
+  sale_contract_status: SaleContractStatus;
+  sale_price: number | null;
+}
+
+export interface DashboardPagamentoPendenteItem extends DashboardAtencaoBase {
+  sale_price: number | null;
+  payment_status: IntermediationPaymentStatus | null;
+}
+
+export interface DashboardProntaConcluirItem extends DashboardAtencaoBase {
+  sale_price: number | null;
+}
+
+export interface IntermediationDashboardAtencao {
+  prazos: DashboardPrazoItem[];
+  contratos_pendentes: DashboardContratoPendenteItem[];
+  termos_pendentes: DashboardTermoPendenteItem[];
+  pagamentos_pendentes: DashboardPagamentoPendenteItem[];
+  prontas_concluir: DashboardProntaConcluirItem[];
+}
+
+/** Linha do ranking de promotoras (prêmios em cents). */
+export interface IntermediationDashboardRankingRow {
+  member_id: string;
+  name: string;
+  captadas: number;
+  vendidas: number;
+  premios_cents: number;
+}
+
+/** Prêmios por status do ledger (valores em cents). */
+export interface IntermediationDashboardPremios {
+  pendente_cents: number;
+  aprovado_cents: number;
+  pago_cents: number;
+  pendente_qtd: number;
+}
+
+/** Retorno de `intermediation_dashboard(p_period)`. */
+export interface IntermediationDashboard {
+  period: IntermediationDashboardPeriod;
+  period_start: string;
+  generated_at: string;
+  kpis: IntermediationDashboardKpis;
+  atencao: IntermediationDashboardAtencao;
+  ranking: IntermediationDashboardRankingRow[];
+  premios: IntermediationDashboardPremios;
+}
+
 // ─── Labels / cores ──────────────────────────────────────────────────────────
 
 interface BadgeMeta {

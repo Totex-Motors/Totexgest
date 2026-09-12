@@ -32,6 +32,7 @@ import {
   Lightbulb,
   Instagram,
   HandCoins,
+  Handshake,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -104,6 +105,7 @@ const sections: NavSection[] = [
       { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
       // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
       { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins },
+      { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake },
     ],
   },
   {

@@ -12,8 +12,21 @@ import type {
   ContractSignerAuthMethod,
   ContractSignerChannel,
   ContractSnapshot,
+  ContractStatus,
   ContractTemplate,
+  DashboardContratoPendenteItem,
+  DashboardPagamentoPendenteItem,
+  DashboardPrazoItem,
+  DashboardProntaConcluirItem,
+  DashboardTermoPendenteItem,
+  DeadlineStatus,
   Intermediation,
+  IntermediationDashboard,
+  IntermediationDashboardAtencao,
+  IntermediationDashboardKpis,
+  IntermediationDashboardPeriod,
+  IntermediationDashboardPremios,
+  IntermediationDashboardRankingRow,
   IntermediationEvent,
   IntermediationFunnel,
   IntermediationFunnelPeriod,
@@ -24,6 +37,7 @@ import type {
   LegalEntityInput,
   Proposal,
   ProposalInput,
+  SaleContractStatus,
 } from "@/types/intermediation";
 
 /**
@@ -42,6 +56,7 @@ export const intermediationKeys = {
   byLead: (leadId: string) => ["intermediation", "by-lead", leadId] as const,
   events: (id: string) => ["intermediation", "events", id] as const,
   funnel: (period: IntermediationFunnelPeriod) => ["intermediation", "funnel", period] as const,
+  dashboard: (period: IntermediationDashboardPeriod) => ["intermediation", "dashboard", period] as const,
   legalEntities: ["intermediation", "legal-entities"] as const,
   contractSnapshot: (id: string, type: ContractDocumentType) => ["intermediation", "contract-snapshot", id, type] as const,
   contractDocuments: (id: string) => ["intermediation", "contract-documents", id] as const,
@@ -127,6 +142,123 @@ export function useIntermediationFunnel(period: IntermediationFunnelPeriod) {
       } satisfies IntermediationFunnel;
     },
     staleTime: 30_000,
+  });
+}
+
+// ─── Painel de gestão (RPC `intermediation_dashboard`) ───────────────────────
+
+const num = (v: unknown) => Number(v) || 0;
+const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+const str = (v: unknown) => (v == null ? "" : String(v));
+const strOrNull = (v: unknown) => (v == null ? null : String(v));
+
+function asArray(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
+}
+
+function normalizeDashboard(raw: unknown): IntermediationDashboard {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const k = (r.kpis ?? {}) as Record<string, unknown>;
+  const a = (r.atencao ?? {}) as Record<string, unknown>;
+  const p = (r.premios ?? {}) as Record<string, unknown>;
+
+  const kpis: IntermediationDashboardKpis = {
+    ativas: num(k.ativas),
+    vencendo: num(k.vencendo),
+    aguardando_contrato: num(k.aguardando_contrato),
+    aguardando_termo: num(k.aguardando_termo),
+    aguardando_pagamento: num(k.aguardando_pagamento),
+    prontas_concluir: num(k.prontas_concluir),
+    vendidas_periodo: num(k.vendidas_periodo),
+    encerradas_periodo: num(k.encerradas_periodo),
+    valor_vendido_periodo: num(k.valor_vendido_periodo),
+    comissao_apurada: num(k.comissao_apurada),
+    comissao_paga: num(k.comissao_paga),
+    comissao_pendente: num(k.comissao_pendente),
+  };
+
+  const atencao: IntermediationDashboardAtencao = {
+    prazos: asArray(a.prazos).map((x): DashboardPrazoItem => ({
+      intermediation_id: str(x.intermediation_id),
+      owner_lead_id: str(x.owner_lead_id),
+      code: str(x.code),
+      lead_name: strOrNull(x.lead_name),
+      ends_at: strOrNull(x.ends_at),
+      deadline_status: (x.deadline_status as DeadlineStatus) ?? "ok",
+    })),
+    contratos_pendentes: asArray(a.contratos_pendentes).map((x): DashboardContratoPendenteItem => ({
+      intermediation_id: str(x.intermediation_id),
+      owner_lead_id: str(x.owner_lead_id),
+      code: str(x.code),
+      lead_name: strOrNull(x.lead_name),
+      contract_status: (x.contract_status as ContractStatus) ?? "none",
+    })),
+    termos_pendentes: asArray(a.termos_pendentes).map((x): DashboardTermoPendenteItem => ({
+      intermediation_id: str(x.intermediation_id),
+      owner_lead_id: str(x.owner_lead_id),
+      code: str(x.code),
+      lead_name: strOrNull(x.lead_name),
+      sale_contract_status: (x.sale_contract_status as SaleContractStatus) ?? "none",
+      sale_price: numOrNull(x.sale_price),
+    })),
+    pagamentos_pendentes: asArray(a.pagamentos_pendentes).map((x): DashboardPagamentoPendenteItem => ({
+      intermediation_id: str(x.intermediation_id),
+      owner_lead_id: str(x.owner_lead_id),
+      code: str(x.code),
+      lead_name: strOrNull(x.lead_name),
+      sale_price: numOrNull(x.sale_price),
+      payment_status: (x.payment_status as IntermediationPaymentStatus | null) ?? null,
+    })),
+    prontas_concluir: asArray(a.prontas_concluir).map((x): DashboardProntaConcluirItem => ({
+      intermediation_id: str(x.intermediation_id),
+      owner_lead_id: str(x.owner_lead_id),
+      code: str(x.code),
+      lead_name: strOrNull(x.lead_name),
+      sale_price: numOrNull(x.sale_price),
+    })),
+  };
+
+  const ranking: IntermediationDashboardRankingRow[] = asArray(r.ranking).map((x) => ({
+    member_id: str(x.member_id),
+    name: str(x.name),
+    captadas: num(x.captadas),
+    vendidas: num(x.vendidas),
+    premios_cents: num(x.premios_cents),
+  }));
+
+  const premios: IntermediationDashboardPremios = {
+    pendente_cents: num(p.pendente_cents),
+    aprovado_cents: num(p.aprovado_cents),
+    pago_cents: num(p.pago_cents),
+    pendente_qtd: num(p.pendente_qtd),
+  };
+
+  return {
+    period: (r.period as IntermediationDashboardPeriod) ?? "month",
+    period_start: str(r.period_start),
+    generated_at: str(r.generated_at),
+    kpis,
+    atencao,
+    ranking,
+    premios,
+  };
+}
+
+/**
+ * Painel de gestão da intermediação: uma chamada agrega KPIs, listas
+ * acionáveis, ranking de promotoras e prêmios. Só gestor (admin/comercial/
+ * closer) — promotora recebe erro "Sem acesso" do RPC (SECURITY DEFINER).
+ */
+export function useIntermediationDashboard(period: IntermediationDashboardPeriod) {
+  return useQuery({
+    queryKey: intermediationKeys.dashboard(period),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("intermediation_dashboard", { p_period: period });
+      if (error) throw error;
+      return normalizeDashboard(data);
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 
