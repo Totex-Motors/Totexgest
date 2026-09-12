@@ -4,6 +4,7 @@ import {
   FileSignature, Loader2, Save, Lock, Upload, ExternalLink, Pause, Play, FileWarning, XCircle,
   ChevronDown, ChevronRight, History, Building2, UserRound, CalendarClock, Coins, Info, AlertTriangle,
   Eye, FileText, RefreshCw, ClipboardList, Car, CheckCircle2, Settings2, Layers, Send, Ban, Activity, Search,
+  UserPlus, Handshake, Wallet, BadgeCheck, Trophy, Check, DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,17 +28,24 @@ import {
   ContractRenderError,
   getContractSignedUrl,
   openContractPreview,
+  useAddProposal,
+  useConcludeSale,
+  useConfirmPayment,
   useContractCancel,
   useContractDocuments,
   useContractEvents,
   useContractResend,
   useContractSnapshot,
   useContractStatus,
+  useDecideProposal,
   useGenerateContract,
+  useImportSaleContract,
   useImportSignedContract,
   useIntermediationByLead,
   useIntermediationEvents,
+  useIntermediationProposals,
   useLegalEntities,
+  useSetBuyer,
   useSetContractData,
   useSetIntermediationCommission,
   useSetIntermediationStatus,
@@ -58,10 +66,15 @@ import {
   CUSTODY_MODE_LABEL,
   INTERMEDIATION_EVENT_LABEL,
   INTERMEDIATION_STATUS_META,
+  PAYMENT_METHOD_LABEL,
+  PAYMENT_STATUS_META,
+  PROPOSAL_STATUS_META,
+  SALE_CONTRACT_STATUS_META,
   SIGNER_CHANNEL_LABEL,
   SIGNER_PARTY_LABEL,
   TEST_DRIVE_POLICY_LABEL,
   missingTerms,
+  type BuyerData,
   type CommissionStatus,
   type CommissionType,
   type ContractDocument,
@@ -75,6 +88,9 @@ import {
   type IntermediationEvent,
   type IntermediationStatusAction,
   type IntermediationTermsInput,
+  type PaymentMethod,
+  type Proposal,
+  type ProposalInput,
   type TestDrivePolicy,
 } from "@/types/intermediation";
 
@@ -1432,6 +1448,872 @@ function TimelineBlock({ intermediationId, memberName }: { intermediationId: str
   );
 }
 
+// ─── Fase 4: Fechamento (comprador e venda) ──────────────────────────────────
+
+/** Etiqueta de forma de pagamento com detalhes (entrada, parcelas). */
+function paymentSummary(p: Pick<Proposal, "payment_method" | "down_payment" | "financed_amount" | "installments">): string {
+  if (!p.payment_method) return "—";
+  const base = PAYMENT_METHOD_LABEL[p.payment_method];
+  const extra: string[] = [];
+  if (p.down_payment != null) extra.push(`entrada ${fmtBRL(p.down_payment)}`);
+  if (p.financed_amount != null) extra.push(`${fmtBRL(p.financed_amount)} financiados`);
+  if (p.installments != null) extra.push(`${p.installments}x`);
+  return extra.length ? `${base} · ${extra.join(" · ")}` : base;
+}
+
+// ── Comprador ──
+
+interface BuyerForm {
+  name: string; cpf_cnpj: string; rg: string; address: string; address_number: string; complement: string;
+  district: string; zip: string; city: string; state: string; email: string; phone: string;
+}
+
+function toBuyerForm(i: Intermediation): BuyerForm {
+  const b = i.buyer_data ?? {};
+  const st = pick(b.state);
+  return {
+    name: pick(b.name),
+    cpf_cnpj: maskCpfCnpj(pick(b.cpf_cnpj)),
+    rg: pick(b.rg),
+    address: pick(b.address),
+    address_number: pick(b.address_number),
+    complement: pick(b.complement),
+    district: pick(b.district),
+    zip: maskCep(pick(b.zip)),
+    city: pick(b.city),
+    state: st.length <= 2 ? st.toUpperCase() : st,
+    email: pick(b.email),
+    phone: pick(b.phone),
+  };
+}
+
+function BuyerSubBlock({ i, locked }: { i: Intermediation; locked: boolean }) {
+  const setBuyer = useSetBuyer();
+  const [f, setF] = useState<BuyerForm>(() => toBuyerForm(i));
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => { if (!dirty) setF(toBuyerForm(i)); }, [i, dirty]);
+
+  const set = (k: keyof BuyerForm, v: string) => { setF((prev) => ({ ...prev, [k]: v })); setDirty(true); };
+  const inputCls = "h-9";
+
+  const save = async () => {
+    if (f.name.trim().length < 2) { toast.error("Informe o nome do comprador."); return; }
+    const buyer: BuyerData = {
+      name: f.name.trim(), cpf_cnpj: f.cpf_cnpj.trim(), rg: f.rg.trim(), address: f.address.trim(),
+      address_number: f.address_number.trim(), complement: f.complement.trim(), district: f.district.trim(),
+      zip: f.zip.trim(), city: f.city.trim(), state: f.state.trim(), email: f.email.trim().toLowerCase(), phone: f.phone.trim(),
+    };
+    try {
+      await setBuyer.mutateAsync({ id: i.id, leadId: i.owner_lead_id, buyer, buyerLeadId: i.buyer_lead_id });
+      setDirty(false);
+      toast.success("Dados do comprador salvos.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui salvar os dados do comprador.");
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border/60 p-3 space-y-3">
+      <p className="text-sm font-semibold flex items-center gap-1.5"><UserPlus className="h-4 w-4 text-sky-600" /> Comprador</p>
+      {locked && (
+        <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+          <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Termo já assinado: os dados do comprador só mudam por aditivo (admin).
+        </p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Field label="Nome completo *" className="sm:col-span-2"><Input className={inputCls} value={f.name} disabled={locked} placeholder="Nome e sobrenome" onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="CPF / CNPJ"><Input inputMode="numeric" className={inputCls} value={f.cpf_cnpj} disabled={locked} placeholder="000.000.000-00" onChange={(e) => set("cpf_cnpj", maskCpfCnpj(e.target.value))} /></Field>
+        <Field label="RG / IE"><Input className={inputCls} value={f.rg} disabled={locked} placeholder="Ex.: 12.345.678-9" onChange={(e) => set("rg", e.target.value)} /></Field>
+        <Field label="CEP"><Input inputMode="numeric" className={inputCls} value={f.zip} disabled={locked} placeholder="00000-000" onChange={(e) => set("zip", maskCep(e.target.value))} /></Field>
+        <Field label="Endereço (rua/avenida)"><Input className={inputCls} value={f.address} disabled={locked} placeholder="Ex.: Rua das Flores" onChange={(e) => set("address", e.target.value)} /></Field>
+        <Field label="Número"><Input className={inputCls} value={f.address_number} disabled={locked} placeholder="Ex.: 120" onChange={(e) => set("address_number", e.target.value)} /></Field>
+        <Field label="Complemento"><Input className={inputCls} value={f.complement} disabled={locked} placeholder="Ex.: apto 32" onChange={(e) => set("complement", e.target.value)} /></Field>
+        <Field label="Bairro"><Input className={inputCls} value={f.district} disabled={locked} placeholder="Ex.: Centro" onChange={(e) => set("district", e.target.value)} /></Field>
+        <div className="grid grid-cols-[1fr_72px] gap-2">
+          <Field label="Cidade"><Input className={inputCls} value={f.city} disabled={locked} placeholder="Ex.: Barueri" onChange={(e) => set("city", e.target.value)} /></Field>
+          <Field label="UF"><Input className={cn(inputCls, "uppercase")} value={f.state} disabled={locked} placeholder="SP" maxLength={2} onChange={(e) => set("state", maskUF(e.target.value))} /></Field>
+        </div>
+        <Field label="E-mail"><Input type="email" className={inputCls} value={f.email} disabled={locked} placeholder="nome@email.com" onChange={(e) => set("email", e.target.value)} /></Field>
+        <Field label="Telefone / WhatsApp"><Input inputMode="tel" className={inputCls} value={f.phone} disabled={locked} placeholder="(11) 99999-9999" onChange={(e) => set("phone", e.target.value)} /></Field>
+      </div>
+      {!locked && (
+        <div className="flex items-center justify-end gap-2">
+          {dirty && <span className="text-[11px] text-muted-foreground">Alterações não salvas</span>}
+          <Button size="sm" onClick={save} disabled={setBuyer.isPending}>
+            {setBuyer.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />} Salvar comprador
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Proposta ──
+
+interface ProposalForm { amount: string; payment_method: PaymentMethod | ""; down_payment: string; financed_amount: string; installments: string; notes: string; }
+const EMPTY_PROPOSAL: ProposalForm = { amount: "", payment_method: "", down_payment: "", financed_amount: "", installments: "", notes: "" };
+
+function ProposalSubBlock({ i }: { i: Intermediation }) {
+  const addProposal = useAddProposal();
+  const decide = useDecideProposal();
+  const proposalsQ = useIntermediationProposals(i.id);
+  const proposals = useMemo(() => proposalsQ.data ?? [], [proposalsQ.data]);
+  const [f, setF] = useState<ProposalForm>(EMPTY_PROPOSAL);
+  const [rejecting, setRejecting] = useState<Proposal | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [deciding, setDeciding] = useState<string | null>(null);
+
+  const canAdd = i.status === "active" || i.status === "docs_pending";
+  const showFinancing = f.payment_method === "financing" || f.payment_method === "mixed";
+  const showInstallments = f.payment_method === "financing";
+
+  const submit = async () => {
+    const amount = parseMoney(f.amount);
+    if (amount == null || amount <= 0) { toast.error("Informe o valor da proposta."); return; }
+    const data: ProposalInput = {
+      amount,
+      ...(i.buyer_data?.name?.trim() ? { buyer_name: i.buyer_data.name.trim() } : {}),
+      ...(i.buyer_lead_id ? { buyer_lead_id: i.buyer_lead_id } : {}),
+      ...(f.payment_method ? { payment_method: f.payment_method } : {}),
+      ...(showFinancing ? { down_payment: parseMoney(f.down_payment), financed_amount: parseMoney(f.financed_amount) } : {}),
+      ...(showInstallments && onlyDigits(f.installments) ? { installments: Number(onlyDigits(f.installments)) } : {}),
+      ...(f.notes.trim() ? { notes: f.notes.trim() } : {}),
+    };
+    try {
+      await addProposal.mutateAsync({ id: i.id, leadId: i.owner_lead_id, data });
+      setF(EMPTY_PROPOSAL);
+      toast.success("Proposta registrada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui registrar a proposta.");
+    }
+  };
+
+  const accept = async (p: Proposal) => {
+    setDeciding(p.id);
+    try {
+      await decide.mutateAsync({ proposalId: p.id, leadId: i.owner_lead_id, decision: "accepted" });
+      toast.success("Proposta aceita — venda carimbada. Agora é gerar o Termo de Compra e Venda.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui aceitar a proposta.");
+    } finally {
+      setDeciding(null);
+    }
+  };
+
+  const confirmReject = async () => {
+    if (!rejecting) return;
+    if (rejectReason.trim().length < 3) { toast.error("Descreva o motivo da recusa."); return; }
+    setDeciding(rejecting.id);
+    try {
+      await decide.mutateAsync({ proposalId: rejecting.id, leadId: i.owner_lead_id, decision: "rejected", note: rejectReason.trim() });
+      toast.success("Proposta recusada.");
+      setRejecting(null);
+      setRejectReason("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui recusar a proposta.");
+    } finally {
+      setDeciding(null);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border/60 p-3 space-y-3">
+      <p className="text-sm font-semibold flex items-center gap-1.5"><Handshake className="h-4 w-4 text-violet-600" /> Proposta</p>
+
+      {canAdd ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Valor da proposta (R$) *"><Input inputMode="decimal" className="h-9" value={f.amount} placeholder="Ex.: 82000" onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+            <Field label="Forma de pagamento">
+              <Select value={f.payment_method || "__none__"} onValueChange={(v) => setF({ ...f, payment_method: v === "__none__" ? "" : (v as PaymentMethod) })}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">A definir…</SelectItem>
+                  {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((k) => <SelectItem key={k} value={k}>{PAYMENT_METHOD_LABEL[k]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            {showFinancing && (
+              <>
+                <Field label="Entrada (R$)"><Input inputMode="decimal" className="h-9" value={f.down_payment} placeholder="Ex.: 20000" onChange={(e) => setF({ ...f, down_payment: e.target.value })} /></Field>
+                <Field label="Valor financiado (R$)"><Input inputMode="decimal" className="h-9" value={f.financed_amount} placeholder="Ex.: 62000" onChange={(e) => setF({ ...f, financed_amount: e.target.value })} /></Field>
+              </>
+            )}
+            {showInstallments && (
+              <Field label="Parcelas"><Input inputMode="numeric" className="h-9" value={f.installments} placeholder="Ex.: 48" maxLength={3} onChange={(e) => setF({ ...f, installments: onlyDigits(e.target.value).slice(0, 3) })} /></Field>
+            )}
+            <Field label="Observação" className="sm:col-span-2"><Textarea rows={2} value={f.notes} placeholder="Ex.: comprador quer test drive antes de fechar" onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={submit} disabled={addProposal.isPending}>
+              {addProposal.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <DollarSign className="h-4 w-4 mr-1" />} Registrar proposta
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Propostas só entram com a intermediação ativa.</p>
+      )}
+
+      {/* Lista de propostas */}
+      {proposalsQ.isLoading ? (
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando propostas…</p>
+      ) : proposals.length > 0 ? (
+        <ul className="space-y-1.5">
+          {proposals.map((p) => {
+            const pm = PROPOSAL_STATUS_META[p.status] ?? PROPOSAL_STATUS_META.pending;
+            const busy = deciding === p.id;
+            return (
+              <li key={p.id} className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <span className="font-medium">{fmtBRL(p.amount)} <span className="text-muted-foreground font-normal">· {paymentSummary(p)}</span></span>
+                  <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", pm.cls)}>{pm.label}</Badge>
+                </div>
+                <p className="text-muted-foreground">{fmtDateTime(p.created_at)}{p.buyer_name ? ` · ${p.buyer_name}` : ""}</p>
+                {p.notes && <p className="text-muted-foreground">Obs.: {p.notes}</p>}
+                {p.decision_note && <p className="text-muted-foreground">Motivo: {p.decision_note}</p>}
+                {p.status === "pending" && canAdd && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <Button size="sm" className="h-7 text-xs" disabled={busy} onClick={() => accept(p)}>
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />} Aceitar
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive" disabled={busy} onClick={() => setRejecting(p)}>
+                      <XCircle className="h-3.5 w-3.5 mr-1" /> Recusar
+                    </Button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Nenhuma proposta registrada ainda.</p>
+      )}
+
+      {/* Recusar proposta */}
+      <Dialog open={!!rejecting} onOpenChange={(o) => { if (!decide.isPending && !o) { setRejecting(null); setRejectReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Recusar proposta — {i.code}</DialogTitle>
+            <DialogDescription>A proposta de {rejecting ? fmtBRL(rejecting.amount) : "—"} vai pra Recusada. Fica registrada no histórico com o motivo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo *</Label>
+            <Textarea rows={2} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Ex.: proprietário achou o valor baixo" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejecting(null); setRejectReason(""); }} disabled={decide.isPending}>Voltar</Button>
+            <Button variant="destructive" onClick={confirmReject} disabled={decide.isPending}>
+              {decide.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />} Recusar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Termo de Compra e Venda (SALE_CONTRACT) ──
+
+const SALE_SOURCE_HINT: Record<string, string> = {
+  buyer_data: "Comprador",
+  sale: "Proposta aceita",
+  "contract_data.owner": "Dados do proprietário",
+  "contract_data.vehicle": "Dados do veículo",
+  terms: "Condições comerciais",
+  legal_entity: "Entidade jurídica (Configurações)",
+};
+
+function SaleContractSubBlock({ i, memberName }: { i: Intermediation; memberName: (id: string | null) => string | null }) {
+  const { isAdmin } = useAuth();
+  const snapshotQ = useContractSnapshot(i.id, "SALE_CONTRACT");
+  const docsQ = useContractDocuments(i.id, "SALE_CONTRACT");
+  const generate = useGenerateContract();
+  const resend = useContractResend();
+  const cancelSend = useContractCancel();
+  const checkStatus = useContractStatus();
+  const importSale = useImportSaleContract();
+
+  const snapshot = snapshotQ.data ?? null;
+  const docs = useMemo(() => docsQ.data ?? [], [docsQ.data]);
+  const currentDoc = docs.find((d) => d.id === i.sale_document_id) ?? docs.find((d) => d.status !== "cancelled" && d.status !== "archived") ?? null;
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenReason, setRegenReason] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [signedAt, setSignedAt] = useState(todayISO());
+  const [reason, setReason] = useState("");
+  const [opening, setOpening] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const hasSale = i.sale_contract_status === "signed" || i.sale_contract_status === "imported";
+  const closed = INTERMEDIATION_STATUS_META[i.status].closed;
+  const canWork = (i.status === "active" || i.status === "docs_pending") && !closed;
+  const missing = snapshot?.missing ?? [];
+  const ready = snapshot?.ready === true;
+  const nextVersion = snapshot?.next_version ?? (docs[0]?.version ?? 0) + 1;
+  const canGenerate = !hasSale && canWork;
+  const canRegenerate = canGenerate && !!currentDoc && LIVE_DOC_STATUSES.includes(currentDoc.status);
+  const history = docs.filter((d) => d.id !== currentDoc?.id);
+
+  const docSendable = !!currentDoc && CONTRACT_SENDABLE_STATUSES.includes(currentDoc.status);
+  const docInFlight = !!currentDoc && CONTRACT_IN_FLIGHT_STATUSES.includes(currentDoc.status);
+  const docFailed = !!currentDoc && CONTRACT_FAILED_STATUSES.includes(currentDoc.status);
+  const canSend = canGenerate && docSendable;
+  const signatureBusy = resend.isPending || cancelSend.isPending || checkStatus.isPending;
+  const deadline = currentDoc && docInFlight ? deadlineText(currentDoc.deadline_at) : null;
+
+  const meta = SALE_CONTRACT_STATUS_META[i.sale_contract_status] ?? SALE_CONTRACT_STATUS_META.none;
+  const badgeLabel = i.sale_contract_status === "generated" && currentDoc ? `Gerado v${currentDoc.version} · aguardando envio` : meta.label;
+
+  const resetImport = () => { setFile(null); setSignedAt(todayISO()); setReason(""); };
+
+  const openPath = async (path: string, key: string) => {
+    setOpening(key);
+    try {
+      await openPdfTab(() => getContractSignedUrl(path, 600));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui abrir o PDF.");
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  const preview = async () => {
+    setPreviewing(true);
+    try {
+      await openContractPreview(i.id, "SALE_CONTRACT");
+    } catch (e) {
+      renderErrorToast(e, "Não consegui montar a pré-visualização.");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const runGenerate = async (why?: string) => {
+    const win = window.open("about:blank", "_blank");
+    if (win) win.opener = null;
+    try {
+      const r = await generate.mutateAsync({ id: i.id, leadId: i.owner_lead_id, reason: why ?? null, documentType: "SALE_CONTRACT" });
+      toast.success(`Termo de Compra e Venda v${r.document.version} gerado.`);
+      let url = r.signed_url;
+      if (!url && r.document.rendered_file_path) url = await getContractSignedUrl(r.document.rendered_file_path, 600).catch(() => null);
+      if (url) { if (win) win.location.href = url; else window.open(url, "_blank", "noopener"); }
+      else win?.close();
+      setRegenOpen(false);
+      setRegenReason("");
+    } catch (e) {
+      win?.close();
+      renderErrorToast(e, "Não consegui gerar o termo.");
+    }
+  };
+
+  const confirmRegenerate = () => {
+    if (regenReason.trim().length < 3) { toast.error("Descreva o motivo da nova versão."); return; }
+    void runGenerate(regenReason.trim());
+  };
+
+  const runResend = async () => {
+    if (!currentDoc) return;
+    try {
+      await resend.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id });
+      toast.success("Convites reenviados pelos canais escolhidos.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui reenviar os convites.");
+    }
+  };
+
+  const runCheck = async () => {
+    if (!currentDoc) return;
+    try {
+      const r = await checkStatus.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id });
+      if (r.finalized) toast.success(`Termo v${currentDoc.version} assinado e conferido.`);
+      else if (r.applied > 0) toast.success(`Status atualizado (${r.applied} ${r.applied === 1 ? "evento novo" : "eventos novos"}).`);
+      else {
+        const st = r.document ? CONTRACT_DOCUMENT_STATUS_META[r.document.status]?.label ?? r.document.status : null;
+        toast.info(st ? `Sem novidades — ${st.toLowerCase()}.` : "Sem novidades por enquanto.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui consultar o status da assinatura.");
+    }
+  };
+
+  const confirmCancelSend = async () => {
+    if (!currentDoc) return;
+    if (cancelReason.trim().length < 3) { toast.error("Descreva o motivo do cancelamento."); return; }
+    try {
+      await cancelSend.mutateAsync({ documentId: currentDoc.id, leadId: i.owner_lead_id, reason: cancelReason.trim() });
+      toast.success(`Envio da v${currentDoc.version} cancelado. Gere uma nova versão quando quiser enviar de novo.`);
+      setCancelOpen(false);
+      setCancelReason("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui cancelar o envio.");
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!file) { toast.error("Escolha o PDF do termo assinado."); return; }
+    if (reason.trim().length < 3) { toast.error("Descreva o motivo/origem (ex.: assinado em papel na loja)."); return; }
+    try {
+      const r = await importSale.mutateAsync({
+        id: i.id, leadId: i.owner_lead_id, file, signedAt, reason,
+        documentId: currentDoc?.id ?? i.sale_document_id ?? null,
+      });
+      if (r.already) toast.info(`${r.code ?? i.code}: termo já estava assinado.`);
+      else toast.success("Termo de Compra e Venda importado e assinado.");
+      setImportOpen(false);
+      resetImport();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui importar o termo.");
+    }
+  };
+
+  const docMeta = currentDoc ? CONTRACT_DOCUMENT_STATUS_META[currentDoc.status] ?? CONTRACT_DOCUMENT_STATUS_META.generated : null;
+  const generatedBy = currentDoc ? memberName(currentDoc.generated_by) : null;
+  const primaryHash = currentDoc?.signed_sha256 ?? currentDoc?.rendered_sha256 ?? null;
+
+  return (
+    <div className="rounded-md border border-border/60 p-3 space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold flex items-center gap-1.5"><FileSignature className="h-4 w-4 text-emerald-600" /> Termo de Compra e Venda</p>
+        <Badge variant="outline" className={cn("border text-[11px]", meta.cls)}>{badgeLabel}</Badge>
+      </div>
+
+      {/* Assinado/importado: resumo */}
+      {hasSale && (
+        <div className="text-xs text-muted-foreground space-y-0.5">
+          <p>
+            Assinado em <strong className="text-foreground">{fmtDate(i.sale_signed_at)}</strong>
+            {i.sale_contract_status === "signed" ? " · assinatura eletrônica" : i.sale_contract_status === "imported" ? " · importado (papel)" : null}
+          </p>
+          {currentDoc?.signed_sha256 && <p>Hash SHA-256: <code className="text-[11px]">{currentDoc.signed_sha256.slice(0, 12)}…</code></p>}
+          {currentDoc?.signed_file_path && (
+            <button type="button" onClick={() => openPath(currentDoc.signed_file_path!, "sale-signed")} disabled={opening === "sale-signed"} className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-60">
+              {opening === "sale-signed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF assinado
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Checklist do snapshot */}
+      {!hasSale && (
+        snapshotQ.isLoading && !snapshot ? (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Conferindo o que falta pro termo…</p>
+        ) : snapshot && missing.length > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 p-2.5">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Falta pra gerar o termo ({missing.length}):</p>
+            <ul className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
+              {missing.map((m) => (
+                <li key={m.key} className="text-[11px]">
+                  {m.source === "legal_entity" ? (
+                    <a href="/configuracoes?s=intermediacao" className="inline-flex items-center gap-1 text-amber-900 dark:text-amber-200 hover:underline">
+                      <Settings2 className="h-3 w-3 shrink-0" /> {m.label} <span className="text-muted-foreground">· Configurações › Intermediação</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-amber-900 dark:text-amber-200">
+                      <ChevronRight className="h-3 w-3 shrink-0" /> {m.label} <span className="text-muted-foreground">· {SALE_SOURCE_HINT[m.source] ?? m.source}</span>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : snapshot && !snapshot.template ? (
+          <p className="text-xs rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 px-3 py-2 flex items-start gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Nenhum template de Termo de Compra e Venda vigente. Peça pra publicar um em <a href="/configuracoes?s=intermediacao" className="underline">Configurações › Intermediação</a>.
+          </p>
+        ) : snapshot ? (
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Tudo preenchido — template "{snapshot.template!.name}" v{snapshot.template!.version}{snapshot.template!.global ? " (Totex)" : ""}.
+          </p>
+        ) : null
+      )}
+
+      {/* Ações */}
+      {!hasSale && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={preview} disabled={previewing}>
+            {previewing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Eye className="h-4 w-4 mr-1" />} Pré-visualizar
+          </Button>
+          {docInFlight ? null : !currentDoc || !LIVE_DOC_STATUSES.includes(currentDoc.status) ? (
+            <Button size="sm" variant={docFailed ? "outline" : "default"} disabled={!ready || !canGenerate || generate.isPending} onClick={() => runGenerate()} title={!ready ? "Preencha o que falta antes de gerar" : undefined}>
+              {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />} Gerar Termo v{nextVersion}
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled={!ready || !canRegenerate || generate.isPending} onClick={() => setRegenOpen(true)}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
+            </Button>
+          )}
+          {docSendable && currentDoc && (
+            <Button size="sm" disabled={!canSend || generate.isPending} onClick={() => setSendOpen(true)}>
+              <Send className="h-4 w-4 mr-1" /> {currentDoc.status === "error" ? "Enviar novamente" : "Enviar para assinatura"}
+            </Button>
+          )}
+          {docInFlight && currentDoc && (
+            <>
+              {currentDoc.status !== "completed" && (
+                <Button size="sm" variant="outline" disabled={signatureBusy} onClick={runResend}>
+                  {resend.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />} Reenviar convites
+                </Button>
+              )}
+              <Button size="sm" variant={currentDoc.status === "completed" ? "default" : "outline"} disabled={signatureBusy} onClick={runCheck}>
+                {checkStatus.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />} Verificar agora
+              </Button>
+              {currentDoc.status !== "completed" && (
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={signatureBusy} onClick={() => setCancelOpen(true)}>
+                  <Ban className="h-4 w-4 mr-1" /> Cancelar envio
+                </Button>
+              )}
+            </>
+          )}
+          {canWork && (
+            isAdmin ? (
+              <Button size="sm" variant="ghost" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-1" /> {currentDoc ? `Importar assinado em papel (v${currentDoc.version})` : "Importar termo assinado (PDF)"}
+              </Button>
+            ) : (
+              !docInFlight && <span className="text-[11px] text-muted-foreground">Se for assinado em papel, o admin importa o PDF aqui.</span>
+            )
+          )}
+        </div>
+      )}
+      {!hasSale && docInFlight && currentDoc && (
+        <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+          <Info className="h-3 w-3 shrink-0 mt-0.5" />
+          {currentDoc.status === "completed"
+            ? "Todos assinaram. Estamos baixando e conferindo o PDF assinado — clique em \"Verificar agora\" pra concluir na hora."
+            : "Enquanto o envio estiver em andamento não dá pra gerar outra versão. Pra alterar o termo, cancele o envio primeiro."}
+        </p>
+      )}
+
+      {/* Documento atual */}
+      {currentDoc && docMeta && (
+        <div className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs space-y-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <p className="font-medium flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-sky-600" /> Termo v{currentDoc.version}
+              <span className="text-muted-foreground font-normal">· template v{currentDoc.template_version ?? "—"}</span>
+            </p>
+            <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", docMeta.cls)}>{docMeta.label}</Badge>
+          </div>
+          <p className="text-muted-foreground">
+            {currentDoc.generated_at ? `Gerado em ${fmtDateTime(currentDoc.generated_at)}` : `Registrado em ${fmtDateTime(currentDoc.created_at)}`}
+            {generatedBy ? ` por ${generatedBy}` : ""}
+            {primaryHash ? <> · hash <code className="text-[11px]">{primaryHash.slice(0, 12)}…</code></> : null}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {currentDoc.rendered_file_path && (
+              <button type="button" onClick={() => openPath(currentDoc.rendered_file_path!, "sale-cur-rendered")} disabled={opening === "sale-cur-rendered"} className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline disabled:opacity-60">
+                {opening === "sale-cur-rendered" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF
+              </button>
+            )}
+            {currentDoc.signed_file_path && (
+              <button type="button" onClick={() => openPath(currentDoc.signed_file_path!, "sale-cur-signed")} disabled={opening === "sale-cur-signed"} className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-60">
+                {opening === "sale-cur-signed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Abrir PDF assinado
+              </button>
+            )}
+          </div>
+          {docInFlight && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+              {currentDoc.sent_at && <span>Enviado em {fmtDateTime(currentDoc.sent_at)}</span>}
+              {deadline && <span className={cn("inline-flex items-center gap-1", deadline.overdue && "text-red-700 dark:text-red-300")}><CalendarClock className="h-3 w-3" /> {deadline.text}</span>}
+              {currentDoc.last_event_at && <span>Última atualização {fmtDateTime(currentDoc.last_event_at)}</span>}
+            </div>
+          )}
+          {docFailed && (
+            <p className={cn("flex items-start gap-1", currentDoc.status === "cancelled" ? "text-muted-foreground" : "text-red-700 dark:text-red-300")}>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>
+                {currentDoc.status === "error"
+                  ? `Erro no envio: ${currentDoc.error_message ?? "sem detalhes"}`
+                  : `${CONTRACT_DOCUMENT_STATUS_META[currentDoc.status].label}${currentDoc.cancel_reason ? `: ${currentDoc.cancel_reason}` : ""}${currentDoc.cancelled_at ? ` · ${fmtDateTime(currentDoc.cancelled_at)}` : ""}`}
+                {currentDoc.status !== "error" ? " — gere uma nova versão pra enviar de novo." : null}
+              </span>
+            </p>
+          )}
+          <DocumentSigners doc={currentDoc} inFlight={docInFlight || docFailed || currentDoc.status === "validated"} />
+          {(currentDoc.provider_envelope_id || docInFlight || docFailed) && <ContractEventsBlock doc={currentDoc} />}
+        </div>
+      )}
+
+      {/* Histórico de versões */}
+      {history.length > 0 && (
+        <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+          <CollapsibleTrigger asChild>
+            <button type="button" className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+              {historyOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              <Layers className="h-3.5 w-3.5" /> Versões anteriores ({history.length})
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-1.5">
+            <ul className="space-y-1.5 border-l border-border/60 pl-3">
+              {history.map((d) => {
+                const dm = CONTRACT_DOCUMENT_STATUS_META[d.status] ?? CONTRACT_DOCUMENT_STATUS_META.generated;
+                const path = d.signed_file_path ?? d.rendered_file_path;
+                return (
+                  <li key={d.id} className="text-[11px] relative">
+                    <span className="absolute -left-[17px] top-1.5 h-2 w-2 rounded-full bg-border" />
+                    <p className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">v{d.version}</span>
+                      <Badge variant="outline" className={cn("border text-[10px] px-1.5 py-0", dm.cls)}>{dm.label}</Badge>
+                      <span className="text-muted-foreground">{fmtDateTime(d.generated_at ?? d.created_at)}{d.template_version ? ` · template v${d.template_version}` : ""}</span>
+                      {path && (
+                        <button type="button" onClick={() => openPath(path, `sale-h-${d.id}`)} disabled={opening === `sale-h-${d.id}`} className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline disabled:opacity-60">
+                          {opening === `sale-h-${d.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />} PDF
+                        </button>
+                      )}
+                    </p>
+                    {d.cancel_reason && <p className="text-muted-foreground">Motivo: {d.cancel_reason}{d.cancelled_at ? ` · ${fmtDate(d.cancelled_at)}` : ""}</p>}
+                  </li>
+                );
+              })}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Enviar para assinatura (Clicksign) */}
+      {currentDoc && docSendable && (
+        <ContractSignatureDialog
+          open={sendOpen}
+          onOpenChange={setSendOpen}
+          doc={currentDoc}
+          intermediationCode={i.code}
+          leadId={i.owner_lead_id}
+        />
+      )}
+
+      {/* Cancelar envio */}
+      <Dialog open={cancelOpen} onOpenChange={(o) => { if (!cancelSend.isPending) { setCancelOpen(o); if (!o) setCancelReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar envio pra assinatura — {i.code}</DialogTitle>
+            <DialogDescription>
+              O envelope da <strong>v{currentDoc?.version ?? "—"}</strong> é cancelado na Clicksign e os links dos convites param de funcionar.
+              Quem já assinou perde a assinatura — pra enviar de novo, gere uma nova versão.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo *</Label>
+            <Textarea rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Ex.: comprador pediu pra mudar a forma de pagamento" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCancelOpen(false); setCancelReason(""); }} disabled={cancelSend.isPending}>Voltar</Button>
+            <Button variant="destructive" onClick={confirmCancelSend} disabled={cancelSend.isPending}>
+              {cancelSend.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />} Cancelar envio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Regenerar */}
+      <Dialog open={regenOpen} onOpenChange={(o) => { if (!generate.isPending) { setRegenOpen(o); if (!o) setRegenReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Regenerar termo — {i.code}</DialogTitle>
+            <DialogDescription>
+              Vai gerar a <strong>v{nextVersion}</strong> com os dados de agora. A v{currentDoc?.version ?? "—"} fica <strong>cancelada no histórico</strong> (nada é apagado).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo *</Label>
+            <Textarea rows={2} value={regenReason} onChange={(e) => setRegenReason(e.target.value)} placeholder="Ex.: corrigido o CPF do comprador / mudou a forma de pagamento" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRegenOpen(false); setRegenReason(""); }} disabled={generate.isPending}>Cancelar</Button>
+            <Button onClick={confirmRegenerate} disabled={generate.isPending}>
+              {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />} Gerar v{nextVersion}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Importar assinado */}
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importSale.isPending) { setImportOpen(o); if (!o) resetImport(); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{currentDoc ? `Importar o PDF assinado desta versão (v${currentDoc.version})` : "Importar termo assinado"} — {i.code}</DialogTitle>
+            <DialogDescription>
+              Isso marca o <strong>Termo de Compra e Venda como assinado</strong>. O PDF fica guardado com hash pra auditoria{currentDoc ? ` e vinculado ao termo v${currentDoc.version}` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">PDF do termo assinado *</Label>
+              <Input type="file" accept="application/pdf,.pdf" className="h-9 file:text-xs" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              {file && <p className="text-[11px] text-muted-foreground">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Data da assinatura *</Label>
+              <Input type="date" value={signedAt} max={todayISO()} onChange={(e) => setSignedAt(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Motivo / origem *</Label>
+              <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Assinado em papel na loja e escaneado" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setImportOpen(false); resetImport(); }} disabled={importSale.isPending}>Cancelar</Button>
+            <Button onClick={confirmImport} disabled={importSale.isPending || !file}>
+              {importSale.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileSignature className="h-4 w-4 mr-1" />} Marcar assinado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Pagamento ──
+
+function PaymentSubBlock({ i }: { i: Intermediation }) {
+  const confirmPayment = useConfirmPayment();
+  const [amount, setAmount] = useState(() => moneyToInput(i.sale_price));
+  const [note, setNote] = useState("");
+  const [partial, setPartial] = useState(false);
+
+  const meta = PAYMENT_STATUS_META[i.payment_status] ?? PAYMENT_STATUS_META.pending;
+  const satisfied = i.payment_status === "satisfied";
+
+  const submit = async () => {
+    const amt = parseMoney(amount);
+    if (amt == null || amt <= 0) { toast.error("Informe o valor recebido."); return; }
+    try {
+      const r = await confirmPayment.mutateAsync({ id: i.id, leadId: i.owner_lead_id, amount: amt, note: note.trim() || null, full: !partial });
+      toast.success(r.payment_status === "satisfied" ? "Pagamento confirmado." : "Pagamento parcial registrado.");
+      setNote("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui confirmar o pagamento.");
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border/60 p-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold flex items-center gap-1.5"><Wallet className="h-4 w-4 text-emerald-600" /> Pagamento</p>
+        <Badge variant="outline" className={cn("border text-[11px]", meta.cls)}>{meta.label}</Badge>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+        <div><p className="text-muted-foreground">Valor da venda</p><p className="font-medium">{fmtBRL(i.sale_price)}</p></div>
+        <div><p className="text-muted-foreground">Recebido</p><p className="font-medium">{fmtBRL(i.paid_amount)}</p></div>
+        <div><p className="text-muted-foreground">Confirmado em</p><p className="font-medium">{fmtDate(i.payment_confirmed_at)}</p></div>
+      </div>
+      {i.payment_note && <p className="text-[11px] text-muted-foreground">Obs.: {i.payment_note}</p>}
+
+      {!satisfied && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Valor recebido (R$) *"><Input inputMode="decimal" className="h-9" value={amount} placeholder="Ex.: 82000" onChange={(e) => setAmount(e.target.value)} /></Field>
+            <Field label="Observação"><Input className="h-9" value={note} placeholder="Ex.: PIX confirmado / entrada + financiamento aprovado" onChange={(e) => setNote(e.target.value)} /></Field>
+          </div>
+          <label className="flex items-center justify-between rounded-md border border-input px-3 h-9 text-xs max-w-xs">
+            Pagamento parcial (ainda falta receber)
+            <Switch checked={partial} onCheckedChange={setPartial} />
+          </label>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={submit} disabled={confirmPayment.isPending}>
+              {confirmPayment.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <BadgeCheck className="h-4 w-4 mr-1" />} {partial ? "Registrar pagamento parcial" : "Confirmar pagamento"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Concluir venda ──
+
+function ConcludeSubBlock({ i }: { i: Intermediation }) {
+  const conclude = useConcludeSale();
+  const saleSigned = i.sale_contract_status === "signed" || i.sale_contract_status === "imported";
+  const paid = i.payment_status === "satisfied";
+  const completed = i.status === "completed";
+
+  const blockers: string[] = [];
+  if (!saleSigned) blockers.push("termo assinado");
+  if (!paid) blockers.push("confirmar pagamento");
+
+  const run = async () => {
+    try {
+      const r = await conclude.mutateAsync({ id: i.id, leadId: i.owner_lead_id });
+      toast.success(r.already ? "Venda já estava concluída." : "Venda concluída! Carro vendido e prêmio de R$ 50 gerado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui concluir a venda.");
+    }
+  };
+
+  if (completed) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30 p-3 space-y-1">
+        <p className="text-sm font-semibold flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300"><Trophy className="h-4 w-4" /> Venda concluída</p>
+        <p className="text-xs text-muted-foreground">Vendido por <strong className="text-foreground">{fmtBRL(i.sale_price)}</strong>{i.delivered_at ? ` · entregue em ${fmtDate(i.delivered_at)}` : ""}.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border/60 p-3 space-y-2">
+      <p className="text-sm font-semibold flex items-center gap-1.5"><Trophy className="h-4 w-4 text-emerald-600" /> Concluir venda</p>
+      {blockers.length > 0 ? (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Falta: {blockers.join(" · ")}.
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Termo assinado e pagamento confirmado. Ao concluir, o carro é marcado como vendido e o prêmio de R$ 50 é gerado.</p>
+      )}
+      <div className="flex justify-end">
+        <Button size="sm" disabled={blockers.length > 0 || i.status !== "active" || conclude.isPending} onClick={run}>
+          {conclude.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trophy className="h-4 w-4 mr-1" />} Concluir venda
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Container ──
+
+function ClosingBlock({ i, memberName }: { i: Intermediation; memberName: (id: string | null) => string | null }) {
+  const { isAdmin } = useAuth();
+  const [open, setOpen] = useState(i.status === "active" || i.status === "docs_pending");
+
+  const saleSigned = i.sale_contract_status === "signed" || i.sale_contract_status === "imported";
+  const buyerLocked = saleSigned && !isAdmin;
+  const saleMeta = SALE_CONTRACT_STATUS_META[i.sale_contract_status] ?? SALE_CONTRACT_STATUS_META.none;
+  const payMeta = PAYMENT_STATUS_META[i.payment_status] ?? PAYMENT_STATUS_META.pending;
+
+  return (
+    <div className="rounded-md border border-sky-200/70 dark:border-sky-900/60 p-3">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="text-sm font-semibold flex items-center gap-1.5 hover:text-foreground">
+              {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+              <Handshake className="h-4 w-4 text-sky-600" /> Fechamento (comprador e venda)
+            </button>
+          </CollapsibleTrigger>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {i.sale_contract_status !== "none" && <Badge variant="outline" className={cn("border text-[11px]", saleMeta.cls)}>Termo: {saleMeta.label}</Badge>}
+            <Badge variant="outline" className={cn("border text-[11px]", payMeta.cls)}>Pagto: {payMeta.label}</Badge>
+          </div>
+        </div>
+        <CollapsibleContent className="pt-3 space-y-3">
+          <BuyerSubBlock i={i} locked={buyerLocked} />
+          <ProposalSubBlock i={i} />
+          {i.sale_price != null && <SaleContractSubBlock i={i} memberName={memberName} />}
+          {saleSigned && <PaymentSubBlock i={i} />}
+          <ConcludeSubBlock i={i} />
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 // ─── Card ───────────────────────────────────────────────────────────────────
 
 export function IntermediationCard({ leadId }: Props) {
@@ -1572,6 +2454,10 @@ export function IntermediationCard({ leadId }: Props) {
           currentDoc={currentDoc}
           onJump={jumpTo}
         />
+
+        {!isPromotora && (i.status === "active" || i.status === "docs_pending" || i.status === "completed") && (
+          <ClosingBlock i={i} memberName={memberName} />
+        )}
 
         {i.status === "completed" && <CommissionBlock i={i} />}
 

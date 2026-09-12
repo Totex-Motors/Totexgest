@@ -39,6 +39,13 @@ export type IntermediationPaymentStatus = "pending" | "partial" | "satisfied" | 
 export type TransferStatus = "pending" | "started" | "completed";
 export type CommissionStatus = "pending" | "invoiced" | "paid" | "waived" | "disputed";
 
+/** Fase 4 — forma de pagamento da venda (comprador). */
+export type PaymentMethod = "cash" | "financing" | "mixed" | "consortium" | "other";
+/** Fase 4 — status do Termo de Compra e Venda (mesma união do contrato de intermediação). */
+export type SaleContractStatus = ContractStatus;
+/** Fase 4 — status de uma proposta do comprador. */
+export type ProposalStatus = "pending" | "accepted" | "rejected" | "countered" | "withdrawn" | "superseded";
+
 /** Linha da tabela `intermediations`. */
 export interface Intermediation {
   id: string;
@@ -95,6 +102,21 @@ export interface Intermediation {
   commission_due: number | null;
   commission_status: CommissionStatus;
   commission_paid_at: string | null;
+  // fase 4: comprador + Termo de Compra e Venda + pagamento
+  /** Dados do comprador (o que o lead do comprador não tem). */
+  buyer_data: BuyerData;
+  payment_method: PaymentMethod | null;
+  down_payment: number | null;
+  financed_amount: number | null;
+  installments: number | null;
+  paid_amount: number | null;
+  payment_confirmed_at: string | null;
+  payment_confirmed_by: string | null;
+  payment_note: string | null;
+  /** Documento SALE_CONTRACT vigente. */
+  sale_document_id: string | null;
+  sale_contract_status: SaleContractStatus;
+  sale_signed_at: string | null;
   // auditoria
   created_by: string | null;
   updated_by: string | null;
@@ -357,6 +379,55 @@ export interface OwnerData {
   phone?: string | null;
 }
 
+/** `intermediations.buyer_data` — dados do comprador pro Termo de Compra e Venda. */
+export interface BuyerData {
+  name?: string | null;
+  cpf_cnpj?: string | null;
+  rg?: string | null;
+  address?: string | null;
+  address_number?: string | null;
+  complement?: string | null;
+  district?: string | null;
+  zip?: string | null;
+  city?: string | null;
+  state?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+/** Linha da tabela `intermediation_proposals` (histórico de propostas do comprador). */
+export interface Proposal {
+  id: string;
+  tenant_id: string;
+  intermediation_id: string;
+  buyer_lead_id: string | null;
+  buyer_name: string | null;
+  amount: number;
+  payment_method: PaymentMethod | null;
+  down_payment: number | null;
+  financed_amount: number | null;
+  installments: number | null;
+  notes: string | null;
+  status: ProposalStatus;
+  created_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+/** p_data de `intermediation_add_proposal` (valores brutos; o servidor normaliza). */
+export interface ProposalInput {
+  buyer_name?: string | null;
+  amount: number;
+  payment_method?: PaymentMethod | null;
+  down_payment?: number | null;
+  financed_amount?: number | null;
+  installments?: number | null;
+  notes?: string | null;
+  buyer_lead_id?: string | null;
+}
+
 /** `p_data.vehicle` de `intermediation_set_contract_data` (tudo string — o servidor normaliza). */
 export interface ContractVehicleData {
   plate?: string | null;
@@ -498,6 +569,44 @@ export const CONTRACT_STATUS_META: Record<ContractStatus, BadgeMeta> = {
   declined: { label: "Recusado", cls: CLS.red },
   expired: { label: "Expirado", cls: CLS.red },
   cancelled: { label: "Cancelado", cls: CLS.muted },
+};
+
+/** Fase 4 — status do Termo de Compra e Venda (`intermediations.sale_contract_status`). */
+export const SALE_CONTRACT_STATUS_META: Record<SaleContractStatus, BadgeMeta> = {
+  none: { label: "—", cls: CLS.muted },
+  generated: { label: "Gerado", cls: CLS.sky },
+  sent: { label: "Enviado p/ assinatura", cls: CLS.sky },
+  partial: { label: "Parcialmente assinado", cls: CLS.amber },
+  signed: { label: "Assinado", cls: CLS.emerald },
+  imported: { label: "Importado (papel)", cls: CLS.emerald },
+  declined: { label: "Recusado", cls: CLS.red },
+  expired: { label: "Expirado", cls: CLS.red },
+  cancelled: { label: "Cancelado", cls: CLS.muted },
+};
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: "À vista",
+  financing: "Financiamento",
+  mixed: "Misto",
+  consortium: "Consórcio/Carta",
+  other: "A combinar",
+};
+
+export const PAYMENT_STATUS_META: Record<IntermediationPaymentStatus, BadgeMeta> = {
+  pending: { label: "Pendente", cls: CLS.muted },
+  partial: { label: "Parcial", cls: CLS.amber },
+  satisfied: { label: "Pago", cls: CLS.emerald },
+  failed: { label: "Falhou", cls: CLS.red },
+  cancelled: { label: "Cancelado", cls: CLS.muted },
+};
+
+export const PROPOSAL_STATUS_META: Record<ProposalStatus, BadgeMeta> = {
+  pending: { label: "Aguardando decisão", cls: CLS.amber },
+  accepted: { label: "Aceita", cls: CLS.emerald },
+  rejected: { label: "Recusada", cls: CLS.red },
+  countered: { label: "Contraproposta", cls: CLS.sky },
+  withdrawn: { label: "Retirada", cls: CLS.muted },
+  superseded: { label: "Substituída", cls: CLS.muted },
 };
 
 export const CONTRACT_DOCUMENT_STATUS_META: Record<ContractDocumentStatus, BadgeMeta> = {

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import type {
+  BuyerData,
   CommissionStatus,
   ContractDataInput,
   ContractDocument,
@@ -16,10 +17,13 @@ import type {
   IntermediationEvent,
   IntermediationFunnel,
   IntermediationFunnelPeriod,
+  IntermediationPaymentStatus,
   IntermediationStatusAction,
   IntermediationTermsInput,
   LegalEntity,
   LegalEntityInput,
+  Proposal,
+  ProposalInput,
 } from "@/types/intermediation";
 
 /**
@@ -43,6 +47,7 @@ export const intermediationKeys = {
   contractDocuments: (id: string) => ["intermediation", "contract-documents", id] as const,
   contractTemplates: ["intermediation", "contract-templates"] as const,
   contractEvents: (documentId: string) => ["intermediation", "contract-events", documentId] as const,
+  proposals: (id: string) => ["intermediation", "proposals", id] as const,
 };
 
 /** Depois de qualquer mutação: intermediação + card de captação + lead. */
@@ -398,9 +403,13 @@ export interface GenerateContractResult {
 export function useGenerateContract() {
   const invalidate = useInvalidateIntermediation();
   return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; leadId?: string | null; reason?: string | null }) => {
+    mutationFn: async ({ id, reason, documentType }: { id: string; leadId?: string | null; reason?: string | null; documentType?: ContractDocumentType }) => {
       const { data, error } = await supabase.functions.invoke("contract-render", {
-        body: { intermediation_id: id, reason: reason?.trim() || undefined },
+        body: {
+          intermediation_id: id,
+          reason: reason?.trim() || undefined,
+          ...(documentType ? { document_type: documentType } : {}),
+        },
       });
       if (error) throw await toRenderError(error, "Não consegui gerar o contrato.");
       const r = (data ?? {}) as Partial<GenerateContractResult> & { error?: string; missing?: ContractMissing[] };
@@ -416,13 +425,13 @@ export function useGenerateContract() {
  * Pré-visualização: a edge fn devolve o PDF binário (sem gravar nada) — abre numa aba nova.
  * Abre a aba ANTES do await pra não cair no bloqueador de pop-up; se falhar, fecha.
  */
-export async function openContractPreview(intermediationId: string): Promise<void> {
+export async function openContractPreview(intermediationId: string, documentType?: ContractDocumentType): Promise<void> {
   // "noopener" faria window.open devolver null — abre em branco e corta o opener na mão
   const win = window.open("about:blank", "_blank");
   if (win) win.opener = null;
   try {
     const { data, error } = await supabase.functions.invoke("contract-render", {
-      body: { preview: true, intermediation_id: intermediationId },
+      body: { preview: true, intermediation_id: intermediationId, ...(documentType ? { document_type: documentType } : {}) },
       headers: { Accept: "application/pdf" },
     });
     if (error) throw await toRenderError(error, "Não consegui montar a pré-visualização.");
@@ -643,6 +652,148 @@ export function useClicksignTest() {
       const r = await invokeContractSend<Record<string, unknown>>({ action: "test_connection" }, "Não consegui conectar na Clicksign.");
       return { ok: r.ok !== false, env: typeof r.env === "string" ? r.env : "sandbox" } satisfies ClicksignTestResult;
     },
+  });
+}
+
+// ═══ Fase 4 — Comprador, propostas, pagamento e conclusão da venda ═══════════
+// (migration 20260914100000 + edge fn contract-render/contract-send com document_type SALE_CONTRACT)
+
+/** Propostas do comprador (mais recente primeiro). Promotora não tem acesso (RLS). */
+export function useIntermediationProposals(intermediationId: string | null | undefined) {
+  return useQuery({
+    queryKey: intermediationKeys.proposals(intermediationId ?? ""),
+    enabled: !!intermediationId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("intermediation_proposals")
+        .select("*")
+        .eq("intermediation_id", intermediationId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Proposal[];
+    },
+    staleTime: 15_000,
+  });
+}
+
+/** Grava os dados do comprador (Termo de Compra e Venda). Bloqueado depois do termo assinado (menos admin). */
+export function useSetBuyer() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, buyer, buyerLeadId }: { id: string; leadId?: string | null; buyer: BuyerData; buyerLeadId?: string | null }) => {
+      const { data, error } = await supabase.rpc("intermediation_set_buyer", { p_id: id, p_buyer: buyer, p_buyer_lead_id: buyerLeadId ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false }) as { ok: boolean };
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Registra uma proposta do comprador (histórico). Exige intermediação ativa. */
+export function useAddProposal() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; leadId?: string | null; data: ProposalInput }) => {
+      const { data: res, error } = await supabase.rpc("intermediation_add_proposal", { p_id: id, p_data: data });
+      if (error) throw error;
+      return (res ?? { ok: false }) as { ok: boolean; proposal_id?: string };
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Aceita/recusa uma proposta. Aceitar carimba a venda e move o funil pra Fechamento. */
+export function useDecideProposal() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ proposalId, decision, note }: { proposalId: string; leadId?: string | null; decision: "accepted" | "rejected"; note?: string | null }) => {
+      const { data, error } = await supabase.rpc("intermediation_decide_proposal", { p_proposal_id: proposalId, p_decision: decision, p_note: note ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false, decision }) as { ok: boolean; decision: "accepted" | "rejected" };
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Confirma o pagamento do comprador (valor + observação). `full=false` marca pagamento parcial. */
+export function useConfirmPayment() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, amount, note, full }: { id: string; leadId?: string | null; amount: number; note?: string | null; full?: boolean }) => {
+      const { data, error } = await supabase.rpc("intermediation_confirm_payment", { p_id: id, p_amount: amount, p_note: note ?? null, p_full: full ?? true });
+      if (error) throw error;
+      return (data ?? { ok: false, payment_status: "pending" }) as { ok: boolean; payment_status: IntermediationPaymentStatus };
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+/** Conclui a venda (termo assinado + pagamento confirmado). Marca o carro vendido → R$ 50. */
+export function useConcludeSale() {
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, note }: { id: string; leadId?: string | null; note?: string | null }) => {
+      const { data, error } = await supabase.rpc("intermediation_conclude_sale", { p_id: id, p_note: note ?? null });
+      if (error) throw error;
+      return (data ?? { ok: false }) as { ok: boolean; code?: string; status?: string; already?: boolean };
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
+  });
+}
+
+export interface ImportSaleContractResult {
+  ok: boolean;
+  code?: string;
+  already?: boolean;
+  sale_contract_status?: string;
+  document_id?: string;
+}
+
+/**
+ * Admin: importa o PDF do Termo de Compra e Venda assinado em papel. Mesmo padrão do
+ * `useImportSignedContract` (upload no bucket privado, calcula sha256, chama a RPC).
+ */
+export function useImportSaleContract() {
+  const { tenantId } = useAuth();
+  const invalidate = useInvalidateIntermediation();
+  return useMutation({
+    mutationFn: async ({ id, file, signedAt, reason, documentId }: {
+      id: string;
+      leadId?: string | null;
+      file: File;
+      /** Data da assinatura ('YYYY-MM-DD' ou ISO) */
+      signedAt: string;
+      reason: string;
+      /** `intermediations.sale_document_id` — o PDF assinado desta versão gerada. */
+      documentId?: string | null;
+    }) => {
+      if (!tenantId) throw new Error("Não consegui identificar sua empresa (tenant). Recarregue a página e tente de novo.");
+      if (!isPdf(file)) throw new Error("O termo precisa ser um arquivo PDF.");
+      if (file.size > 25 * 1024 * 1024) throw new Error("PDF muito grande — o limite é 25 MB.");
+      if (reason.trim().length < 3) throw new Error("Informe o motivo/origem da importação (ex.: assinado em papel na loja).");
+
+      const sha256 = await sha256Hex(file);
+      const path = `${tenantId}/${id}/${Date.now()}-termo-venda.pdf`;
+
+      const up = await supabase.storage.from(CONTRACTS_BUCKET).upload(path, file, { contentType: "application/pdf", upsert: false });
+      if (up.error) throw new Error(`Não consegui enviar o PDF: ${up.error.message}`);
+
+      const signedIso = /^\d{4}-\d{2}-\d{2}$/.test(signedAt) ? new Date(`${signedAt}T12:00:00`).toISOString() : new Date(signedAt).toISOString();
+      const { data, error } = await supabase.rpc("intermediation_import_sale_contract", {
+        p_id: id,
+        p_file_path: path,
+        p_sha256: sha256,
+        p_signed_at: signedIso,
+        p_reason: reason.trim(),
+        p_document_id: documentId ?? null,
+      });
+      if (error) {
+        await supabase.storage.from(CONTRACTS_BUCKET).remove([path]).catch(() => undefined);
+        throw error;
+      }
+      return (data ?? { ok: false }) as ImportSaleContractResult;
+    },
+    onSuccess: (_d, { leadId }) => invalidate(leadId),
   });
 }
 
