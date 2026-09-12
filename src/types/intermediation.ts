@@ -627,6 +627,51 @@ export interface IntermediationDashboard {
   premios: IntermediationDashboardPremios;
 }
 
+// ─── Fase 6: Rede de franquias (RPC `intermediation_network_dashboard`) ──────
+// migration 20260916100000_intermediacao_rede. Visão do superadmin Totex central:
+// métricas de intermediação agregadas por franquia (= tenant). SÓ superadmin.
+// Valores monetários são `numeric` em reais.
+
+/** Totais agregados da rede inteira. */
+export interface NetworkTotal {
+  franquias: number;
+  ativas: number;
+  vencendo: number;
+  vendidas_periodo: number;
+  valor_vendido_periodo: number;
+  comissao_apurada: number;
+  comissao_paga: number;
+  promotoras: number;
+  aprovacoes_pendentes: number;
+}
+
+/** Uma linha por franquia (tenant) com atividade de intermediação. */
+export interface NetworkFranchiseRow {
+  tenant_id: string;
+  tenant_name: string;
+  slug: string | null;
+  is_active: boolean;
+  ativas: number;
+  vencendo: number;
+  captadas_periodo: number;
+  vendidas_periodo: number;
+  valor_vendido_periodo: number;
+  comissao_apurada: number;
+  comissao_paga: number;
+  promotoras: number;
+  aprovacoes_pendentes: number;
+}
+
+/** Retorno de `intermediation_network_dashboard(p_period)`. */
+export interface NetworkDashboard {
+  period: IntermediationDashboardPeriod;
+  period_start: string;
+  generated_at: string;
+  total: NetworkTotal;
+  franquias: NetworkFranchiseRow[];
+  templates_globais: number;
+}
+
 // ─── Labels / cores ──────────────────────────────────────────────────────────
 
 interface BadgeMeta {

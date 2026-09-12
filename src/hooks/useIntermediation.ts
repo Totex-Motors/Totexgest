@@ -38,6 +38,9 @@ import type {
   IntermediationTermsInput,
   LegalEntity,
   LegalEntityInput,
+  NetworkDashboard,
+  NetworkFranchiseRow,
+  NetworkTotal,
   PowerOfAttorney,
   PowerOfAttorneyInput,
   PoaStatus,
@@ -63,6 +66,7 @@ export const intermediationKeys = {
   events: (id: string) => ["intermediation", "events", id] as const,
   funnel: (period: IntermediationFunnelPeriod) => ["intermediation", "funnel", period] as const,
   dashboard: (period: IntermediationDashboardPeriod) => ["intermediation", "dashboard", period] as const,
+  network: (period: IntermediationDashboardPeriod) => ["intermediation", "network", period] as const,
   legalEntities: ["intermediation", "legal-entities"] as const,
   contractSnapshot: (id: string, type: ContractDocumentType) => ["intermediation", "contract-snapshot", id, type] as const,
   contractDocuments: (id: string) => ["intermediation", "contract-documents", id] as const,
@@ -266,6 +270,71 @@ export function useIntermediationDashboard(period: IntermediationDashboardPeriod
       const { data, error } = await supabase.rpc("intermediation_dashboard", { p_period: period });
       if (error) throw error;
       return normalizeDashboard(data);
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+// ─── Rede de franquias (RPC `intermediation_network_dashboard`) ──────────────
+// Fase 6 — visão do superadmin Totex central. Métricas de intermediação
+// agregadas por franquia (= tenant). O RPC é SECURITY DEFINER e só responde
+// pra superadmin (senão erro "Só superadmin vê a rede").
+
+function normalizeNetwork(raw: unknown): NetworkDashboard {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const t = (r.total ?? {}) as Record<string, unknown>;
+
+  const total: NetworkTotal = {
+    franquias: num(t.franquias),
+    ativas: num(t.ativas),
+    vencendo: num(t.vencendo),
+    vendidas_periodo: num(t.vendidas_periodo),
+    valor_vendido_periodo: num(t.valor_vendido_periodo),
+    comissao_apurada: num(t.comissao_apurada),
+    comissao_paga: num(t.comissao_paga),
+    promotoras: num(t.promotoras),
+    aprovacoes_pendentes: num(t.aprovacoes_pendentes),
+  };
+
+  const franquias: NetworkFranchiseRow[] = asArray(r.franquias).map((x) => ({
+    tenant_id: str(x.tenant_id),
+    tenant_name: str(x.tenant_name),
+    slug: strOrNull(x.slug),
+    is_active: x.is_active !== false,
+    ativas: num(x.ativas),
+    vencendo: num(x.vencendo),
+    captadas_periodo: num(x.captadas_periodo),
+    vendidas_periodo: num(x.vendidas_periodo),
+    valor_vendido_periodo: num(x.valor_vendido_periodo),
+    comissao_apurada: num(x.comissao_apurada),
+    comissao_paga: num(x.comissao_paga),
+    promotoras: num(x.promotoras),
+    aprovacoes_pendentes: num(x.aprovacoes_pendentes),
+  }));
+
+  return {
+    period: (r.period as IntermediationDashboardPeriod) ?? "month",
+    period_start: str(r.period_start),
+    generated_at: str(r.generated_at),
+    total,
+    franquias,
+    templates_globais: num(r.templates_globais),
+  };
+}
+
+/**
+ * Painel de rede da intermediação (superadmin Totex): uma chamada agrega os
+ * totais da rede + uma linha por franquia (tenant). Quem não é superadmin
+ * recebe erro "Só superadmin vê a rede" do RPC (SECURITY DEFINER).
+ */
+export function useNetworkDashboard(period: IntermediationDashboardPeriod) {
+  return useQuery({
+    queryKey: intermediationKeys.network(period),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("intermediation_network_dashboard", { p_period: period });
+      if (error) throw error;
+      return normalizeNetwork(data);
     },
     staleTime: 30_000,
     refetchInterval: 60_000,

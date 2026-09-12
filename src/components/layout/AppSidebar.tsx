@@ -107,6 +107,7 @@ const sections: NavSection[] = [
       // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
       { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins },
       { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake },
+      { title: "Rede", url: "/comercial/rede", icon: Network, superAdminOnly: true },
       { title: "Aprovações", url: "/comercial/aprovacoes", icon: ShieldCheck },
     ],
   },
