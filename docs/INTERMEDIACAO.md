@@ -156,10 +156,36 @@ Migration `20260913100000_intermediacao_assinatura.sql` (aplicada em prod em 2 p
 - Smoke local: `scratchpad/smoke_test10.sql` (mark_sent, fora de ordem, duplicado, recusa, finalize 2× → R$25 uma vez,
   evento tardio não regride, permissões, lookup por ref).
 
+## Fase 4 — Comprador e Pagamento (entregue 2026-09-14)
+
+Migration `20260914100000_intermediacao_fechamento.sql` (aplicada em prod em 2 partes). Reaproveita o motor
+de contrato/assinatura da Fase 3 — o Termo de Compra e Venda é só outro `document_type` (`SALE_CONTRACT`).
+
+- **Comprador + proposta.** `intermediations.buyer_data` (jsonb) guarda o comprador do Termo. `intermediation_proposals`
+  registra o histórico de propostas (valor, forma de pagamento, entrada, financiado, parcelas, status). RPCs
+  `intermediation_set_buyer`, `intermediation_add_proposal`, `intermediation_decide_proposal(accepted|rejected)`.
+  Aceitar carimba `sale_price`/`payment_method`/… na intermediação, supersede as outras pendentes e move o funil pra **Fechamento**.
+- **Forma de pagamento.** `intermediations.payment_method` (`cash|financing|mixed|consortium|other`) + `down_payment`,
+  `financed_amount`, `installments`. O snapshot monta `sale.payment_text` por extenso.
+- **Termo de Compra e Venda (`SALE_CONTRACT`).** Mesmo `contract-render` / `contract-send` / webhook / `contract_document_finalize`.
+  Novidades no banco: o snapshot ganhou variáveis `buyer.*` e `sale.*`; `contract_document_register` cria o signatário
+  `party_type='buyer'` (proprietário + comprador + Totex = 3 assinantes). As funções de provedor viraram **conscientes do
+  `document_type`**: `mark_sent`/`apply_event` espelham em `contract_status` (intermediação) OU `sale_contract_status` (venda),
+  e `finalize` despacha — `SALE_CONTRACT` **não paga R$ 25 nem re-formaliza**, só marca `sale_contract_status='signed'`.
+  Você escolhe na hora: **enviar pela Clicksign** ou **importar o papel** (`intermediation_import_sale_contract`, admin).
+- **Pagamento (marcação manual).** `intermediation_confirm_payment(valor, nota, full)` → `payment_status='satisfied'` + `paid_amount`.
+- **Conclusão com trava.** `intermediation_conclude_sale` exige `sale_contract_status IN (signed,imported)` **e**
+  `payment_status='satisfied'`; então registra a entrega (`transfer_status='completed'`, `delivered_at`) e marca o carro
+  `vendido` via `set_seller_vehicle_status`, disparando a conclusão da Fase 1 (intermediação `completed`, **R$ 50**, deal → Concluída).
+- **Template `SALE_CONTRACT` v1** global publicado — **rascunho, revisar no jurídico** (editável na tela de Templates).
+- **Credere fica pra fase 4.1**: `payment_method='financing'` é só campo; sem subfunil F0–FX nem vínculo automático ainda.
+- Smoke local: `scratchpad/smoke_test11.sql` (proposta+aceite, 3 signatários, espelho por tipo, finalize sem R$25,
+  trava de conclusão sem pagamento, R$50 na conclusão, import papel, permissões).
+
 ## Fases seguintes
 
 | Fase | Entrega | Migrations/arquivos previstos |
 |---|---|---|
-| 4 · Comprador & pagamento | proposta do comprador, aceite do proprietário, Termo de Compra e Venda, `payment_method` (cash/financing/mixed/consortium), subpipeline F0–FX ligado à Credere, gates de entrega | `20260914_fechamento_pagamento.sql` |
+| 4.1 · Credere | subpipeline F0–FX ligado à simulação Credere, status de financiamento no negócio | — |
 | 5 · Alçadas | `powers_of_attorney`, `power_scopes`, `approval_requests/decisions`, `signer_authority_snapshots`, inbox de aprovações Renata/Fabiana | `20260915_alcadas.sql` |
 | 6 · Franquias | `legal_entity_id`/`location_id` por unidade, templates globais × locais, credenciais por unidade | — |
