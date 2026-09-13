@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { StudioCampaignBridge, type StudioPayload } from "@/components/marketing/StudioCampaignBridge";
+import { isMetaPost } from "@/lib/studio-protocol";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -34,6 +36,7 @@ import {
 // ============================================================
 
 interface Campaign {
+  studio_payload?: StudioPayload;
   id: string;
   tenant_id: string;
   name: string;
@@ -199,14 +202,14 @@ function CampaignsPanel({ tenantId, agents }: {
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Crie a campanha ANTES de publicar o post</AlertTitle>
+        <AlertTitle>Prepare o conteúdo e depois vincule o post</AlertTitle>
         <AlertDescription className="text-sm">
-          Se alguém comentar antes da campanha existir, o agente responde sem contexto e
-          pode prometer material que não existe.
+          Use Criar com o Carrossel Studio para preparar a campanha. Após receber o conteúdo aprovado, vincule o post, revise o agente e ative o atendimento.
         </AlertDescription>
       </Alert>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <StudioCampaignBridge tenantId={tenantId} agentSlug={agents[0]?.slug} />
         <Button onClick={() => { setEditing(null); setModalOpen(true); }}>
           <Plus className="mr-2 h-4 w-4" /> Nova campanha
         </Button>
@@ -231,7 +234,7 @@ function CampaignsPanel({ tenantId, agents }: {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{c.name}</span>
                     <Badge variant={c.status === "active" ? "secondary" : "outline"}>
-                      {c.status === "active" ? "ativa" : c.status}
+                      {!isMetaPost(c.post_id) ? (c.studio_payload?.studio?.state === "ready" ? "Preparada — aguardando post" : "Em criação no Studio") : c.status === "active" ? "ativa" : c.status}
                     </Badge>
                     <Badge variant="outline">
                       {c.reply_mode === "agent" ? `agente: ${c.agent_slug}` : "mensagem fixa"}
@@ -251,7 +254,7 @@ function CampaignsPanel({ tenantId, agents }: {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Switch checked={c.status === "active"}
+                  <Switch disabled={!isMetaPost(c.post_id) || (c.reply_mode === "agent" && !c.agent_slug) || (!!c.studio_payload?.studio && c.studio_payload.studio.state !== "ready")} checked={c.status === "active"}
                     onCheckedChange={(on) => toggle.mutate({ id: c.id, status: on ? "active" : "paused" })} />
                   <Button variant="ghost" size="icon"
                     onClick={() => { setEditing(c); setModalOpen(true); }}>
@@ -264,6 +267,7 @@ function CampaignsPanel({ tenantId, agents }: {
                   </Button>
                 </div>
               </div>
+              {c.studio_payload?.studio && <StudioCampaignBridge tenantId={tenantId} campaign={c} agentSlug={c.agent_slug || undefined} />}
               <CampaignMetrics
                 metrics={metrics[c.id] || { comentaram: 0, dms_enviadas: 0, responderam: 0, falhas: 0 }} />
             </CardContent>
@@ -314,7 +318,7 @@ function CampaignModal({ open, onOpenChange, campaign, tenantId, agents, onSaved
   if (open && !initialized) {
     setForm({
       name: campaign?.name || "",
-      post_id: campaign?.post_id || "",
+      post_id: campaign && isMetaPost(campaign.post_id) ? campaign.post_id : "",
       post_permalink: campaign?.post_permalink || "",
       keyword_mode: campaign?.keyword_mode || "contains",
       keyword: (campaign?.keywords || [])[0] || "",
@@ -332,7 +336,7 @@ function CampaignModal({ open, onOpenChange, campaign, tenantId, agents, onSaved
 
   const save = async () => {
     if (!form.name.trim()) return toast({ title: "Dê um nome à campanha", variant: "destructive" });
-    if (!form.post_id.trim()) {
+    if (!isMetaPost(form.post_id.trim())) {
       return toast({ title: "Escolha o post da campanha", variant: "destructive" });
     }
     if (form.keyword_mode === "contains" && !form.keyword.trim()) {
@@ -372,6 +376,7 @@ function CampaignModal({ open, onOpenChange, campaign, tenantId, agents, onSaved
         once_per_user: form.once_per_user,
         process_existing: form.process_existing,
         updated_at: new Date().toISOString(),
+        ...(campaign?.studio_payload?.studio ? { status: "paused" } : {}),
       };
       const { error } = campaign
         ? await supabase.from("instagram_comment_campaigns")
@@ -379,7 +384,7 @@ function CampaignModal({ open, onOpenChange, campaign, tenantId, agents, onSaved
         : await supabase.from("instagram_comment_campaigns")
             .insert({ ...payload, status: "active" });
       if (error) throw error;
-      toast({ title: campaign ? "Campanha atualizada" : "Campanha criada" });
+      toast({ title: campaign?.studio_payload?.studio ? "Post vinculado. Revise e ative a campanha no interruptor." : campaign ? "Campanha atualizada" : "Campanha criada" });
       onSaved();
       onOpenChange(false);
     } catch (e) {
