@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { instagramCampaignClient } from '@/lib/instagram-campaign-client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { InstagramPublisher } from './InstagramPublisher';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,16 +30,19 @@ export function StudioCampaignBridge({tenantId, campaign, agentSlug}: {
         if(!d.success || d.data.id!==c.brief.id || d.data.tenantId!==tenantId)return;
         receiving.current=true;
         try {
+          const {images,...delivery}=d.data;
           // A delivery never activates the comment dispatcher. The operator links a real post next.
-          const {data,error}=await supabase.from('instagram_comment_campaigns').update({
+          const {data,error}=await instagramCampaignClient.from('instagram_comment_campaigns').update({
             status:'paused', post_caption:d.data.caption,
             dm_template: `${d.data.context}\n\n${d.data.materialUrl ? 'Material disponível: '+d.data.materialUrl : 'Não prometa PDF, guia ou link: esta campanha não tem material vinculado.'}`,
-            studio_payload:{studio:{brief:c.brief,delivery:d.data,state:'ready'}}, updated_at:new Date().toISOString(),
+            studio_payload:{studio:{brief:c.brief,delivery,state:'ready'}}, updated_at:new Date().toISOString(),
           }).eq('id',c.brief.id).eq('tenant_id',tenantId).select('id').single();
           if(error || !data)throw error || Error('Campanha não encontrada.');
+          if(images){const {data:staged,error:stageError}=await supabase.functions.invoke('instagram-publish',{body:{action:'stage',campaignId:c.brief.id,caption:delivery.caption,images}});if(stageError||staged?.error)throw Error(staged?.error||'Não foi possível receber as artes.');}
+          await qc.invalidateQueries({queryKey:['ig-publication',c.brief.id]});
           c.child.postMessage({type:'totex.saved',nonce:c.nonce},c.origin);
           await qc.invalidateQueries({queryKey:['ig-campaigns',tenantId]});
-          setWaiting(false); toast({title:'Conteúdo recebido e salvo',description:'Vincule o post e revise o atendimento antes de ativar.'});
+          setWaiting(false); toast({title:'Conteúdo recebido e salvo',description:'Artes recebidas. Revise a conta e publique pelo botão da campanha.'});
         }catch {c.child.postMessage({type:'totex.error',nonce:c.nonce},c.origin);toast({title:'Não foi possível receber o conteúdo. Tente novamente.',variant:'destructive'});}
         finally {receiving.current=false;}
       }
@@ -60,7 +65,7 @@ export function StudioCampaignBridge({tenantId, campaign, agentSlug}: {
     setBusy(true);
     try {
       const b=result.data;
-      const {error}=await supabase.from('instagram_comment_campaigns').insert({id:b.id,tenant_id:tenantId,name:b.name,
+      const {error}=await instagramCampaignClient.from('instagram_comment_campaigns').insert({id:b.id,tenant_id:tenantId,name:b.name,
         post_id:'studio:'+b.id,status:'paused',keyword_mode:'contains',keywords:[b.keyword.toLowerCase()],
         reply_mode:'agent',agent_slug:agentSlug || null,once_per_user:true,process_existing:false,
         studio_payload:{studio:{brief:b,state:'brief'}},
@@ -80,6 +85,7 @@ export function StudioCampaignBridge({tenantId, campaign, agentSlug}: {
         <p className="mt-3 whitespace-pre-wrap text-sm">{studio.delivery.caption}</p>
         <p className="mt-2 text-xs text-muted-foreground">Recebido em {new Date(studio.delivery.reviewedAt).toLocaleString('pt-BR')}. Para baixar todas as artes, abra o Studio.</p>
       </details>}
+      {campaign && studio.delivery && <InstagramPublisher campaignId={campaign.id} tenantId={tenantId}/> }
     </div> : <Button variant="outline" onClick={()=>setOpen(true)}>Criar com o Carrossel Studio</Button>}
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Criar campanha com o Heitor</DialogTitle></DialogHeader>
       <Label htmlFor="studio-name">Nome da campanha</Label><Input id="studio-name" value={form.name} maxLength={100} onChange={e=>setForm({...form,name:e.target.value})}/>

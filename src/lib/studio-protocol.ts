@@ -12,6 +12,7 @@ export const deliverySchema = z.object({
   caption: z.string().max(2200), context: z.string().min(1).max(6000),
   cover: z.string().max(700000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/),
   materialUrl: z.union([z.literal(''),z.string().url().regex(/^https:\/\//).max(500)]),
+  images: z.array(z.string().max(2000000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/)).min(1).max(8).optional(),
   reviewedAt: z.string().datetime(),
 });
 export type StudioBrief = z.infer<typeof briefSchema>;
