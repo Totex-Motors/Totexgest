@@ -25,6 +25,14 @@ Grupo de repasse ──(msg nova)──▶ UAZAPI webhook ──▶ whatsapp-web
                                              log em repasse_relay_posts
 ```
 
+## O que a transformação faz
+
+- **Troca o nome da loja de origem** pela assinatura: `VALOR G MOTORS: R$ 284.900` → `VALOR TOTEX MOTORS: R$ 289.900` (preço + margem).
+- **Recalcula o "abaixo da FIPE/tabela"**: como a margem reduz o desconto, o número é ajustado. `62 mil abaixo` com margem de 5 mil → **`57 mil abaixo`** (regra: valor citado − margem; sem esse número, usa FIPE − preço final).
+- **Limpa** do texto: telefone/WhatsApp, @ e nome de contato, autoria/edição das fotos ("fotos reais do veículo", "cenário", "padrão G5"), forma de pagamento ("paga na concessionária") e faturamento ("faturamento somente para PJ") — e linhas parecidas.
+- **Mantém a foto real**: quando o carro chega como imagem, o post sai com a mesma foto (`/send/media`) e a legenda já transformada.
+- Preços via token `{{PRECO}}` / `{{ABAIXO}}` — a **conta é feita no código**, nunca pela IA.
+
 Pontos importantes:
 
 - **Só posta em grupo.** O alvo é sempre um `@g.us`, então respeita a regra
