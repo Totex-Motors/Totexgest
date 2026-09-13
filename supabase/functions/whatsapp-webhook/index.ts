@@ -9,6 +9,7 @@ import { getOrCreateGroup } from "./groups.ts";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
+import { maybeRelayRepasse } from "../_shared/repasse.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,22 @@ async function handleIncomingMessage(
   
   senderPhone = String(senderPhone).replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
   const pushName = payload.senderName || payload.SenderName || payload.name || senderPhone;
+
+  // ── Repasse Relay ──────────────────────────────────────────────────────────
+  // Se a mensagem veio de um grupo de repasse monitorado, reescreve o carro no
+  // tom da TOTEX com a margem embutida e reposta na comunidade. Nesse caso o
+  // fluxo PARA aqui: não vira ticket/lead de cliente.
+  if (!fromMe && isGroup) {
+    const relayed = await maybeRelayRepasse(supabase, {
+      instanceId,
+      tenantId,
+      groupJid: remoteJid,
+      messageId,
+      text: (payload.content?.text || payload.text || ''),
+      senderName: pushName,
+    }).catch((e) => { console.error('[repasse-relay] hook erro:', e); return false; });
+    if (relayed) return;
+  }
 
   const contentObj = payload.content || {};
   let content = contentObj.text || payload.text || '';
