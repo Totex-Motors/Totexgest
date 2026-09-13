@@ -73,9 +73,9 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nova loja (tenant)</DialogTitle>
+          <DialogTitle>Nova franquia / loja</DialogTitle>
           <DialogDescription>
-            Cria um tenant isolado com pipeline e agente de IA padrão, e convida o administrador da loja.
+            Cria um ambiente isolado (tenant) com pipeline e agente de IA padrão, e convida o administrador da franquia.
           </DialogDescription>
         </DialogHeader>
 
@@ -84,7 +84,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-emerald-600">
               <CheckCircle2 className="h-5 w-5" />
-              <span className="font-medium">Loja criada com sucesso!</span>
+              <span className="font-medium">Franquia criada com sucesso!</span>
             </div>
             {inviteUrl ? (
               <div className="space-y-1.5">
@@ -103,7 +103,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Tenant criado sem administrador. Você pode convidar o admin da loja depois,
+                Tenant criado sem administrador. Você pode convidar o admin da franquia depois,
                 quando o CRM estiver pronto para os lojistas.
               </p>
             )}
@@ -114,7 +114,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="tradeName">Nome da loja *</Label>
+              <Label htmlFor="tradeName">Nome da franquia / loja *</Label>
               <Input id="tradeName" value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="Ex: Auto Premium SP" required />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -137,9 +137,9 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
             </div>
 
             <div className="pt-2 border-t border-border/40">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Administrador da loja (opcional)</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Administrador da franquia (opcional)</p>
               <p className="text-xs text-muted-foreground mb-2">
-                Deixe em branco para criar a loja sem admin agora — você convida depois.
+                Deixe em branco para criar a franquia sem admin agora — você convida depois.
               </p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -162,7 +162,7 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
             <DialogFooter>
               <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
               <Button type="submit" disabled={provision.isPending}>
-                {provision.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar loja"}
+                {provision.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar franquia"}
               </Button>
             </DialogFooter>
           </form>
@@ -201,7 +201,7 @@ function InviteAdminDialog({ tenant, onClose }: { tenant: AdminTenant; onClose: 
         <DialogHeader>
           <DialogTitle>Convidar admin — {tenant.name}</DialogTitle>
           <DialogDescription>
-            Envia um convite por email pro responsável da loja. Ele define a senha e entra
+            Envia um convite por email pro responsável da franquia. Ele define a senha e entra
             como admin do tenant.
           </DialogDescription>
         </DialogHeader>
@@ -279,10 +279,10 @@ export function SuperAdminTenantsSection() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          {tenants.length} {tenants.length === 1 ? "loja" : "lojas"} cadastrada(s) no CRM.
+          {tenants.length} {tenants.length === 1 ? "franquia" : "franquias"} cadastrada(s) no CRM.
         </p>
         <Button size="sm" onClick={() => setDialogOpen(true)} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" /> Nova loja
+          <Plus className="h-4 w-4 mr-2" /> Nova franquia
         </Button>
       </div>
 
@@ -290,7 +290,7 @@ export function SuperAdminTenantsSection() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Loja</TableHead>
+              <TableHead>Franquia</TableHead>
               <TableHead className="hidden lg:table-cell">Slug</TableHead>
               <TableHead className="hidden sm:table-cell">Membros</TableHead>
               <TableHead>Credere</TableHead>
@@ -305,7 +305,7 @@ export function SuperAdminTenantsSection() {
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhuma loja cadastrada.</TableCell>
+                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhuma franquia cadastrada.</TableCell>
               </TableRow>
             ) : (
               tenants.map((t) => (
@@ -328,7 +328,7 @@ export function SuperAdminTenantsSection() {
                         size="sm"
                         className="h-6 px-1.5 text-xs gap-1 text-muted-foreground hover:text-foreground"
                         onClick={() => setInviteTenant(t)}
-                        title="Convidar admin para esta loja"
+                        title="Convidar admin para esta franquia"
                       >
                         <UserPlus className="h-3 w-3" /> Convidar
                       </Button>

@@ -283,10 +283,10 @@ const navigationSections: NavSection[] = [
     items: [
       {
         id: "superadmin-lojas",
-        label: "Lojas (Tenants)",
+        label: "Franquias / Lojas",
         icon: Building2,
-        description: "Provisione e gerencie as lojas parceiras (tenants). Cada loja é um ambiente isolado com pipeline e agente próprios. Visível apenas para o tenant super-admin.",
-        hint: "Criar / ativar / desativar lojas",
+        description: "Provisione e gerencie as franquias e lojas parceiras (cada uma é um tenant isolado, com pipeline, entidade jurídica, procurações e agente próprios). Visível apenas para o tenant super-admin.",
+        hint: "Criar / ativar / desativar franquias",
         superAdminOnly: true,
       },
       {
