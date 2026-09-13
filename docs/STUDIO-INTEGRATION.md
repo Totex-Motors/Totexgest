@@ -24,7 +24,7 @@ A confirmação exige abrir ambos os sistemas no navegador. Para retomar após f
 uma aba, reabra pelo CRM; o mesmo ID recupera o rascunho salvo sem sobrescrevê-lo.
 
 Produção padrão:
-- CRM: https://totexgest-crm.vercel.app
+- CRM: https://totexgest.vercel.app
 - Studio: https://insta.totexmotors.com
 
 URLs alternativas: VITE_CARROSSEL_STUDIO_URL no CRM; NEXT_PUBLIC_TOTEXGEST_ORIGINS
