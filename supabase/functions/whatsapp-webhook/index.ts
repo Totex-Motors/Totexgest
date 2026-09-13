@@ -192,6 +192,7 @@ async function handleIncomingMessage(
       groupJid: remoteJid,
       messageId,
       text: (payload.content?.text || payload.text || ''),
+      messageType: (payload.messageType || payload.content?.type || 'text'),
       senderName: pushName,
     }).catch((e) => { console.error('[repasse-relay] hook erro:', e); return false; });
     if (relayed) return;
