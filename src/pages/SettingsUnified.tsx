@@ -34,6 +34,7 @@ import {
   ChevronLeft,
   Mail,
   FileSignature,
+  Repeat,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAp
 import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfigTab";
 import { InstagramConfigTab } from "@/components/settings/InstagramConfigTab";
 import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSection";
+import { RepasseRelaySection } from "@/components/settings/sections/RepasseRelaySection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
@@ -165,6 +167,14 @@ const navigationSections: NavSection[] = [
         label: "Email (Resend)",
         icon: Mail,
         description: "Configure a conta de envio de email (Resend) da sua loja. Necessário para disparar campanhas e automações de email.",
+      },
+      {
+        id: "repasse-relay",
+        label: "Repasse → Comunidade",
+        icon: Repeat,
+        description: "Reposta automaticamente os carros do grupo de repasse na comunidade, no tom da loja e com sua margem embutida.",
+        hint: "Repasse abaixo da tabela",
+        adminOnly: true,
       },
     ],
   },
@@ -481,6 +491,8 @@ function SettingsContent({ section }: { section: string }) {
       return <WavoipAdminPanel />;
     case "email-config":
       return <EmailConfigSection />;
+    case "repasse-relay":
+      return <RepasseRelaySection />;
 
     // Comercial
     case "pipeline":
