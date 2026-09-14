@@ -83,3 +83,28 @@ Nenhum teste chama a Meta real. Publicação real exige confirmação do operado
    programada. Não anunciar automaticamente veículo vendido ou reservado.
 5. Manter a criação no Studio e a aprovação, publicação e acompanhamento no CRM.
    Agendamento e atribuição comercial completa são próximos incrementos.
+
+## Resultado comercial por campanha
+
+A tela Marketing → Instagram mostra totais e resultados por campanha via
+`instagram-commercial`, função autenticada de leitura, limitada ao tenant e a
+membros ativos. A publicação permanece disponível no mesmo lugar.
+
+Atribuição: primeira resposta registrada por lead, desempate pelo ID do registro.
+O vínculo usa lead_id explícito ou identidade exata de sessão/PSID em uma conversa
+com um único lead. Sem vínculo ou com ambiguidade, aparece uma pendência, sem
+atribuição estimada. A mesma pessoa não é somada em duas campanhas.
+
+- Qualificada: necessidade BANT registrada ou captação validada, estado atual.
+- Agendamento: evento da agenda sincronizada, não cancelado, criado depois da
+  resposta, com início posterior à resposta. Não significa comparecimento.
+- Venda: deal won com won_at posterior à resposta. Conta pessoas, não veículos.
+- Captação formalizada: intermediação active/completed/paused/docs_pending com
+  contrato signed/imported e data de assinatura posterior à resposta.
+
+Etapas independentes, contagem acumulada dos registros disponíveis; não é prova
+causal de que a campanha gerou a venda. Não calcula faturamento nem comissões.
+O relatório não move funil, cria contratos, altera oportunidades ou envia mensagens.
+A agenda e os resultados precisam estar registrados e vinculados ao mesmo lead.
+Falha em uma fonte exibe erro, nunca zero enganoso. Consulta paginada com limite
+explícito de 50 mil registros por fonte; acima disso o relatório falha fechado.

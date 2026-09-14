@@ -1,3 +1,4 @@
+import { CampaignCommercial } from '@/components/marketing/CampaignCommercial';
 import { useState } from "react";
 import { StudioCampaignBridge, type StudioPayload } from "@/components/marketing/StudioCampaignBridge";
 import { isMetaPost } from "@/lib/studio-protocol";
@@ -268,6 +269,7 @@ function CampaignsPanel({ tenantId, agents }: {
                 </div>
               </div>
               {c.studio_payload?.studio && <StudioCampaignBridge tenantId={tenantId} campaign={c} agentSlug={c.agent_slug || undefined} />}
+              <CampaignCommercial tenantId={tenantId} campaignId={c.id} />
               <CampaignMetrics
                 metrics={metrics[c.id] || { comentaram: 0, dms_enviadas: 0, responderam: 0, falhas: 0 }} />
             </CardContent>
@@ -770,6 +772,7 @@ export default function InstagramCampaigns() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="campanhas">
+              <CampaignCommercial tenantId={tenantId} />
               <CampaignsPanel tenantId={tenantId} agents={agents} />
             </TabsContent>
             <TabsContent value="gatilhos">
