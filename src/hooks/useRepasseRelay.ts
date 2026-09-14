@@ -180,6 +180,47 @@ export function useRepasseLog(limit = 20) {
   });
 }
 
+/** Extrai o código de convite de um link do WhatsApp (ou aceita o código puro). */
+export function extractInviteCode(input: string): string {
+  const s = (input || "").trim();
+  const m = s.match(/chat\.whatsapp\.com\/([A-Za-z0-9_-]+)/i);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]{8,40}$/.test(s)) return s;
+  return "";
+}
+
+export interface ResolvedGroup { jid: string; name: string; }
+
+/** Resolve um link de grupo → JID + nome (só leitura, não entra). */
+export function useResolveGroupLink() {
+  return useMutation({
+    mutationFn: async ({ instanceId, link }: { instanceId: string; link: string }): Promise<ResolvedGroup> => {
+      const code = extractInviteCode(link);
+      if (!code) throw new Error("Link inválido. Cole o link do grupo (chat.whatsapp.com/…).");
+      const res = await callUazapi<any>("group_invite_info", instanceId, { invitecode: code });
+      const g = res?.data?.group ?? res?.data ?? {};
+      const jid = String(g.JID ?? g.jid ?? "");
+      if (!jid.endsWith("@g.us")) throw new Error("Não consegui identificar o grupo por esse link.");
+      return { jid, name: String(g.Name ?? g.name ?? jid) };
+    },
+  });
+}
+
+/** Faz o número entrar num grupo pelo link (pode exigir aprovação de admin). */
+export function useJoinGroupByLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ instanceId, link }: { instanceId: string; link: string }): Promise<{ jid: string }> => {
+      const code = extractInviteCode(link);
+      if (!code) throw new Error("Link inválido.");
+      const res = await callUazapi<any>("group_join", instanceId, { invitecode: code });
+      const g = res?.data?.group ?? {};
+      return { jid: String(g.JID ?? "") };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["repasse-groups"] }),
+  });
+}
+
 /** Gera o post SEM enviar (botão "Testar"), via edge function repasse-relay. */
 export function usePreviewRepasse() {
   return useMutation({

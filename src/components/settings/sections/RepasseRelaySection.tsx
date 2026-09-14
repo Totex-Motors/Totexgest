@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2 } from "lucide-react";
+import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useRepasseConfigs, useUazapiInstances, useUazapiGroups,
   useSaveRepasseConfig, useDeleteRepasseConfig, useRepasseLog, usePreviewRepasse,
+  useResolveGroupLink, useJoinGroupByLink,
   type RepasseConfig, type RepasseVoice,
 } from "@/hooks/useRepasseRelay";
 
@@ -61,6 +62,9 @@ export function RepasseRelaySection() {
   const { data: instances = [] } = useUazapiInstances(tenantId);
   const save = useSaveRepasseConfig();
   const del = useDeleteRepasseConfig();
+  const resolveLink = useResolveGroupLink();
+  const joinLink = useJoinGroupByLink();
+  const [link, setLink] = useState("");
 
   const [form, setForm] = useState<FormState>(EMPTY);
   useEffect(() => {
@@ -89,6 +93,25 @@ export function RepasseRelaySection() {
 
   const canSave = form.instance_id && form.source_group_jid && form.target_group_jid
     && form.source_group_jid !== form.target_group_jid;
+
+  const addSourceByLink = async () => {
+    if (!form.instance_id) { toast.info("Escolha o número primeiro."); return; }
+    if (!link.trim()) { toast.info("Cole o link do grupo de repasse."); return; }
+    try {
+      const g = await resolveLink.mutateAsync({ instanceId: form.instance_id, link });
+      const isMember = groups.some((x) => x.jid === g.jid);
+      if (!isMember) {
+        await joinLink.mutateAsync({ instanceId: form.instance_id, link });
+        toast.success(`Pedido pra entrar em "${g.name}" enviado. Se o grupo exigir aprovação de admin, começa a valer quando aprovarem.`);
+      } else {
+        toast.success(`Grupo "${g.name}" definido como origem.`);
+      }
+      setForm((f) => ({ ...f, source_group_jid: g.jid }));
+      setLink("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao adicionar pelo link");
+    }
+  };
 
   const onSave = async () => {
     if (form.source_group_jid === form.target_group_jid) {
@@ -186,6 +209,27 @@ export function RepasseRelaySection() {
             </div>
           </div>
           {groupsError && <p className="text-xs text-amber-600">Não consegui listar os grupos dessa instância agora. Confira se ela está conectada.</p>}
+
+          <div className="space-y-2 rounded-md border border-dashed border-border/70 p-3">
+            <Label className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Adicionar grupo de repasse por link</Label>
+            <p className="text-xs text-muted-foreground">
+              Cole o link de convite (chat.whatsapp.com/…). Se o número ainda não estiver no grupo, ele pede pra entrar —
+              grupos com aprovação de admin só passam a valer depois que aprovarem.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://chat.whatsapp.com/…"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+              />
+              <Button variant="outline" className="shrink-0" onClick={addSourceByLink}
+                disabled={!form.instance_id || resolveLink.isPending || joinLink.isPending}>
+                {(resolveLink.isPending || joinLink.isPending)
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <>Definir origem</>}
+              </Button>
+            </div>
+          </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">

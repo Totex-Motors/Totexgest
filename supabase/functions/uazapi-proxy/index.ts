@@ -335,6 +335,28 @@ Deno.serve(async (req) => {
       case "group_list":
         return await callUazapi(`${apiUrl}/group/list`, { headers: { token: apiKey } });
 
+      case "group_invite_info": {
+        // Resolve um link/código de convite → dados do grupo (JID, nome). Só leitura.
+        const code = typeof params.invitecode === "string" ? params.invitecode.trim() : "";
+        if (!code) return json({ ok: false, error: "invitecode é obrigatório" }, 400);
+        return await callUazapi(`${apiUrl}/group/inviteInfo`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ invitecode: code }),
+        });
+      }
+
+      case "group_join": {
+        // Entra num grupo pelo código de convite (pode exigir aprovação de admin).
+        const code = typeof params.invitecode === "string" ? params.invitecode.trim() : "";
+        if (!code) return json({ ok: false, error: "invitecode é obrigatório" }, 400);
+        return await callUazapi(`${apiUrl}/group/join`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ invitecode: code }),
+        });
+      }
+
       default:
         return json({ ok: false, error: `Ação não permitida: ${action}` }, 400);
     }
