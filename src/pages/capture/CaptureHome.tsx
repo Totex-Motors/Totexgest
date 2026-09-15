@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles,
+  AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles, Gift,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -175,6 +175,22 @@ export default function CaptureHome() {
       </Card>
 
       {/* (sem CTA retangular: o botão central "Captar" do bottom-nav já é a ação principal) */}
+
+      {/* Repasse por indicação — novo ganho (R$ 150 por indicado que comprar) */}
+      <Link to="/captacao/repasse" className="block">
+        <Card className="border-emerald-300/70 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-900/50 hover:bg-emerald-50 transition-colors">
+          <CardContent className="pt-3.5 pb-3.5 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <Gift className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Indique e ganhe R$ 150</p>
+              <p className="text-xs text-muted-foreground">Convide para o grupo de repasses — meta de 5 por dia.</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
 
       {/* Carteira — só dados do servidor (escondida no modo simples) */}
       {!simple && (
