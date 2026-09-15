@@ -126,8 +126,26 @@ serve(async (req: Request) => {
         await handleConnectionChange(supabase, instanceId, eventData);
         break;
       }
+      // Repasse: alguém entrou no grupo de repasses → marca a indicação como "joined".
+      // UAZAPI varia o nome do evento de participantes; casamos por prefixo "group".
+      case 'group_participants':
+      case 'groups':
+      case 'group':
+      case 'group_update':
+      case 'presence': {
+        await handleGroupParticipants(supabase, instanceData.tenant_id, eventData, payload).catch(
+          (e) => console.error('[Webhook] group participants:', e?.message)
+        );
+        break;
+      }
       default: {
-        console.log('[Webhook] Unhandled EventType:', eventType);
+        if (/group/i.test(String(eventType))) {
+          await handleGroupParticipants(supabase, instanceData.tenant_id, eventData, payload).catch(
+            (e) => console.error('[Webhook] group participants (default):', e?.message)
+          );
+        } else {
+          console.log('[Webhook] Unhandled EventType:', eventType);
+        }
       }
     }
 
@@ -144,6 +162,57 @@ serve(async (req: Request) => {
     });
   }
 });
+
+// REPASSE — participante entrou no grupo de repasses.
+//
+// Best-effort e sem efeito no pagamento (o R$ 150 é decidido por telefone na
+// conclusão da venda). Só marca a indicação como "joined" para o painel da
+// promotora ("entraram"). Gate por config REPASSE_GROUP_JID: enquanto o JID do
+// grupo não estiver cadastrado, é um no-op seguro (não marca ninguém à toa).
+// UAZAPI varia bastante o formato do evento de participantes, então extraímos
+// o JID do grupo, a ação (add/join) e os telefones de forma tolerante.
+async function handleGroupParticipants(supabase: any, tenantId: string | null, eventData: any, rawPayload: any) {
+  if (!tenantId) return;
+
+  const { data: cfg } = await supabase.from('config').select('value').eq('key', 'REPASSE_GROUP_JID').maybeSingle();
+  const groupJid = (cfg?.value || '').trim();
+  if (!groupJid) return; // sem JID cadastrado → não temos como saber se é O grupo certo
+
+  const d = eventData || {};
+  const p = rawPayload || {};
+  const eventGroupJid = String(
+    d.chatid || d.groupJid || d.group_id || d.groupId || d.id || d.jid || d.remoteJid ||
+    p.chatid || p.groupJid || p.group_id || ''
+  );
+  if (!eventGroupJid || !eventGroupJid.includes(groupJid.replace('@g.us', ''))) return;
+
+  // Ação: só nos interessa entrada de participante
+  const action = String(d.action || d.type || d.event || p.action || '').toLowerCase();
+  if (action && !/add|join|invite|promote|new/.test(action)) return;
+
+  // Telefones dos participantes (formatos variados)
+  const raw: unknown[] = [];
+  const push = (v: unknown) => { if (v != null) raw.push(v); };
+  for (const key of ['participants', 'participant', 'members', 'jids', 'numbers', 'phones']) {
+    const val = d[key] ?? p[key];
+    if (Array.isArray(val)) val.forEach(push); else push(val);
+  }
+  push(d.sender); push(d.author);
+
+  const phones = new Set<string>();
+  for (const item of raw) {
+    const s = typeof item === 'string' ? item : (item && typeof item === 'object' ? String((item as any).id || (item as any).jid || (item as any).phone || (item as any).number || '') : '');
+    const digits = s.replace(/@.*$/, '').replace(/\D/g, '');
+    if (digits.length >= 10) phones.add(digits);
+  }
+  if (phones.size === 0) return;
+
+  for (const phone of phones) {
+    const { error } = await supabase.rpc('repasse_register_join', { p_tenant: tenantId, p_phone: phone });
+    if (error) console.error('[Webhook] repasse_register_join:', error.message);
+  }
+  console.log('[Webhook] repasse: participantes marcados como joined:', phones.size);
+}
 
 async function handleIncomingMessage(
   supabase: any,

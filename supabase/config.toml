@@ -53,6 +53,10 @@ verify_jwt = false
 [functions.health-check]
 verify_jwt = false
 
+# Landing pública do cartão NFC de repasse (/r/:code)
+[functions.repasse-track]
+verify_jwt = false
+
 # ============================================================
 # CRONS / SCHEDULERS — chamados pelo pg_cron sem user context
 # ============================================================

@@ -78,6 +78,7 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+const RepasseLanding = React.lazy(() => import("./pages/RepasseLanding"));
 
 // Settings unificada + WhatsApp
 import SettingsUnified from "./pages/SettingsUnified";
@@ -154,6 +155,7 @@ const CaptureNewLead = React.lazy(() => import("./pages/capture/CaptureNewLead")
 const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads"));
 const CaptureMyVehicles = React.lazy(() => import("./pages/capture/CaptureMyVehicles"));
 const CapturePrizes = React.lazy(() => import("./pages/capture/CapturePrizes"));
+const CaptureRepasse = React.lazy(() => import("./pages/capture/CaptureRepasse"));
 
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
@@ -240,6 +242,12 @@ const AppRoutes = () => {
           <BookMeeting />
         </React.Suspense>
       } />
+      {/* Landing pública do cartão NFC de repasse (confirma WhatsApp → grupo) */}
+      <Route path="/r/:code" element={
+        <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+          <RepasseLanding />
+        </React.Suspense>
+      } />
 
       {/* Home → Dashboard Comercial (promotora é redirecionada pra /captacao pelo ProtectedRoute) */}
       <Route path="/" element={<Navigate to="/comercial" replace />} />
@@ -262,6 +270,7 @@ const AppRoutes = () => {
         <Route path="leads" element={<React.Suspense fallback={<div />}><CaptureMyLeads /></React.Suspense>} />
         <Route path="carros" element={<React.Suspense fallback={<div />}><CaptureMyVehicles /></React.Suspense>} />
         <Route path="premios" element={<React.Suspense fallback={<div />}><CapturePrizes /></React.Suspense>} />
+        <Route path="repasse" element={<React.Suspense fallback={<div />}><CaptureRepasse /></React.Suspense>} />
         {/* rotas antigas → abas da tela Prêmios */}
         <Route path="treino" element={<Navigate to="/captacao/premios?tab=treino" replace />} />
         <Route path="perfil" element={<Navigate to="/captacao/premios?tab=perfil" replace />} />
