@@ -79,6 +79,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 const RepasseLanding = React.lazy(() => import("./pages/RepasseLanding"));
+const McpConsent = React.lazy(() => import("./pages/McpConsent"));
 
 // Settings unificada + WhatsApp
 import SettingsUnified from "./pages/SettingsUnified";
@@ -240,6 +241,12 @@ const AppRoutes = () => {
       <Route path="/agendar" element={
         <React.Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div></div>}>
           <BookMeeting />
+        </React.Suspense>
+      } />
+      {/* Consentimento OAuth do Segundo Cérebro (MCP) — login + autorizar a IA */}
+      <Route path="/oauth/consent" element={
+        <React.Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div></div>}>
+          <McpConsent />
         </React.Suspense>
       } />
       {/* Landing pública do cartão NFC de repasse (confirma WhatsApp → grupo) */}
