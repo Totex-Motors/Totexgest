@@ -56,9 +56,9 @@ export default function CaptureRepasse() {
 
   async function shareLink() {
     if (!link) return;
-    const text = `Entra no nosso grupo de repasses de carros! Confirma seu WhatsApp aqui: ${link}`;
+    const text = `Entra na nossa comunidade de ofertas de carros! Confirma seu WhatsApp aqui: ${link}`;
     if (navigator.share) {
-      try { await navigator.share({ title: "Grupo de Repasses", text, url: link }); } catch { /* cancelado */ }
+      try { await navigator.share({ title: "Comunidade de Ofertas Totex", text, url: link }); } catch { /* cancelado */ }
     } else {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     }
@@ -152,7 +152,7 @@ export default function CaptureRepasse() {
       <Card className="bg-emerald-600 text-white border-emerald-700">
         <CardContent className="pt-4 pb-4 flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium text-emerald-100 uppercase tracking-wide">Você já ganhou com repasses</p>
+            <p className="text-xs font-medium text-emerald-100 uppercase tracking-wide">Você já ganhou com indicações</p>
             <p className="text-2xl font-bold tabular-nums">{stats.isLoading ? "…" : brl(s?.ganho_cents ?? 0)}</p>
           </div>
           <Gift className="h-8 w-8 text-emerald-200" />

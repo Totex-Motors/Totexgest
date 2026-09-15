@@ -108,11 +108,11 @@ export default function RepasseLanding() {
                 <div className="mx-auto mb-3 h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center">
                   <MessageCircle className="h-7 w-7 text-emerald-600" />
                 </div>
-                <h1 className="text-xl font-bold text-slate-800">Grupo de Repasses</h1>
+                <h1 className="text-xl font-bold text-slate-800">Comunidade de Ofertas Totex</h1>
                 <p className="mt-1 text-sm text-slate-500">
                   {promoterName
                     ? <>Você foi convidado por <span className="font-semibold text-emerald-700">{promoterName}</span>.</>
-                    : "Você foi convidado para o grupo de repasses."}
+                    : "Você foi convidado para a nossa comunidade de ofertas."}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
                   Confirme seu WhatsApp para entrar no grupo e receber as ofertas de carros.
@@ -162,7 +162,7 @@ export default function RepasseLanding() {
               </div>
               <h1 className="text-xl font-bold text-slate-800">WhatsApp confirmado! 🎉</h1>
               <p className="mt-2 text-sm text-slate-500">
-                Agora é só entrar no grupo de repasses para ver as ofertas de carros.
+                Agora é só entrar na comunidade para ver as ofertas de carros.
               </p>
               {groupLink ? (
                 <a
@@ -180,7 +180,7 @@ export default function RepasseLanding() {
           )}
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">Totex Motors · Grupo de Repasses</p>
+        <p className="mt-6 text-center text-xs text-slate-400">Totex Motors · Comunidade de Ofertas</p>
       </div>
     </div>
   );
