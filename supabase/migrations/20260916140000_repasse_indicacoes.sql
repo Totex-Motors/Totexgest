@@ -26,7 +26,8 @@ BEGIN
   IF v_code IS NOT NULL THEN RETURN jsonb_build_object('ok', true, 'code', v_code); END IF;
   LOOP
     v_try := v_try + 1;
-    v_code := lower(substr(replace(replace(encode(gen_random_bytes(6), 'base64'), '/', ''), '+', ''), 1, 6));
+    -- md5(gen_random_uuid) evita depender de gen_random_bytes (pgcrypto fica no schema `extensions` em prod, fora do search_path)
+    v_code := lower(substr(md5(gen_random_uuid()::text || clock_timestamp()::text), 1, 6));
     BEGIN
       UPDATE team_members SET repasse_code = v_code WHERE id = v_target AND repasse_code IS NULL;
       EXIT;

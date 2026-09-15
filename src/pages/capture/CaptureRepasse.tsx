@@ -97,6 +97,10 @@ export default function CaptureRepasse() {
           <p className="text-sm font-semibold mb-1 flex items-center gap-1.5"><Share2 className="h-4 w-4" /> Seu link do cartão NFC</p>
           {stats.isLoading ? (
             <Skeleton className="h-10 w-full rounded-lg" />
+          ) : stats.isError ? (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Não consegui carregar seus dados de indicação agora. Recarregue a página em instantes.
+            </p>
           ) : !code ? (
             <div className="text-sm text-muted-foreground">
               <p className="mb-3">Você ainda não tem um link. Gere o seu para começar a convidar.</p>

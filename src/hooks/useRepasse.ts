@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
 // REPASSE POR INDICAÇÃO — hooks da promotora.
@@ -94,6 +95,10 @@ export function useEnsureRepasseCode() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repasse"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { message?: string })?.message || "Não consegui gerar o link agora.";
+      toast.error(msg);
     },
   });
 }
