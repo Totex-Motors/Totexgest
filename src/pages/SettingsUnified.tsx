@@ -48,6 +48,7 @@ import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfi
 import { InstagramConfigTab } from "@/components/settings/InstagramConfigTab";
 import { EmailConfigSection } from "@/components/settings/sections/EmailConfigSection";
 import { RepasseRelaySection } from "@/components/settings/sections/RepasseRelaySection";
+import { CommunitySection } from "@/components/settings/sections/CommunitySection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
@@ -174,6 +175,14 @@ const navigationSections: NavSection[] = [
         icon: Repeat,
         description: "Reposta automaticamente os carros do grupo de repasse na comunidade, no tom da loja e com sua margem embutida.",
         hint: "Repasse abaixo da tabela",
+        adminOnly: true,
+      },
+      {
+        id: "comunidade",
+        label: "Comunidade (Janelas)",
+        icon: Users,
+        description: "Janela de Oportunidades: a IA abre janelas por tempo limitado pra captar e qualificar a demanda dos membros e casar com os carros do repasse.",
+        hint: "Captação de demanda",
         adminOnly: true,
       },
     ],
@@ -493,6 +502,8 @@ function SettingsContent({ section }: { section: string }) {
       return <EmailConfigSection />;
     case "repasse-relay":
       return <RepasseRelaySection />;
+    case "comunidade":
+      return <CommunitySection />;
 
     // Comercial
     case "pipeline":
