@@ -189,3 +189,19 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.mcp_context() TO authenticated;
+
+-- ─── CONSENTIMENTO: dados exibidos na telinha /oauth/consent ──────────────────
+CREATE OR REPLACE FUNCTION public.mcp_authorization_info(p_client_id text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_member uuid := public.current_member_id(); v_role text; v_tname text;
+BEGIN
+  IF v_member IS NULL THEN RAISE EXCEPTION 'Sem membro vinculado à sua conta' USING ERRCODE='42501'; END IF;
+  SELECT role INTO v_role FROM team_members WHERE id = v_member;
+  IF lower(coalesce(v_role,'')) IN ('promotora','sdr') THEN
+    RAISE EXCEPTION 'Esta conexão é da gestão. Entre com uma conta de gestor/admin.' USING ERRCODE='42501';
+  END IF;
+  SELECT name INTO v_tname FROM tenants WHERE id = public.get_tenant_id();
+  RETURN jsonb_build_object('tenant_name', coalesce(v_tname,'Minha empresa'), 'can_write', true);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.mcp_authorization_info(text) TO authenticated;
