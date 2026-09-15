@@ -185,7 +185,7 @@ export default function CaptureHome() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">Indique e ganhe R$ 150</p>
-              <p className="text-xs text-muted-foreground">Convide para o grupo de repasses — meta de 5 por dia.</p>
+              <p className="text-xs text-muted-foreground">Convide para a comunidade de ofertas — meta de 5 por dia.</p>
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
