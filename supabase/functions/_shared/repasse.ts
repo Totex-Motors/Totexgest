@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { getIntegrationKey } from "./config.ts";
+import { matchDemand } from "./community.ts";
 import { uazapiTargetAllowed } from "./wa-policy.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -256,6 +257,12 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
     post_text: r.post,
   });
   console.log("[repasse-relay] postado:", t.modelo, r.final != null ? brl(r.final) : "(consultar)", sentWithMedia ? "(com foto)" : "(texto)");
+
+  // 9) Casa com a demanda captada na comunidade (marca pra o time abordar)
+  try {
+    const n = await matchDemand(sb, config.tenant_id ?? input.tenantId, { modelo: t.modelo, precoFinal: r.final });
+    if (n > 0) console.log(`[repasse-relay] casou com ${n} pedido(s) da comunidade`);
+  } catch { /* match é best-effort */ }
 }
 
 // Aplica a margem e recalcula o "abaixo da FIPE"; substitui os tokens.

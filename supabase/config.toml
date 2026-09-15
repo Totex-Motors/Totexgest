@@ -206,3 +206,8 @@ verify_jwt = false
 # captação: consulta de veículo por placa (só UI, JWT do usuário)
 [functions.vehicle-lookup]
 verify_jwt = true
+
+# comunidade: agendador das Janelas de Oportunidade (cron pg_cron a cada 1 min;
+# ações manuais abrir/fechar validam o acesso do usuário internamente)
+[functions.community-window-tick]
+verify_jwt = false

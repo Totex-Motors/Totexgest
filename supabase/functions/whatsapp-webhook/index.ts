@@ -10,6 +10,7 @@ import { getIntegrationKey } from "../_shared/config.ts";
 import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 import { maybeRelayRepasse } from "../_shared/repasse.ts";
+import { maybeCaptureDemand } from "../_shared/community.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -196,6 +197,22 @@ async function handleIncomingMessage(
       senderName: pushName,
     }).catch((e) => { console.error('[repasse-relay] hook erro:', e); return false; });
     if (relayed) return;
+  }
+
+  // ── Comunidade: captura de demanda durante uma Janela de Oportunidade aberta ──
+  // Mensagem de membro na comunidade, dentro de uma janela aberta, vira demanda
+  // estruturada (não vira ticket). Fora de janela, segue o fluxo normal.
+  if (!fromMe && isGroup) {
+    const captured = await maybeCaptureDemand(supabase, {
+      instanceId,
+      tenantId,
+      groupJid: remoteJid,
+      messageId,
+      text: (payload.content?.text || payload.text || ''),
+      senderName: pushName,
+      senderPhone,
+    }).catch((e) => { console.error('[community] hook erro:', e); return false; });
+    if (captured) return;
   }
 
   const contentObj = payload.content || {};
