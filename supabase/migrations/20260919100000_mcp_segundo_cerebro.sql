@@ -168,3 +168,24 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.mcp_decidir_aprovacao(uuid, text, text) TO authenticated;
+
+-- ─── CONTEXTO: exigido pelo servidor MCP na conexão (quem/empresa) ───────────
+CREATE OR REPLACE FUNCTION public.mcp_context()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_member uuid := public.current_member_id(); v_tenant uuid := public.get_tenant_id();
+        v_role text; v_tname text;
+BEGIN
+  IF v_member IS NULL THEN RAISE EXCEPTION 'Sem membro vinculado à sua conta'; END IF;
+  SELECT role INTO v_role FROM team_members WHERE id = v_member;
+  SELECT name INTO v_tname FROM tenants WHERE id = v_tenant;
+  RETURN jsonb_build_object(
+    'user_id', auth.uid(),
+    'tenant_id', v_tenant,
+    'tenant_name', coalesce(v_tname,'Minha empresa'),
+    'member_id', v_member,
+    'role', coalesce(v_role,'desconhecido'),
+    'can_write', lower(coalesce(v_role,'')) NOT IN ('promotora','sdr')
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.mcp_context() TO authenticated;
