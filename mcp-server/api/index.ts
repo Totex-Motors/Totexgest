@@ -26,7 +26,8 @@ const contextSchema = z.object({
 type TenantContext = z.infer<typeof contextSchema>;
 type McpRpc =
   | 'mcp_context' | 'mcp_resumo_operacao' | 'mcp_o_que_esta_atrasado' | 'mcp_aprovacoes_pendentes'
-  | 'mcp_intermediacao_repasse' | 'mcp_criar_tarefa' | 'mcp_concluir_tarefa' | 'mcp_decidir_aprovacao';
+  | 'mcp_intermediacao_repasse' | 'mcp_criar_tarefa' | 'mcp_concluir_tarefa' | 'mcp_decidir_aprovacao'
+  | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup';
 
 async function verifyToken(token: string) {
   const { payload } = await jwtVerify(token, jwks, {
@@ -77,8 +78,38 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
   read('o_que_esta_atrasado', 'O que precisa de ação: tarefas vencidas, deals parados há mais de 14 dias e aprovações esperando decisão.', 'mcp_o_que_esta_atrasado');
   read('aprovacoes_pendentes', 'Aprovações de alçada esperando decisão (venda abaixo do mínimo, comissão, concessão), com valor e há quantos dias esperam.', 'mcp_aprovacoes_pendentes');
   read('intermediacao_e_repasse', 'Status da intermediação (por etapa, recentes) e do repasse por indicação (indicações, entraram, converteram).', 'mcp_intermediacao_repasse');
+  read('agenda_hoje', 'Reuniões e atividades agendadas para hoje (horário, responsável, se já concluída).', 'mcp_agenda_hoje');
+
+  server.registerTool('ranking_time', {
+    description: 'Ranking dos vendedores no período: vendas ganhas, valor, em aberto e perdidas.',
+    inputSchema: { periodo: z.enum(['week', 'month', 'all']).default('month') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ periodo }) => {
+    try { return asText(await rpc('mcp_ranking_time', { p_period: periodo })); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
+
+  server.registerTool('buscar_lead', {
+    description: 'Busca um lead por nome ou telefone. Retorna etapa, deals abertos e a próxima tarefa. Use o id retornado para agendar_followup.',
+    inputSchema: { termo: z.string().trim().min(2).max(120) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ termo }) => {
+    try { return asText(await rpc('mcp_buscar_lead', { p_termo: termo })); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
 
   if (context.can_write) {
+    server.registerTool('agendar_followup', {
+      description: 'Cria uma tarefa de follow-up ligada a um lead (pegue o id em buscar_lead). CONFIRME com o usuário antes.',
+      inputSchema: {
+        lead_id: z.string().uuid(),
+        quando: z.string().datetime({ offset: true }).optional().describe('ISO 8601 com fuso, ex 2026-09-22T10:00:00-03:00'),
+        nota: z.string().trim().max(300).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    }, async ({ lead_id, quando, nota }) => {
+      try { return asText(await rpc('mcp_agendar_followup', { p_lead: lead_id, p_quando: quando ?? null, p_nota: nota ?? null })); }
+      catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+    });
+
     server.registerTool('criar_tarefa', {
       description: 'Cria uma tarefa. CONFIRME o texto e o prazo com o usuário antes de chamar.',
       inputSchema: { titulo: z.string().trim().min(2).max(300), prazo: z.string().datetime({ offset: true }).optional(), critica: z.boolean().default(false) },
