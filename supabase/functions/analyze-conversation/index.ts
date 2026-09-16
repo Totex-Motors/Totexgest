@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ANTHROPIC_MODEL = "claude-3-haiku-20240307";
+const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
 // Helper: converte amount baseado na origem
 // - Braip com payment_method numérico ('2', '5', etc) → valor em CENTAVOS → dividir por 100

@@ -15,7 +15,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
-const ANTHROPIC_MODEL = "claude-3-5-haiku-20241022";
+const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
 function jsonRes(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

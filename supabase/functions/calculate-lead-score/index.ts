@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ANTHROPIC_MODEL = "claude-3-haiku-20240307";
+const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
 interface LeadScoreResult {
   score: number;
@@ -288,9 +288,12 @@ Responda APENAS em JSON válido:
 
     if (!response.ok) {
       console.error("Anthropic error:", anthropicResult);
+      // Mostra o motivo real da Anthropic no toast (ex.: modelo inválido, chave sem
+      // crédito, rate limit) em vez de um "Erro ao calcular score" genérico.
+      const detail = anthropicResult?.error?.message || anthropicResult?.error?.type || `HTTP ${response.status}`;
       return new Response(
-        JSON.stringify({ error: "Erro ao calcular score", details: anthropicResult }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Erro ao calcular score", message: `IA: ${detail}`, details: anthropicResult }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
