@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "build": "echo 'Sem build: funcao serverless montada pela Vercel a partir de api/'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
