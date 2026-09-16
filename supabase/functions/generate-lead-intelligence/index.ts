@@ -46,14 +46,27 @@ Deno.serve(async (req) => {
     const anthropicKey = await getIntegrationKey(sb, "ANTHROPIC_API_KEY", lead.tenant_id);
     if (!anthropicKey) return json({ error: "ANTHROPIC_API_KEY não configurada (Configurações → API Keys)" }, 400);
 
-    const [{ data: msgs }, { data: acts }, { data: deals }] = await Promise.all([
+    const [{ data: msgs }, { data: acts }, { data: deals }, { data: igConvs }, { data: igEng }] = await Promise.all([
       sb.from("whatsapp_messages").select("content, is_from_me, created_at, sender_name").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(40),
       sb.from("company_activities").select("name, task_type, status, due_datetime, date").eq("lead_id", leadId).order("date", { ascending: false }).limit(30),
       sb.from("deals").select("title, status, original_price, negotiated_price, payment_method, notes, created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(10),
+      sb.from("instagram_conversations").select("id, participant_username, participant_name, qualification_tier, qualification_reason, total_messages, last_message_at").eq("lead_id", leadId).limit(5),
+      sb.from("instagram_engagement").select("total_dms, total_comments, total_story_replies, engagement_score, last_interaction_at").eq("lead_id", leadId).maybeSingle(),
     ]);
+
+    // Instagram: mensagens/comentários das conversas ligadas a este lead
+    let igMsgs: Array<Record<string, unknown>> = [];
+    if (igConvs && igConvs.length > 0) {
+      const { data: m } = await sb.from("instagram_messages")
+        .select("content, is_from_me, sent_at, reference_type, reference_url")
+        .in("conversation_id", igConvs.map((c: Record<string, unknown>) => c.id))
+        .order("sent_at", { ascending: false }).limit(40);
+      igMsgs = m ?? [];
+    }
 
     const dataSources: string[] = [];
     if ((msgs?.length ?? 0) > 0) dataSources.push(`${msgs!.length} mensagens de WhatsApp`);
+    if ((igMsgs.length ?? 0) > 0) dataSources.push(`${igMsgs.length} interações de Instagram`);
     if ((acts?.length ?? 0) > 0) dataSources.push(`${acts!.length} atividades`);
     if ((deals?.length ?? 0) > 0) dataSources.push(`${deals!.length} deals`);
     dataSources.push("cadastro do lead");
@@ -61,6 +74,13 @@ Deno.serve(async (req) => {
     const conversa = (msgs ?? []).slice().reverse()
       .map((m: Record<string, unknown>) => `${m.is_from_me ? "NÓS" : (m.sender_name || "LEAD")}: ${String(m.content ?? "").slice(0, 500)}`)
       .join("\n").slice(0, 8000);
+
+    const instagram = (igConvs && igConvs.length > 0)
+      ? `Perfil IG: @${igConvs[0].participant_username || "?"} (${igConvs[0].participant_name || ""}). ` +
+        `Qualificação IG: ${igConvs[0].qualification_tier || "n/d"}${igConvs[0].qualification_reason ? ` — ${igConvs[0].qualification_reason}` : ""}. ` +
+        (igEng ? `Engajamento: ${igEng.total_dms ?? 0} DMs, ${igEng.total_comments ?? 0} comentários, score ${igEng.engagement_score ?? "n/d"}.\n` : "\n") +
+        igMsgs.slice().reverse().map((m) => `${m.is_from_me ? "NÓS" : "LEAD"}${m.reference_type ? ` [${m.reference_type}]` : ""}: ${String(m.content ?? "").slice(0, 400)}`).join("\n").slice(0, 5000)
+      : "(sem interações de Instagram vinculadas a este lead)";
 
     const system =
       "Você é um analista de vendas sênior de uma operação de veículos (TotexMotors). " +
@@ -80,6 +100,7 @@ Deno.serve(async (req) => {
       `LEAD (cadastro):\n${JSON.stringify(lead)}\n\n` +
       `ATIVIDADES:\n${JSON.stringify(acts ?? [])}\n\n` +
       `DEALS:\n${JSON.stringify(deals ?? [])}\n\n` +
+      `INSTAGRAM (perfil, qualificação e conversa):\n${instagram}\n\n` +
       `CONVERSA DE WHATSAPP (mais antiga → mais recente):\n${conversa || "(sem mensagens)"}`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {

@@ -259,6 +259,21 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   const { data: instagramProfile } = useInstagramProfile(instagramProfileId);
   const { data: instagramPosts } = useInstagramPosts(instagramProfileId);
   const { data: instagramStories } = useInstagramStories(instagramProfileId);
+  // Conversa do Instagram vinculada a este lead (dado real disponível via API)
+  const { data: igConversation } = useQuery({
+    queryKey: ["lead-ig-conversation", lead?.id],
+    enabled: !!lead?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("instagram_conversations")
+        .select("participant_username, participant_name, participant_profile_pic, qualification_tier, qualification_reason, total_messages, last_message_at")
+        .eq("lead_id", lead!.id)
+        .order("last_message_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
 
   // Partner leads cluster (for mirroring tasks/calls/meetings)
   const { data: partnerLeadIds } = usePartnerLeadIds(id);
@@ -1741,12 +1756,64 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                             </div>
                           </CardContent>
                         </Card>
+                      ) : igConversation ? (
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-4">
+                              {igConversation.participant_profile_pic ? (
+                                <img
+                                  src={igConversation.participant_profile_pic}
+                                  alt={igConversation.participant_username || "perfil"}
+                                  className="w-14 h-14 rounded-full object-cover border-2 border-pink-500 flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="w-14 h-14 rounded-full bg-pink-500/10 flex items-center justify-center flex-shrink-0">
+                                  <Instagram className="h-6 w-6 text-pink-500" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm truncate">
+                                    @{igConversation.participant_username || "instagram"}
+                                  </span>
+                                  {igConversation.participant_username && (
+                                    <a
+                                      href={`https://instagram.com/${igConversation.participant_username}`}
+                                      target="_blank" rel="noopener noreferrer"
+                                      className="text-pink-500 hover:text-pink-600 ml-auto"
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </a>
+                                  )}
+                                </div>
+                                {igConversation.participant_name && (
+                                  <p className="text-xs text-muted-foreground truncate">{igConversation.participant_name}</p>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-1.5 text-xs items-center">
+                                  <span><strong>{igConversation.total_messages ?? 0}</strong> mensagens</span>
+                                  {igConversation.qualification_tier && (
+                                    <Badge className="bg-pink-500/15 text-pink-700 text-[10px] px-1.5 py-0 capitalize">
+                                      {igConversation.qualification_tier}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {igConversation.qualification_reason && (
+                                  <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{igConversation.qualification_reason}</p>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              O Instagram não libera o feed/stories de clientes — mostramos o perfil e a conversa. A "Inteligência do Lead" usa esses dados na qualificação.
+                            </p>
+                          </CardContent>
+                        </Card>
                       ) : (
                         <Card>
                           <CardContent className="p-6">
                             <div className="text-center py-4 text-muted-foreground">
                               <Instagram className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                              <p className="text-sm font-medium">Perfil do Instagram não vinculado</p>
+                              <p className="text-sm font-medium">Sem conversa de Instagram vinculada</p>
+                              <p className="text-xs mt-1">Vincule uma conversa a este lead no Inbox do Instagram.</p>
                             </div>
                           </CardContent>
                         </Card>
