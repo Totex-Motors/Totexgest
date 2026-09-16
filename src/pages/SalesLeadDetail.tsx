@@ -275,6 +275,34 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
     },
   });
 
+  // Vincular a conversa de Instagram (pelo @ ou id do lead) a este lead
+  const linkIgConversation = useMutation({
+    mutationFn: async () => {
+      if (!lead?.id) throw new Error("Lead inválido");
+      const uname = (lead.instagram || "").replace(/^@/, "").trim();
+      const ors: string[] = [];
+      if (uname) ors.push(`participant_username.ilike.${uname}`);
+      if (lead.instagram_id) ors.push(`participant_instagram_id.eq.${lead.instagram_id}`);
+      if (ors.length === 0) throw new Error("Preencha o @ do Instagram no cadastro do lead primeiro.");
+      const { data: conv, error } = await supabase
+        .from("instagram_conversations")
+        .select("id")
+        .or(ors.join(","))
+        .order("last_message_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!conv) throw new Error("Não achei uma conversa de Instagram com esse @. Confira o campo Instagram do lead.");
+      const { error: upErr } = await supabase.from("instagram_conversations").update({ lead_id: lead.id }).eq("id", conv.id);
+      if (upErr) throw upErr;
+    },
+    onSuccess: () => {
+      toast({ title: "Conversa vinculada!", description: "O Instagram deste lead agora entra na qualificação." });
+      queryClient.invalidateQueries({ queryKey: ["lead-ig-conversation", lead?.id] });
+    },
+    onError: (e: unknown) => toast({ title: "Não consegui vincular", description: e instanceof Error ? e.message : "Tente de novo", variant: "destructive" }),
+  });
+
   // Partner leads cluster (for mirroring tasks/calls/meetings)
   const { data: partnerLeadIds } = usePartnerLeadIds(id);
 
@@ -1813,7 +1841,16 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                             <div className="text-center py-4 text-muted-foreground">
                               <Instagram className="h-10 w-10 mx-auto mb-2 opacity-30" />
                               <p className="text-sm font-medium">Sem conversa de Instagram vinculada</p>
-                              <p className="text-xs mt-1">Vincule uma conversa a este lead no Inbox do Instagram.</p>
+                              <p className="text-xs mt-1 mb-3">Vincule a conversa deste cliente para o Instagram entrar na qualificação.</p>
+                              <Button
+                                size="sm"
+                                onClick={() => linkIgConversation.mutate()}
+                                disabled={linkIgConversation.isPending}
+                                className="bg-pink-600 hover:bg-pink-700 text-white"
+                              >
+                                <Instagram className="h-4 w-4 mr-1.5" />
+                                {linkIgConversation.isPending ? "Vinculando…" : "Vincular esta conversa ao lead"}
+                              </Button>
                             </div>
                           </CardContent>
                         </Card>
