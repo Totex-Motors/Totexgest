@@ -11,6 +11,7 @@ import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 import { maybeRelayRepasse } from "../_shared/repasse.ts";
 import { maybeCaptureDemand } from "../_shared/community.ts";
+import { maybeBrainReply } from "../_shared/cerebro-bot.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -250,6 +251,22 @@ async function handleIncomingMessage(
   
   senderPhone = String(senderPhone).replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
   const pushName = payload.senderName || payload.SenderName || payload.name || senderPhone;
+
+  // ── Segundo Cérebro: pergunta no grupo de gestão ("cérebro ...") ────────────
+  // Se a mensagem veio do grupo do cérebro e começa com o gatilho, responde ali
+  // com a foto da operação (IA) e PARA — não vira ticket/lead.
+  if (!fromMe && isGroup) {
+    const answered = await maybeBrainReply(supabase, {
+      instanceId,
+      tenantId,
+      groupJid: remoteJid,
+      text: (payload.content?.text || payload.text || ''),
+      instanceApiUrl,
+      instanceApiKey,
+      senderName: pushName,
+    }).catch((e) => { console.error('[cerebro-bot] hook erro:', e); return false; });
+    if (answered) return;
+  }
 
   // ── Repasse Relay ──────────────────────────────────────────────────────────
   // Se a mensagem veio de um grupo de repasse monitorado, reescreve o carro no
