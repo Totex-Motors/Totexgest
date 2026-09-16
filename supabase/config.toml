@@ -215,3 +215,7 @@ verify_jwt = true
 # ações manuais abrir/fechar validam o acesso do usuário internamente)
 [functions.community-window-tick]
 verify_jwt = false
+
+# segundo cérebro: briefing matinal no grupo de gestão (cron pg_cron 08:00 BRT)
+[functions.daily-brain-briefing]
+verify_jwt = false
