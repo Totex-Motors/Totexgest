@@ -75,30 +75,38 @@ export interface IgDiscoveryResult {
   cached?: boolean;
   reason?: string;
   profile?: {
-    username: string;
+    username: string | null;
     name: string | null;
-    biography: string | null;
-    followers_count: number | null;
+    profile_pic?: string | null;
+    biography?: string | null;
+    followers_count?: number | null;
     follows_count?: number | null;
     media_count?: number | null;
-    profile_picture_url?: string | null;
     website?: string | null;
+    is_verified?: boolean;
+    follows_you?: boolean;   // a pessoa segue a sua conta
+    you_follow?: boolean;    // a sua conta segue a pessoa
   };
   media?: IgDiscoveryPost[];
 }
 
 /**
- * Busca o perfil público (bio, seguidores, últimos posts) de um @ do Instagram
- * via Business Discovery da Meta — sem o vendedor abrir a página do IG.
- * Só funciona para contas profissionais (Business/Creator) públicas.
+ * Busca o perfil do lead no Instagram sem o vendedor abrir a página do IG.
+ * - Por igsid (quem mandou DM): nome, foto, seguidores, verificado, "te segue".
+ * - Por username: adiciona bio + posts SE a conta estiver ligada a uma Página
+ *   do Facebook (Business Discovery). Sem isso, retorna só o que a API libera.
  */
-export const useInstagramBusinessProfile = (username: string | undefined | null) => {
+export const useInstagramBusinessProfile = (
+  username: string | undefined | null,
+  igsid?: string | undefined | null,
+) => {
   const uname = (username || '').replace(/^@/, '').trim();
+  const id = (igsid || '').trim();
   return useQuery({
-    queryKey: ['ig-business-discovery', uname.toLowerCase()],
+    queryKey: ['ig-profile-lookup', uname.toLowerCase(), id],
     queryFn: async (): Promise<IgDiscoveryResult> => {
       const { data, error } = await supabase.functions.invoke('instagram-profile-lookup', {
-        body: { username: uname },
+        body: { username: uname, igsid: id },
       });
       if (error) {
         let reason = error.message;
@@ -113,7 +121,7 @@ export const useInstagramBusinessProfile = (username: string | undefined | null)
       }
       return data as IgDiscoveryResult;
     },
-    enabled: !!uname,
+    enabled: !!(uname || id),
     staleTime: 1000 * 60 * 30,
     retry: false,
   });

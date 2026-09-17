@@ -266,7 +266,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
     queryFn: async () => {
       const { data } = await supabase
         .from("instagram_conversations")
-        .select("participant_username, participant_name, participant_profile_pic, qualification_tier, qualification_reason, total_messages, last_message_at")
+        .select("participant_username, participant_name, participant_profile_pic, participant_instagram_id, qualification_tier, qualification_reason, total_messages, last_message_at")
         .eq("lead_id", lead!.id)
         .order("last_message_at", { ascending: false })
         .limit(1)
@@ -278,7 +278,8 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   // Perfil público do @ (bio, seguidores, posts) via Business Discovery da Meta —
   // sem o vendedor abrir a página do Instagram. Só p/ contas profissionais públicas.
   const igLookupUsername = (igConversation?.participant_username || lead?.instagram || "").replace(/^@/, "").trim();
-  const { data: igDiscovery } = useInstagramBusinessProfile(igLookupUsername);
+  const igLookupId = (igConversation?.participant_instagram_id || lead?.instagram_id || "") as string;
+  const { data: igDiscovery } = useInstagramBusinessProfile(igLookupUsername, igLookupId);
 
   // Vincular a conversa de Instagram (pelo @ ou id do lead) a este lead
   const linkIgConversation = useMutation({
@@ -1762,10 +1763,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                         <Card className="border-pink-500/30">
                           <CardContent className="p-4">
                             <div className="flex items-start gap-4">
-                              {igDiscovery.profile.profile_picture_url ? (
+                              {igDiscovery.profile.profile_pic ? (
                                 <img
-                                  src={igDiscovery.profile.profile_picture_url}
-                                  alt={igDiscovery.profile.username}
+                                  src={igDiscovery.profile.profile_pic}
+                                  alt={igDiscovery.profile.username || 'perfil'}
                                   className="w-14 h-14 rounded-full object-cover border-2 border-pink-500 flex-shrink-0"
                                 />
                               ) : (
@@ -1776,18 +1777,23 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-sm truncate">@{igDiscovery.profile.username}</span>
-                                  <a
-                                    href={`https://instagram.com/${igDiscovery.profile.username}`}
-                                    target="_blank" rel="noopener noreferrer"
-                                    className="text-pink-500 hover:text-pink-600 ml-auto"
-                                  >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </a>
+                                  {igDiscovery.profile.is_verified && (
+                                    <Badge className="bg-blue-500 text-white text-[10px] px-1.5 py-0">Verificado</Badge>
+                                  )}
+                                  {igDiscovery.profile.username && (
+                                    <a
+                                      href={`https://instagram.com/${igDiscovery.profile.username}`}
+                                      target="_blank" rel="noopener noreferrer"
+                                      className="text-pink-500 hover:text-pink-600 ml-auto"
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </a>
+                                  )}
                                 </div>
                                 {igDiscovery.profile.name && (
                                   <p className="text-xs text-muted-foreground truncate">{igDiscovery.profile.name}</p>
                                 )}
-                                <div className="flex flex-wrap gap-4 mt-1.5 text-xs">
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs items-center">
                                   {igDiscovery.profile.media_count != null && (
                                     <span><strong>{igDiscovery.profile.media_count.toLocaleString()}</strong> Posts</span>
                                   )}
@@ -1796,6 +1802,14 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                                   )}
                                   {igDiscovery.profile.follows_count != null && (
                                     <span><strong>{igDiscovery.profile.follows_count.toLocaleString()}</strong> Seguindo</span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                  {igDiscovery.profile.follows_you && (
+                                    <Badge className="bg-green-500/15 text-green-700 text-[10px] px-1.5 py-0">Segue você</Badge>
+                                  )}
+                                  {igDiscovery.profile.you_follow && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Você segue</Badge>
                                   )}
                                 </div>
                               </div>
@@ -1841,14 +1855,32 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                                 </div>
                               </div>
                             )}
+                            {igConversation && (igConversation.qualification_tier || igConversation.total_messages != null) && (
+                              <div className="flex flex-wrap items-center gap-2 mt-3 pt-2 border-t text-xs">
+                                {igConversation.total_messages != null && (
+                                  <span className="text-muted-foreground"><strong className="text-foreground">{igConversation.total_messages}</strong> mensagens</span>
+                                )}
+                                {igConversation.qualification_tier && (
+                                  <Badge className="bg-pink-500/15 text-pink-700 text-[10px] px-1.5 py-0 capitalize">
+                                    {igConversation.qualification_tier}
+                                  </Badge>
+                                )}
+                                {igConversation.qualification_reason && (
+                                  <span className="text-[11px] text-muted-foreground w-full line-clamp-2">{igConversation.qualification_reason}</span>
+                                )}
+                              </div>
+                            )}
                             <p className="text-[10px] text-muted-foreground mt-2">
-                              Perfil público trazido direto da Meta (Business Discovery). A "Inteligência do Lead" usa esses dados na qualificação.
+                              Dados do perfil trazidos direto da Meta. A "Inteligência do Lead" usa esses sinais na qualificação.
+                              {igDiscovery.profile.biography == null && " (bio e posts exigem conta IG ligada a uma Página do Facebook.)"}
                             </p>
                           </CardContent>
                         </Card>
                       )}
 
-                      {instagramProfile ? (
+                      {/* Cards legados (perfil raspado / conversa / vincular) só quando o
+                          card de perfil da Meta acima não está disponível — evita duplicar. */}
+                      {!igDiscovery?.available && (instagramProfile ? (
                         <Card>
                           <CardContent className="p-4">
                             <div className="flex items-center gap-4">
@@ -1952,7 +1984,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                             </div>
                           </CardContent>
                         </Card>
-                      )}
+                      ))}
 
                       {instagramStories && instagramStories.length > 0 && (
                         <Card>
