@@ -278,7 +278,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   // Perfil público do @ (bio, seguidores, posts) via Business Discovery da Meta —
   // sem o vendedor abrir a página do Instagram. Só p/ contas profissionais públicas.
   const igLookupUsername = (igConversation?.participant_username || lead?.instagram || "").replace(/^@/, "").trim();
-  const { data: igDiscovery, isFetching: igDiscoveryLoading } = useInstagramBusinessProfile(igLookupUsername);
+  const { data: igDiscovery } = useInstagramBusinessProfile(igLookupUsername);
 
   // Vincular a conversa de Instagram (pelo @ ou id do lead) a este lead
   const linkIgConversation = useMutation({
@@ -1755,15 +1755,9 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                         instagramId={lead.instagram_id}
                       />
 
-                      {/* Perfil público (Business Discovery) — bio + posts sem sair do CRM */}
-                      {igLookupUsername && igDiscoveryLoading && !igDiscovery && (
-                        <Card>
-                          <CardContent className="p-4 flex items-center gap-2 text-xs text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin text-pink-500" />
-                            Buscando o perfil público de @{igLookupUsername}…
-                          </CardContent>
-                        </Card>
-                      )}
+                      {/* Perfil público (Business Discovery) — bio + posts sem sair do CRM.
+                          Só aparece quando a conta IG está conectada via Página do
+                          Facebook (a API "IG Login" não expõe business_discovery). */}
                       {igDiscovery?.available && igDiscovery.profile && (
                         <Card className="border-pink-500/30">
                           <CardContent className="p-4">
