@@ -95,6 +95,9 @@ interface NavSection {
   id: string;
   label: string;
   items: NavItem[];
+  /** Grupo inteiro só aparece pro tenant super-admin (ex.: Integrações, IA & Bots
+      são centrais no modelo IA central + número oficial — loja não mexe). */
+  superAdminOnly?: boolean;
 }
 
 const navigationSections: NavSection[] = [
@@ -132,6 +135,7 @@ const navigationSections: NavSection[] = [
   {
     id: "integracoes",
     label: "Integrações",
+    superAdminOnly: true,
     items: [
       {
         id: "api-keys",
@@ -253,6 +257,7 @@ const navigationSections: NavSection[] = [
   {
     id: "ia-bots",
     label: "IA & Bots",
+    superAdminOnly: true,
     items: [
       {
         id: "agente-ia",
@@ -381,6 +386,8 @@ export default function SettingsUnified() {
   // Filter out admin-only / super-admin-only items
   const filteredSections = useMemo(() => {
     return navigationSections
+      // Grupos marcados como superAdminOnly (Integrações, IA & Bots) só pro super-admin
+      .filter((section) => !section.superAdminOnly || isSuperAdmin)
       .map((section) => ({
         ...section,
         items: section.items.filter(
@@ -397,6 +404,13 @@ export default function SettingsUnified() {
       if (item) return item;
     }
     return filteredSections[0]?.items[0];
+  }, [activeSection, filteredSections]);
+
+  // Blindagem: se cair (via URL) numa seção que o papel não pode ver (ex.: agente-ia,
+  // api-keys), renderiza a primeira seção permitida em vez do conteúdo bloqueado.
+  const effectiveSection = useMemo(() => {
+    const allowed = new Set(filteredSections.flatMap((s) => s.items.map((i) => i.id)));
+    return allowed.has(activeSection) ? activeSection : (filteredSections[0]?.items[0]?.id ?? "modulos");
   }, [activeSection, filteredSections]);
 
   return (
@@ -501,7 +515,7 @@ export default function SettingsUnified() {
               )}
 
               {/* Dynamic content */}
-              <SettingsContent section={activeSection} />
+              <SettingsContent section={effectiveSection} />
             </div>
           </div>
         </main>
