@@ -224,3 +224,8 @@ verify_jwt = false
 # Chamada service-to-service pelo agent-runner (sem JWT do usuário).
 [functions.agendar-visita]
 verify_jwt = false
+
+# distribuição: joga o lead pra loja dona (tenant) e avisa o grupo de handoff.
+# Service-to-service (tool do agente / automação).
+[functions.distribuir-lead]
+verify_jwt = false
