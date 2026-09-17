@@ -11,8 +11,9 @@
 //   if (!(await uazapiTargetAllowed(supabase, instance, number, "minha-funcao", text))) return;
 //
 // `instance` pode ser o id (uuid) ou o objeto da instância ({ id, provider, group_only }).
-// Sem instância conhecida (id null) a política NÃO consegue julgar e permite —
-// por isso passe sempre o id.
+// FAIL-CLOSED: sem instância conhecida (id null) para envio a NÚMERO, a política
+// bloqueia (não permite). Grupo/canal e Cloud API oficial seguem liberados.
+// A decisão de número via UAZAPI é SEMPRE da rpc wa_target_allowed.
 // ============================================================================
 
 // deno-lint-ignore no-explicit-any
@@ -35,19 +36,23 @@ export async function uazapiTargetAllowed(
   source: string,
   preview?: string | null,
 ): Promise<boolean> {
+  // Grupo/canal são sempre permitidos — o banimento é sobre MENSAGEM PRIVADA.
   if (isGroupOrChannelJid(target)) return true;
 
-  // Decisão local quando já temos o objeto da instância (evita ida ao banco)
-  if (instance && typeof instance === "object") {
-    if (instance.provider === "meta_cloud") return true;
-    if (instance.group_only === false) return true;
-    // provider uazapi (ou desconhecido) e group_only true/desconhecido → bloqueia + loga
-    await logBlock(sb, instance.id ?? null, target, source, preview);
+  // Cloud API oficial (meta_cloud) pode falar com número — não é UAZAPI.
+  if (instance && typeof instance === "object" && instance.provider === "meta_cloud") return true;
+
+  // Daqui pra baixo é número (1:1) via instância NÃO oficial → a decisão é SEMPRE
+  // da rpc wa_target_allowed (fail-closed). NUNCA decidimos "permitir" localmente
+  // com base no flag group_only do objeto: ele pode estar desatualizado e era o
+  // furo que deixava passar envio pra número particular. A rpc relê o provider do
+  // banco e bloqueia número em instância uazapi.
+  const instanceId = typeof instance === "string" ? instance : (instance?.id ?? null);
+  if (!instanceId) {
+    // Sem instância não dá pra julgar → fail-closed (bloqueia + audita).
+    await logBlock(sb, null, target, source, preview);
     return false;
   }
-
-  const instanceId = typeof instance === "string" ? instance : null;
-  if (!instanceId) return true; // sem instância não dá pra julgar
 
   try {
     const { data, error } = await sb.rpc("wa_target_allowed", {
