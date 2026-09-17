@@ -202,32 +202,43 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     return;
   }
 
-  // Buscar lead pelo telefone (últimos 8 dígitos), escopado ao tenant da instância
+  // === ROTEAMENTO MULTI-TENANT (número oficial COMPARTILHADO entre lojas) ===
+  // Com um único número oficial servindo várias lojas, a resposta do cliente cai
+  // no tenant do lead dele — a loja que recebeu o lead na distribuição. A regra é
+  // "lead mais recente daquele telefone": a distribuição cria o lead na loja DEPOIS
+  // do lead de origem (master), então o mais recente é o da loja. Sem lead em
+  // nenhum tenant → tenant da instância oficial (master, 1º contato / IA central).
   const last8 = cleanPhone.slice(-8);
-  let leadQuery = supabase
+  let routedTenantId = tenantId;
+  const { data: lead } = await supabase
     .from("leads")
-    .select("id, name")
-    .ilike("phone", `%${last8}`);
-  if (tenantId) leadQuery = leadQuery.eq("tenant_id", tenantId);
-  const { data: lead } = await leadQuery.limit(1).maybeSingle();
+    .select("id, tenant_id")
+    .ilike("phone", `%${last8}`)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const leadId = lead?.id || null;
+  let finalLeadId = lead?.id || null;
+  if (lead?.tenant_id) routedTenantId = lead.tenant_id;
 
-  // Se não encontrou lead, criar um novo (tenant_id explícito — senão FK falha no default)
-  let finalLeadId = leadId;
+  // Se não encontrou lead em nenhum tenant, cria no tenant da instância (master).
   if (!finalLeadId) {
     const { data: newLead } = await supabase
       .from("leads")
       .insert({
         name: contactName !== cleanPhone ? contactName : cleanPhone,
         phone: cleanPhone,
-        ...(tenantId ? { tenant_id: tenantId } : {}),
+        ...(routedTenantId ? { tenant_id: routedTenantId } : {}),
       })
       .select("id")
       .single();
     finalLeadId = newLead?.id || null;
-    console.log(`[Cloud Webhook] Created new lead: ${finalLeadId}`);
+    console.log(`[Cloud Webhook] Created new lead: ${finalLeadId} (tenant ${routedTenantId})`);
   }
+
+  // Daqui pra frente o tenant é o do lead ROTEADO (não o da instância oficial),
+  // pra mensagem, inbox e agente caírem na loja certa.
+  tenantId = routedTenantId;
 
   // Salvar mensagem
   const sentAt = timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString();
