@@ -2089,7 +2089,7 @@ const isCloudAPI = (instance: any): boolean => {
       {/* Alerta de saúde da instância — acima do input */}
       <InstanceHealthInlineBanner instanceId={sendingInstanceId} />
 
-      <div className="p-3 border-t bg-muted/30 flex items-center gap-2" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
+      <div className="p-3 border-t bg-muted/30 flex items-center gap-2 flex-wrap" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
         {selectedInstanceIsCloudAPI && windowClosed && !isGroup ? (
           <div className="flex-1 flex items-center gap-2">
             {/* Seletor de instância — sempre visível */}
@@ -2267,6 +2267,7 @@ const isCloudAPI = (instance: any): boolean => {
             >
               <FolderOpen className="h-5 w-5" />
             </Button>
+            <div className="flex items-end gap-2 w-full sm:w-auto sm:flex-1 min-w-0">
             <textarea
               ref={textareaRef}
               placeholder={stagedFiles.length > 0 ? "Adicione uma legenda..." : "Digite uma mensagem..."}
@@ -2286,7 +2287,7 @@ const isCloudAPI = (instance: any): boolean => {
                   handleSend();
                 }
               }}
-              className="flex-1 bg-white dark:bg-zinc-800 resize-none min-h-[36px] max-h-[120px] py-2 px-3 rounded-md border border-input text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex-1 min-w-0 bg-white dark:bg-zinc-800 resize-none min-h-[36px] max-h-[120px] py-2 px-3 rounded-md border border-input text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={sending && stagedFiles.length > 0}
               rows={1}
             />
@@ -2305,6 +2306,7 @@ const isCloudAPI = (instance: any): boolean => {
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-5 w-5" />}
               </Button>
             )}
+            </div>
           </>
         )}
       </div>
