@@ -11,6 +11,7 @@
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendTemplateViaCloud } from "../_shared/cloud-template.ts";
 
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
@@ -107,14 +108,28 @@ Deno.serve(async (req) => {
       avisado = ok === true;
     }
 
+    // Confirma o agendamento pro CLIENTE via template oficial (Cloud API). Fora da
+    // janela de 24h só template — e cliente 1:1 NUNCA via UAZAPI. Se o template
+    // ainda não estiver aprovado na Meta, retorna false e o fluxo segue normal.
+    let cliente_confirmado = false;
+    if (phone) {
+      cliente_confirmado = await sendTemplateViaCloud({
+        phone,
+        templateName: "confirmacao_agendamento",
+        params: [nome, ownerName || "nossa loja", hora],
+        leadId,
+        tenantId: session.tenant_id,
+      });
+    }
+
     await sb.from("ai_critical_decisions").insert({
       tenant_id: session.tenant_id, lead_id: leadId, agent_id: session.agent_id,
       decision_type: "agendamento", decision: `${tipoLabel[tipo]} agendada ${hora}${ownerName ? ` — ${ownerName}` : ""}`,
-      reason: obs || null, severity: "high", snapshot_data: { ids, metadata, avisado },
+      reason: obs || null, severity: "high", snapshot_data: { ids, metadata, avisado, cliente_confirmado },
     });
 
     return json({
-      success: true, agendamento_ids: ids, equipe_avisada: avisado,
+      success: true, agendamento_ids: ids, equipe_avisada: avisado, cliente_confirmado,
       message: `Agendamento registrado: ${tipoLabel[tipo]} em ${hora}${ownerName ? ` na ${ownerName}` : ""}. Confirme com o cliente de forma natural e diga que a loja vai confirmar. Não repita este texto.`,
     });
   } catch (e) {
