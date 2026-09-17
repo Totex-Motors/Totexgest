@@ -264,6 +264,27 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     return;
   }
 
+  // === GATILHO DE DISTRIBUIÇÃO (piloto multi-loja) ===
+  // A mensagem do QR/totem (ou do vendedor/promotora) já nomeia a loja, ex.:
+  // "...vi o veículo BMW M 135i da loja PG Motors no Totem...". Casa o nome da
+  // loja com um tenant que participa da distribuição (destino de handoff ativo)
+  // e, se for diferente da loja atual do lead, distribui (cria o lead na loja +
+  // avisa o grupo dela). Idempotente e nunca quebra o fluxo do webhook.
+  if (content && content.trim() && finalLeadId) {
+    try {
+      const targetTenant = await matchStoreTenant(supabase, content);
+      if (targetTenant && targetTenant !== tenantId) {
+        await fetch(`${SUPABASE_URL}/functions/v1/distribuir-lead`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lead_id: finalLeadId, target_tenant_id: targetTenant, motivo: content.slice(0, 160) }),
+        });
+      }
+    } catch (e) {
+      console.error("[Cloud Webhook] gatilho de distribuição:", (e as Error).message);
+    }
+  }
+
   // === ROTEADOR V2 (Plataforma de Agentes) — PORTEIRO ===
   // Gated por config.agent_platform_v2_enabled (off = legado intacto).
   // Se um agente V2 casar nesta instância, ele responde via Cloud API e o legado é pulado.
@@ -304,6 +325,36 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       console.log(`[Cloud Webhook] Enqueued message for agent ${agent.id}`);
     }
   }
+}
+
+// Casa o nome de uma loja citada no texto com um tenant que participa da
+// distribuição (tem destino de handoff ATIVO em tenant_lead_destinations).
+// Prefere o match mais longo (evita casar "Totex" quando o texto diz "PG Motors").
+async function matchStoreTenant(supabase: any, text: string): Promise<string | null> {
+  const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const t = norm(text);
+  if (!t) return null;
+  const { data: dests } = await supabase
+    .from("tenant_lead_destinations")
+    .select("tenant_id, label")
+    .eq("active", true);
+  if (!dests || dests.length === 0) return null;
+  const ids = [...new Set(dests.map((d: any) => d.tenant_id))];
+  const { data: tenants } = await supabase.from("tenants").select("id, name").in("id", ids);
+  const nameById: Record<string, string> = {};
+  for (const tn of tenants || []) nameById[tn.id] = tn.name;
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const d of dests) {
+    for (const cand of [nameById[d.tenant_id], d.label]) {
+      const name = norm(cand || "");
+      if (name.length >= 3 && t.includes(name) && name.length > bestLen) {
+        best = d.tenant_id;
+        bestLen = name.length;
+      }
+    }
+  }
+  return best;
 }
 
 // ==================== HANDLE STATUS UPDATE ====================
