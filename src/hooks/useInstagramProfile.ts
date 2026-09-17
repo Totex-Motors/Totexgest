@@ -58,6 +58,67 @@ export interface InstagramStory {
   ai_description: string | null;
 }
 
+// ── Business Discovery (perfil público de um @ via API da Meta, sem abrir a página) ──
+export interface IgDiscoveryPost {
+  id: string;
+  caption?: string;
+  media_type?: string;
+  media_url?: string;
+  thumbnail_url?: string;
+  permalink?: string;
+  like_count?: number;
+  comments_count?: number;
+  timestamp?: string;
+}
+export interface IgDiscoveryResult {
+  available: boolean;
+  cached?: boolean;
+  reason?: string;
+  profile?: {
+    username: string;
+    name: string | null;
+    biography: string | null;
+    followers_count: number | null;
+    follows_count?: number | null;
+    media_count?: number | null;
+    profile_picture_url?: string | null;
+    website?: string | null;
+  };
+  media?: IgDiscoveryPost[];
+}
+
+/**
+ * Busca o perfil público (bio, seguidores, últimos posts) de um @ do Instagram
+ * via Business Discovery da Meta — sem o vendedor abrir a página do IG.
+ * Só funciona para contas profissionais (Business/Creator) públicas.
+ */
+export const useInstagramBusinessProfile = (username: string | undefined | null) => {
+  const uname = (username || '').replace(/^@/, '').trim();
+  return useQuery({
+    queryKey: ['ig-business-discovery', uname.toLowerCase()],
+    queryFn: async (): Promise<IgDiscoveryResult> => {
+      const { data, error } = await supabase.functions.invoke('instagram-profile-lookup', {
+        body: { username: uname },
+      });
+      if (error) {
+        let reason = error.message;
+        try {
+          const ctx = (error as { context?: Response }).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const b = await ctx.json();
+            reason = b?.reason || b?.error || reason;
+          }
+        } catch { /* mantém */ }
+        return { available: false, reason };
+      }
+      return data as IgDiscoveryResult;
+    },
+    enabled: !!uname,
+    staleTime: 1000 * 60 * 30,
+    retry: false,
+  });
+};
+
 export const useInstagramProfile = (profileId: string | undefined) => {
   return useQuery({
     queryKey: ['instagram-profile', profileId],

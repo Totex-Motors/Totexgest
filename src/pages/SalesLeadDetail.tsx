@@ -78,7 +78,7 @@ import { useContactDeals, useDeleteDeal } from "@/hooks/useSalesDeals";
 import { useLeadDeals, useLinkedContacts, useUnlinkContact, type LinkedContact } from "@/hooks/useDealContacts";
 import { useLeadTransactions, convertTransactionAmount } from "@/hooks/useTransactions";
 import { useClientTimeline } from "@/hooks/useClientTimeline";
-import { useInstagramProfile, useInstagramPosts, useInstagramStories } from "@/hooks/useInstagramProfile";
+import { useInstagramProfile, useInstagramPosts, useInstagramStories, useInstagramBusinessProfile } from "@/hooks/useInstagramProfile";
 import { LeadInstagramChat, InstagramStoriesCarousel, PostViewerModal } from "@/components/sales/instagram";
 import { useClientTasks, useCreateTask, Task } from "@/hooks/useTasks";
 import { usePartnerLeadIds } from "@/hooks/usePartnerLeads";
@@ -274,6 +274,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
       return data;
     },
   });
+
+  // Perfil público do @ (bio, seguidores, posts) via Business Discovery da Meta —
+  // sem o vendedor abrir a página do Instagram. Só p/ contas profissionais públicas.
+  const igLookupUsername = (igConversation?.participant_username || lead?.instagram || "").replace(/^@/, "").trim();
+  const { data: igDiscovery, isFetching: igDiscoveryLoading } = useInstagramBusinessProfile(igLookupUsername);
 
   // Vincular a conversa de Instagram (pelo @ ou id do lead) a este lead
   const linkIgConversation = useMutation({
@@ -1749,6 +1754,105 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                         instagramUsername={lead.instagram?.replace(/^@/, '')}
                         instagramId={lead.instagram_id}
                       />
+
+                      {/* Perfil público (Business Discovery) — bio + posts sem sair do CRM */}
+                      {igLookupUsername && igDiscoveryLoading && !igDiscovery && (
+                        <Card>
+                          <CardContent className="p-4 flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin text-pink-500" />
+                            Buscando o perfil público de @{igLookupUsername}…
+                          </CardContent>
+                        </Card>
+                      )}
+                      {igDiscovery?.available && igDiscovery.profile && (
+                        <Card className="border-pink-500/30">
+                          <CardContent className="p-4">
+                            <div className="flex items-start gap-4">
+                              {igDiscovery.profile.profile_picture_url ? (
+                                <img
+                                  src={igDiscovery.profile.profile_picture_url}
+                                  alt={igDiscovery.profile.username}
+                                  className="w-14 h-14 rounded-full object-cover border-2 border-pink-500 flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="w-14 h-14 rounded-full bg-pink-500/10 flex items-center justify-center flex-shrink-0">
+                                  <Instagram className="h-6 w-6 text-pink-500" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm truncate">@{igDiscovery.profile.username}</span>
+                                  <a
+                                    href={`https://instagram.com/${igDiscovery.profile.username}`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="text-pink-500 hover:text-pink-600 ml-auto"
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                </div>
+                                {igDiscovery.profile.name && (
+                                  <p className="text-xs text-muted-foreground truncate">{igDiscovery.profile.name}</p>
+                                )}
+                                <div className="flex flex-wrap gap-4 mt-1.5 text-xs">
+                                  {igDiscovery.profile.media_count != null && (
+                                    <span><strong>{igDiscovery.profile.media_count.toLocaleString()}</strong> Posts</span>
+                                  )}
+                                  {igDiscovery.profile.followers_count != null && (
+                                    <span><strong>{igDiscovery.profile.followers_count.toLocaleString()}</strong> Seguidores</span>
+                                  )}
+                                  {igDiscovery.profile.follows_count != null && (
+                                    <span><strong>{igDiscovery.profile.follows_count.toLocaleString()}</strong> Seguindo</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {igDiscovery.profile.biography && (
+                              <p className="text-xs text-foreground/80 mt-3 whitespace-pre-line leading-relaxed">
+                                {igDiscovery.profile.biography}
+                              </p>
+                            )}
+                            {igDiscovery.profile.website && (
+                              <a
+                                href={igDiscovery.profile.website.startsWith('http') ? igDiscovery.profile.website : `https://${igDiscovery.profile.website}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-pink-600 hover:underline mt-2"
+                              >
+                                <Globe className="h-3 w-3" />
+                                {igDiscovery.profile.website}
+                              </a>
+                            )}
+                            {igDiscovery.media && igDiscovery.media.length > 0 && (
+                              <div className="mt-3">
+                                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Posts recentes</p>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {igDiscovery.media.slice(0, 6).map((post) => (
+                                    <a
+                                      key={post.id}
+                                      href={post.permalink}
+                                      target="_blank" rel="noopener noreferrer"
+                                      className="relative aspect-square rounded-md overflow-hidden bg-muted group"
+                                      title={post.caption || ''}
+                                    >
+                                      <img
+                                        src={post.media_type === 'VIDEO' ? (post.thumbnail_url || post.media_url) : post.media_url}
+                                        alt=""
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        loading="lazy"
+                                      />
+                                      {post.media_type === 'VIDEO' && (
+                                        <span className="absolute top-1 right-1 text-white text-[9px] bg-black/50 rounded px-1">▶</span>
+                                      )}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              Perfil público trazido direto da Meta (Business Discovery). A "Inteligência do Lead" usa esses dados na qualificação.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      )}
 
                       {instagramProfile ? (
                         <Card>
