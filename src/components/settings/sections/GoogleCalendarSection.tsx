@@ -42,45 +42,9 @@ export function GoogleCalendarSection() {
     loadClientId();
   }, []);
 
-  useEffect(() => {
-    const handleOAuthCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get("code");
-      if (code && teamMember) {
-        window.history.replaceState({}, document.title, "/configuracoes?s=google-calendar");
-        try {
-          const { data: result, error: invokeError } = await supabase.functions.invoke(
-            "google-oauth-callback",
-            {
-              body: {
-                code,
-                redirect_uri: GOOGLE_REDIRECT_URI,
-                team_member_id: teamMember.id,
-              },
-            }
-          );
-          if (invokeError) throw invokeError;
-          if (result.success) {
-            setIsCalendarConnected(true);
-            toast({ title: "Google Calendar conectado! 🎉" });
-          } else {
-            toast({
-              title: "Erro ao conectar",
-              description: result.error || "Falha ao obter tokens do Google",
-              variant: "destructive",
-            });
-          }
-        } catch {
-          toast({
-            title: "Erro ao conectar",
-            description: "Falha na comunicação com o servidor",
-            variant: "destructive",
-          });
-        }
-      }
-    };
-    handleOAuthCallback();
-  }, [teamMember]);
+  // O callback do OAuth (troca do ?code= por token) é tratado no nível da página
+  // SettingsUnified — porque o Google redireciona pra /configuracoes sem ?s=,
+  // e esta subpágina não estaria montada pra capturar o code.
 
   useEffect(() => {
     if (teamMember?.google_calendar_connected) {
@@ -245,7 +209,7 @@ export function GoogleCalendarSection() {
                 <p className="text-sm text-muted-foreground">
                   {isCalendarConnected
                     ? "Seu Google Calendar está integrado"
-                    : "Conecte para agendar reuniões automaticamente"}
+                    : "Conecte para criar agendamentos automaticamente"}
                 </p>
               </div>
             </div>
