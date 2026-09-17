@@ -916,6 +916,11 @@ function DealCard({
                   NOVO
                 </Badge>
               )}
+              {(deal as any)._store && (
+                <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-medium flex-shrink-0 border-slate-300 text-slate-500">
+                  {(deal as any)._store}
+                </Badge>
+              )}
             </div>
             {/* Nomes dos contatos quando card mostra empresa */}
             {isMultiContact && companyName && (

@@ -416,6 +416,42 @@ export function PipelineBoardContent() {
     });
   }, [pipeline, searchQuery, portalFilter, modalidadeFilter, modalidadeMap, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
 
+  // Aba "Todas" (superadmin): junta as MESMAS etapas de todas as lojas numa
+  // coluna só (ex.: um "Novo Lead" em vez de 4), e marca cada card com a loja.
+  const isAllStores = isSuperAdmin && (selectedPipelineId as any) === "__all__";
+
+  const storeByPipeline = useMemo(() => {
+    const m = new Map<string, string>();
+    (pipelines || []).forEach((p: any) => {
+      m.set(p.id, p.tenants?.name || p.name || "Loja");
+    });
+    return m;
+  }, [pipelines]);
+
+  const displayPipeline = useMemo(() => {
+    if (!isAllStores) return filteredPipeline;
+    const groups = new Map<string, { stage: any; deals: any[]; total_value: number; count: number; minPos: number }>();
+    for (const col of filteredPipeline) {
+      const key = removeAccents((col.stage.name || "").trim().toLowerCase());
+      const pos = col.stage.position ?? 999;
+      let g = groups.get(key);
+      if (!g) {
+        g = { stage: col.stage, deals: [], total_value: 0, count: 0, minPos: pos };
+        groups.set(key, g);
+      }
+      // Representa a etapa pela de menor posição (mantém id/cor coerentes)
+      if (pos < g.minPos) { g.minPos = pos; g.stage = col.stage; }
+      for (const d of col.deals) {
+        g.deals.push({ ...d, _store: storeByPipeline.get((d as any).pipeline_id) });
+      }
+      g.total_value += col.total_value;
+      g.count += col.count;
+    }
+    return Array.from(groups.values())
+      .sort((a, b) => a.minPos - b.minPos)
+      .map((g) => ({ stage: g.stage, deals: g.deals, total_value: g.total_value, count: g.count }));
+  }, [isAllStores, filteredPipeline, storeByPipeline]);
+
   // Contar totais de urgência para mostrar no filtro
   const urgencyCounts = useMemo(() => {
     if (!pipeline) return { critical: 0, warning: 0, ok: 0 };
@@ -1163,8 +1199,8 @@ export function PipelineBoardContent() {
           </div>
 
           {/* Row 3: Stats Header */}
-          {filteredPipeline && filteredPipeline.length > 0 && (
-            <PipelineKanbanHeader columns={filteredPipeline} />
+          {displayPipeline && displayPipeline.length > 0 && (
+            <PipelineKanbanHeader columns={displayPipeline} />
           )}
         </div>
 
@@ -1172,11 +1208,13 @@ export function PipelineBoardContent() {
         <div className="flex-1 min-h-0 mt-4 overflow-hidden">
           <div ref={outerScrollRef} className="bg-slate-50/80 rounded-2xl p-4 h-full overflow-x-auto">
             <PipelineKanban
-              columns={filteredPipeline}
+              columns={displayPipeline}
               onDealClick={handleDealClick}
               onViewLead={(leadId) => navigate(`/comercial/leads/${leadId}`)}
-              onDealMove={handleDealMove}
-              onAddDeal={handleAddDeal}
+              /* Na aba "Todas" o arrastar entre lojas não faz sentido (etapas de
+                 tenants diferentes) — desliga o move nesse modo. */
+              onDealMove={isAllStores ? undefined : handleDealMove}
+              onAddDeal={isAllStores ? undefined : handleAddDeal}
               onDeleteDeal={handleDeleteDeal}
               isLoading={isLoading}
               sortBy={sortBy}
@@ -1185,7 +1223,7 @@ export function PipelineBoardContent() {
         </div>
 
         {/* Empty state */}
-        {!isLoading && filteredPipeline && filteredPipeline.every((col) => col.count === 0) && (
+        {!isLoading && displayPipeline && displayPipeline.every((col) => col.count === 0) && (
           <div className="text-center py-16">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
               <CalendarDays className="h-8 w-8 text-slate-400" />
