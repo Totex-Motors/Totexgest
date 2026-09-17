@@ -4,6 +4,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 import {
   User,
   Palette,
@@ -326,9 +328,46 @@ const navigationSections: NavSection[] = [
 
 export default function SettingsUnified() {
   const { teamMember, signOut, isSuperAdmin } = useAuth();
+  const { toast } = useToast();
   const isAdmin = teamMember?.role === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection = searchParams.get("s") || "modulos";
+
+  // Callback do OAuth do Google: o Google redireciona pra /configuracoes?code=...
+  // (SEM ?s=google-calendar), então a subpágina não monta e o code nunca era
+  // trocado por token. Tratamos aqui no nível da página, valendo pra qualquer seção.
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code || !teamMember) return;
+    // Remove o code da URL já (evita reprocessar) e leva pra aba do Calendar.
+    const redirectUri = `${window.location.origin}/configuracoes`;
+    window.history.replaceState({}, document.title, "/configuracoes?s=google-calendar");
+    (async () => {
+      try {
+        const { data: result, error } = await supabase.functions.invoke("google-oauth-callback", {
+          body: { code, redirect_uri: redirectUri, team_member_id: teamMember.id },
+        });
+        if (error) throw error;
+        if (result?.success) {
+          toast({ title: "Google Calendar conectado! 🎉" });
+          setTimeout(() => window.location.reload(), 800);
+        } else {
+          toast({
+            title: "Erro ao conectar",
+            description: result?.error || "Falha ao obter tokens do Google",
+            variant: "destructive",
+          });
+        }
+      } catch (e) {
+        toast({
+          title: "Erro ao conectar",
+          description: (e as Error)?.message || "Falha na comunicação com o servidor",
+          variant: "destructive",
+        });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamMember]);
 
   // No mobile alternamos entre o menu e o conteúdo da seção (sem isso o menu
   // de 260px ocupa a tela toda e o conteúdo fica invisível).
