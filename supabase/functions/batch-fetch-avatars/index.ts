@@ -24,16 +24,43 @@ Deno.serve(async (req) => {
   }
   const UAZAPI_URL = inst.api_url;
 
-  // Leads sem foto
-  const { data: leads } = await supabase
-    .from("leads")
-    .select("id, phone, name")
-    .is("photo_url", null)
-    .gte("created_at", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
-    .not("phone", "like", "insta_%")
-    .not("phone", "like", "pending%")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const cleanPhone = (p: string | null) =>
+    !!p && !p.startsWith("insta_") && !p.startsWith("pending");
+  const byId = new Map<string, { id: string; phone: string | null; name: string | null }>();
+
+  // 1) PRIORIDADE: leads que estão em negociações ATIVAS no pipeline (o que aparece
+  //    no board). Assim as fotos do que o vendedor vê enchem primeiro.
+  const { data: activeDeals } = await supabase
+    .from("deals")
+    .select("lead:leads!deals_lead_id_fkey(id, phone, name, photo_url)")
+    .not("pipeline_stage_id", "is", null)
+    .limit(4000);
+  for (const d of (activeDeals || []) as any[]) {
+    const l = d.lead;
+    if (l && !l.photo_url && cleanPhone(l.phone) && !byId.has(l.id)) {
+      byId.set(l.id, { id: l.id, phone: l.phone, name: l.name });
+      if (byId.size >= limit) break;
+    }
+  }
+
+  // 2) COMPLEMENTO: leads recentes sem foto (pra novos que ainda não viraram deal)
+  if (byId.size < limit) {
+    const { data: recent } = await supabase
+      .from("leads")
+      .select("id, phone, name")
+      .is("photo_url", null)
+      .gte("created_at", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .not("phone", "like", "insta_%")
+      .not("phone", "like", "pending%")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    for (const l of recent || []) {
+      if (!byId.has(l.id)) byId.set(l.id, { id: l.id, phone: l.phone, name: l.name });
+      if (byId.size >= limit) break;
+    }
+  }
+
+  const leads = Array.from(byId.values());
 
   let success = 0, failed = 0, noPhoto = 0;
 

@@ -75,7 +75,7 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
             id, name, phone, email, sales_score,
             utm_source, utm_campaign, utm_content, sales_rep_id,
             company_name, webinar_config_id, source,
-            instagram_profile_id, acao_de_hoje, metadata
+            instagram_profile_id, photo_url, acao_de_hoje, metadata
           ),
           product:products!deals_product_id_fkey(id, name),
           sales_rep:team_members!deals_sales_rep_id_fkey(id, name)
@@ -415,9 +415,11 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         const todayTypesArray = todayTypes ? Array.from(todayTypes) : [];
         const referenceDate = lastInteraction || new Date(deal.created_at);
 
-        // Buscar foto do Instagram do lead
+        // Foto do card: WhatsApp (leads.photo_url) tem prioridade; cai pra foto
+        // do Instagram quando não houver foto de WhatsApp.
         const instagramProfileId = deal.lead?.instagram_profile_id;
-        const profilePictureUrl = instagramProfileId ? profilePictures.get(instagramProfileId) : null;
+        const instagramPictureUrl = instagramProfileId ? profilePictures.get(instagramProfileId) : null;
+        const profilePictureUrl = deal.lead?.photo_url || instagramPictureUrl || null;
 
         // Calcular tempo desde última interação em minutos e dias corridos
         const msSinceInteraction = now.getTime() - referenceDate.getTime();
