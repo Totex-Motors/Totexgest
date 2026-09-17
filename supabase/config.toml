@@ -219,3 +219,8 @@ verify_jwt = false
 # segundo cérebro: briefing matinal no grupo de gestão (cron pg_cron 08:00 BRT)
 [functions.daily-brain-briefing]
 verify_jwt = false
+
+# tool do agente (agent-runner) — registra agendamento e avisa o grupo interno.
+# Chamada service-to-service pelo agent-runner (sem JWT do usuário).
+[functions.agendar-visita]
+verify_jwt = false
