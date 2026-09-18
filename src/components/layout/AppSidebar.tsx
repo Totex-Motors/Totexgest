@@ -76,6 +76,8 @@ interface NavSection {
   items: NavItem[];
   /** módulo que deve estar ativo pra seção aparecer */
   moduleId?: string;
+  /** seção inteira só aparece pro super-admin (HQ Totex) — lojas veem o menu enxuto */
+  superAdminOnly?: boolean;
 }
 
 /**
@@ -96,7 +98,7 @@ const sections: NavSection[] = [
     label: "Comercial",
     moduleId: "comercial",
     items: [
-      { title: "Torre de Controle", url: "/comercial/operacao", icon: Radar },
+      { title: "Torre de Controle", url: "/comercial/operacao", icon: Radar, superAdminOnly: true },
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
@@ -105,16 +107,17 @@ const sections: NavSection[] = [
       { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
       { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
       // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
-      { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins },
-      { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake },
+      { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins, superAdminOnly: true },
+      { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake, superAdminOnly: true },
       { title: "Rede", url: "/comercial/rede", icon: Network, superAdminOnly: true },
-      { title: "Aprovações", url: "/comercial/aprovacoes", icon: ShieldCheck },
+      { title: "Aprovações", url: "/comercial/aprovacoes", icon: ShieldCheck, superAdminOnly: true },
     ],
   },
   {
     id: "marketing",
     label: "Marketing",
     moduleId: "marketing",
+    superAdminOnly: true,
     items: [
       { title: "Dashboard", url: "/marketing", icon: Megaphone },
       { title: "Campanhas Email", url: "/marketing/campanhas", icon: Mail },
@@ -137,12 +140,13 @@ const sections: NavSection[] = [
       { title: "Tarefas", url: "/gestao/tarefas", icon: CheckSquare },
       { title: "Calendário", url: "/gestao/calendario", icon: Calendar },
       { title: "Agendamentos", url: "/gestao/reunioes", icon: Video },
-      { title: "Melhorias", url: "/gestao/melhorias", icon: Lightbulb },
+      { title: "Melhorias", url: "/gestao/melhorias", icon: Lightbulb, superAdminOnly: true },
     ],
   },
   {
     id: "agentes",
     label: "Agentes IA",
+    superAdminOnly: true,
     items: [
       { title: "Meus agentes", url: "/agentes", icon: Bot },
       { title: "Habilidades", url: "/agentes/habilidades", icon: Library },
@@ -153,6 +157,7 @@ const sections: NavSection[] = [
   {
     id: "pessoal",
     label: "Meu Espaço",
+    superAdminOnly: true,
     items: [
       { title: "Meu WhatsApp", url: "/meu-whatsapp", icon: Smartphone },
     ],
@@ -197,7 +202,7 @@ export function AppSidebar() {
   // Filtra seções conforme módulos ativos
   const visibleSections = useMemo(() => {
     return sections
-      .filter((s) => !s.moduleId || isModuleEnabled(s.moduleId))
+      .filter((s) => (!s.moduleId || isModuleEnabled(s.moduleId)) && (!s.superAdminOnly || isSuperAdmin))
       .map((s) => ({
         ...s,
         items: s.items.filter(
