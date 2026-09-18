@@ -37,6 +37,7 @@ import {
   Mail,
   FileSignature,
   Repeat,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ import { RepasseRelaySection } from "@/components/settings/sections/RepasseRelay
 import { CommunitySection } from "@/components/settings/sections/CommunitySection";
 import { ModulesSection } from "@/components/settings/sections/ModulesSection";
 import { SuperAdminTenantsSection } from "@/components/settings/sections/SuperAdminTenantsSection";
+import { AuditLogSection } from "@/components/settings/sections/AuditLogSection";
 import { StandHandoffSection } from "@/components/settings/sections/StandHandoffSection";
 import { CaptureHandoffSection } from "@/components/settings/sections/CaptureHandoffSection";
 import { CaptureRewardsSection } from "@/components/settings/sections/CaptureRewardsSection";
@@ -321,6 +323,14 @@ const navigationSections: NavSection[] = [
         icon: Building2,
         description: "Configure o WhatsApp de cada loja onde o agente do stand repassa os leads qualificados. Visível apenas para o tenant super-admin.",
         hint: "WhatsApp de repasse por loja",
+        superAdminOnly: true,
+      },
+      {
+        id: "superadmin-atividade",
+        label: "Registro de Atividade",
+        icon: Activity,
+        description: "Auditoria: quem fez o quê e quando, em todas as lojas — login, leads criados, negociações movidas e vendas marcadas. Visível apenas para o super-admin.",
+        hint: "Login e ações por pessoa/loja",
         superAdminOnly: true,
       },
     ],
@@ -593,6 +603,8 @@ function SettingsContent({ section }: { section: string }) {
       return <SuperAdminTenantsSection />;
     case "superadmin-destinos":
       return <StandHandoffSection />;
+    case "superadmin-atividade":
+      return <AuditLogSection />;
     case "captacao":
       return <CaptureHandoffSection />;
     case "premios":
