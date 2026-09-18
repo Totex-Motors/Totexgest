@@ -258,6 +258,10 @@ const AppRoutes = () => {
 
       {/* Home → Dashboard Comercial (promotora é redirecionada pra /captacao pelo ProtectedRoute) */}
       <Route path="/" element={<Navigate to="/comercial" replace />} />
+      {/* Atalhos PWA antigos apontavam pra /app/ (manifest cacheado) → não davam 404.
+          Redireciona /app e /app/* pra home, sem depender do cache do manifest. */}
+      <Route path="/app" element={<Navigate to="/comercial" replace />} />
+      <Route path="/app/*" element={<Navigate to="/comercial" replace />} />
 
       {/* Captação de veículos — promotora (e gestores/admin pra acompanhar). Sem AppSidebar. */}
       <Route
