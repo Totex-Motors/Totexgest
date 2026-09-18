@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { RegisterNegotiationModal, WinDealModal, DealOriginCard } from "@/components/sales";
+import { ProfitCommissionCard } from "@/components/sales/ProfitCommissionCard";
 import { useSalesDeal } from "@/hooks/useSalesDeals";
 import { useDealPayments } from "@/hooks/useDealPayments";
 import { useToast } from "@/hooks/use-toast";
@@ -258,6 +259,17 @@ const SalesDealDetail = () => {
 
         {/* Origem da oportunidade — webinario, UTMs, landing page, contexto */}
         {id && <DealOriginCard dealId={id} leadId={deal.lead_id} />}
+
+        {/* Lucro da operação + comissão por faixa (+ consignado) */}
+        {id && (
+          <ProfitCommissionCard
+            dealId={id}
+            salesRepId={(deal as any).sales_rep_id}
+            salesRepName={(deal as any).sales_rep?.name}
+            profitBreakdown={(deal as any).profit_breakdown}
+            isConsignado={(deal as any).is_consignado}
+          />
+        )}
 
         {/* Deal Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
