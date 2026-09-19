@@ -258,7 +258,7 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {contacts?.length || 0} contato(s) na negociação
+          {contacts?.length || 0} contato(s)
         </p>
         <Button size="sm" onClick={() => setShowAddModal(true)}>
           <UserPlus className="h-4 w-4 mr-2" />
@@ -367,7 +367,7 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p>Nenhum contato adicional</p>
           <p className="text-xs mt-1">
-            Adicione outras pessoas envolvidas na negociação
+            Adicione outras pessoas envolvidas neste lead
           </p>
         </div>
       )}
@@ -378,7 +378,7 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
           <DialogHeader>
             <DialogTitle>Adicionar Contato ao Deal</DialogTitle>
             <DialogDescription>
-              Selecione um lead existente para adicionar à negociação
+              Selecione um lead existente para adicionar
             </DialogDescription>
           </DialogHeader>
 
@@ -490,7 +490,7 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
 
             {/* Papel do contato */}
             <div className="space-y-2">
-              <Label>Papel na negociação (opcional)</Label>
+              <Label>Papel (opcional)</Label>
               <Select value={selectedRole} onValueChange={setSelectedRole}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o papel..." />

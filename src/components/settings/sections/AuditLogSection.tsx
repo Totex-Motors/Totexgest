@@ -16,7 +16,7 @@ type Row = {
 const ACTIONS: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
   login: { label: "Entrou no sistema", icon: LogIn, cls: "bg-sky-500/15 text-sky-600" },
   lead_created: { label: "Criou lead", icon: UserPlus, cls: "bg-emerald-500/15 text-emerald-600" },
-  deal_stage_changed: { label: "Moveu negociação", icon: ArrowLeftRight, cls: "bg-violet-500/15 text-violet-600" },
+  deal_stage_changed: { label: "Moveu lead", icon: ArrowLeftRight, cls: "bg-violet-500/15 text-violet-600" },
   deal_won: { label: "Marcou venda (Ganho)", icon: Trophy, cls: "bg-amber-500/15 text-amber-600" },
 };
 

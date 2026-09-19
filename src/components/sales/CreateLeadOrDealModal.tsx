@@ -1366,7 +1366,7 @@ export function CreateLeadOrDealModal({
                   <Label htmlFor="notes" className="text-xs">Observações</Label>
                   <Textarea
                     id="notes"
-                    placeholder="Notas sobre a negociação..."
+                    placeholder="Notas sobre o lead..."
                     value={dealForm.notes}
                     onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })}
                     rows={2}
@@ -1543,7 +1543,7 @@ export function CreateLeadOrDealModal({
                 <Label htmlFor="deal-notes" className="text-xs">Observações</Label>
                 <Textarea
                   id="deal-notes"
-                  placeholder="Notas sobre a negociação..."
+                  placeholder="Notas sobre o lead..."
                   value={dealForm.notes}
                   onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })}
                   rows={2}
