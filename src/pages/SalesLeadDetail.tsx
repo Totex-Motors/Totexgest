@@ -56,6 +56,7 @@ import { DealContactsTab } from "@/components/sales/DealContactsTab";
 import { MergeLeadsModal } from "@/components/sales/MergeLeadsModal";
 import { AIAgentBadge } from "@/components/inbox/AIAgentBadge";
 import { SidebarDeals } from "@/components/sales/SidebarDeals";
+import { ProfitCommissionCard } from "@/components/sales/ProfitCommissionCard";
 import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard";
 import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
@@ -2113,6 +2114,17 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               {/* Transactions Tab */}
               <TabsContent value="transactions">
                 <div className="space-y-6">
+                  {/* Lucro da operação + comissão por faixa (+ consignado) da negociação */}
+                  {selectedDeal?.id && (
+                    <ProfitCommissionCard
+                      dealId={selectedDeal.id}
+                      salesRepId={(selectedDeal as any).sales_rep_id}
+                      salesRepName={(selectedDeal as any).sales_rep?.name}
+                      profitBreakdown={(selectedDeal as any).profit_breakdown}
+                      isConsignado={(selectedDeal as any).is_consignado}
+                    />
+                  )}
+
                   {/* Financial Summary Cards */}
                   <FinancialSummaryCards leadId={id!} />
 
