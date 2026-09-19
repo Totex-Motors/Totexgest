@@ -440,7 +440,20 @@ export function PipelineBoardContent() {
   }, [pipelines]);
 
   const displayPipeline = useMemo(() => {
-    if (!isAllStores) return filteredPipeline;
+    if (!isAllStores) {
+      // Quando o board mostra mais de uma loja lado a lado (ex.: superadmin filtrando
+      // por vendedor em todas as lojas), marca cada coluna com o nome da loja pra
+      // distinguir os vários "Novo Lead"/"Em Qualificação" repetidos.
+      const distinctPipelines = new Set(
+        filteredPipeline.map((c: any) => c.stage?.pipeline_id).filter(Boolean)
+      );
+      const multiStore = distinctPipelines.size > 1;
+      if (!multiStore) return filteredPipeline;
+      return filteredPipeline.map((c: any) => ({
+        ...c,
+        _storeName: storeByPipeline.get(c.stage?.pipeline_id),
+      }));
+    }
     const groups = new Map<string, { stage: any; deals: any[]; total_value: number; count: number; minPos: number }>();
     for (const col of filteredPipeline) {
       const key = removeAccents((col.stage.name || "").trim().toLowerCase());
