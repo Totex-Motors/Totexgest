@@ -99,6 +99,7 @@ const AgentOrgChartPage = React.lazy(() => import("./agents-platform/pages/Agent
 
 // Sales/Commercial pages (core CRM)
 import SalesDashboard from "./pages/SalesDashboardV3";
+import SalesTeamView from "./pages/SalesTeamView";
 import SalesLeads from "./pages/SalesLeads";
 import SalesPipeline from "./pages/SalesPipeline";
 import SalesDeals from "./pages/SalesDeals";
@@ -317,6 +318,7 @@ const AppRoutes = () => {
       <Route path="/comercial/meu-dia" element={<Navigate to="/comercial/cockpit" replace />} />
       <Route path="/comercial/agenda" element={<ProtectedRoute><SalesAgenda /></ProtectedRoute>} />
       <Route path="/comercial" element={<ProtectedRoute><SalesDashboard /></ProtectedRoute>} />
+      <Route path="/comercial/vendedores" element={<ProtectedRoute><SalesTeamView /></ProtectedRoute>} />
       <Route path="/comercial/workspace" element={<ProtectedRoute><SalesWorkspace /></ProtectedRoute>} />
       <Route path="/comercial/leads" element={<ProtectedRoute><SalesLeads /></ProtectedRoute>} />
       <Route path="/comercial/leads/:id" element={<ProtectedRoute><SalesLeadDetail /></ProtectedRoute>} />

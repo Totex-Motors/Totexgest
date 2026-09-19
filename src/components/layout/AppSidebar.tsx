@@ -17,6 +17,7 @@ import {
   Car,
   ShoppingBag,
   MonitorSmartphone,
+  Users,
   Bot,
   Library,
   KeyRound,
@@ -68,6 +69,8 @@ interface NavItem {
   moduleId?: string;
   /** opcional: só aparece para super-admin (tenant Totex) */
   superAdminOnly?: boolean;
+  /** opcional: só para gestão (admin/comercial) — ex.: comissões por vendedor */
+  adminOnly?: boolean;
 }
 
 interface NavSection {
@@ -102,15 +105,22 @@ const sections: NavSection[] = [
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
+      { title: "Vendedores", url: "/comercial/vendedores", icon: Users, adminOnly: true },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
-      { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
-      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
-      { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
-      // Workspace das promotoras (proprietário que quer vender). Gestor abre pra acompanhar/testar.
-      { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins, superAdminOnly: true },
       { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake, superAdminOnly: true },
       { title: "Rede", url: "/comercial/rede", icon: Network, superAdminOnly: true },
       { title: "Aprovações", url: "/comercial/aprovacoes", icon: ShieldCheck, superAdminOnly: true },
+    ],
+  },
+  {
+    id: "origens",
+    label: "Origens",
+    items: [
+      { title: "Marketplace Digital", url: "/comercial/marketplace", icon: ShoppingBag, moduleId: "marketplace" },
+      { title: "Credere", url: "/comercial/credere", icon: Car, moduleId: "credere" },
+      { title: "IA de Qualificação", url: "/comercial/totem", icon: MonitorSmartphone, superAdminOnly: true },
+      { title: "Canais de Entrada", url: "/marketing/canais", icon: Share2, superAdminOnly: true },
+      { title: "Captação (promotoras)", url: "/captacao", icon: HandCoins, superAdminOnly: true },
     ],
   },
   {
@@ -127,7 +137,6 @@ const sections: NavSection[] = [
       { title: "Campanhas Instagram", url: "/marketing/instagram", icon: Instagram },
       { title: "Templates WhatsApp", url: "/marketing/whatsapp-templates", icon: FileText },
       { title: "Lead Ads (Meta)", url: "/marketing/lead-ads", icon: Megaphone },
-      { title: "Canais de Entrada", url: "/marketing/canais", icon: Share2 },
       { title: "Importar Leads", url: "/marketing/importar", icon: Upload },
       { title: "Formulários", url: "/marketing/formularios", icon: FileText },
     ],
@@ -179,6 +188,7 @@ export function AppSidebar() {
   const currentPath = location.pathname;
   const { unreadWhatsAppCount, markWhatsAppAsRead } = useNotificationContext();
   const { teamMember, signOut, isSuperAdmin } = useAuth();
+  const isAdmin = teamMember?.role === "admin" || teamMember?.role === "comercial" || teamMember?.team === "admin";
   const { isModuleEnabled } = useEnabledModules();
 
   // Sidebar do shadcn expõe o estado (expanded/collapsed)
@@ -206,11 +216,11 @@ export function AppSidebar() {
       .map((s) => ({
         ...s,
         items: s.items.filter(
-          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin),
+          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin) && (!i.adminOnly || isAdmin),
         ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [isModuleEnabled, isSuperAdmin]);
+  }, [isModuleEnabled, isSuperAdmin, isAdmin]);
 
   const userInitials =
     teamMember?.name
