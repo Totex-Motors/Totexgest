@@ -130,7 +130,8 @@ export function CaptureHandoffSection() {
     }
   }, [cfg]);
 
-  const sellers = members.filter((m) => m.is_active && ["comercial", "closer", "admin", "sdr"].includes(m.role ?? ""));
+  // "geral" = Vendedor (papel de venda legítimo) — também recebe leads no rodízio.
+  const sellers = members.filter((m) => m.is_active && ["comercial", "closer", "admin", "sdr", "geral"].includes(m.role ?? ""));
   const toggleSpecialist = (id: string) =>
     setForm((f) => ({
       ...f,
@@ -172,7 +173,7 @@ export function CaptureHandoffSection() {
 
           <div className="space-y-2">
             <Label>Especialistas que recebem os leads (rodízio na ordem marcada)</Label>
-            <p className="text-xs text-muted-foreground">Nenhum marcado = todos os vendedores ativos (comercial/closer).</p>
+            <p className="text-xs text-muted-foreground">Nenhum marcado = todos os vendedores ativos (comercial, closer e vendedor).</p>
             <div className="grid sm:grid-cols-2 gap-2">
               {sellers.map((m) => {
                 const checked = form.specialist_member_ids.includes(m.id);
