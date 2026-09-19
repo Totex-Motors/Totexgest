@@ -440,6 +440,7 @@ export function PipelineBoardContent() {
   }, [pipelines]);
 
   const displayPipeline = useMemo(() => {
+    let base: any[];
     if (!isAllStores) {
       // Quando o board mostra mais de uma loja lado a lado (ex.: superadmin filtrando
       // por vendedor em todas as lojas), marca cada coluna com o nome da loja pra
@@ -448,33 +449,40 @@ export function PipelineBoardContent() {
         filteredPipeline.map((c: any) => c.stage?.pipeline_id).filter(Boolean)
       );
       const multiStore = distinctPipelines.size > 1;
-      if (!multiStore) return filteredPipeline;
-      return filteredPipeline.map((c: any) => ({
-        ...c,
-        _storeName: storeByPipeline.get(c.stage?.pipeline_id),
-      }));
-    }
-    const groups = new Map<string, { stage: any; deals: any[]; total_value: number; count: number; minPos: number }>();
-    for (const col of filteredPipeline) {
-      const key = removeAccents((col.stage.name || "").trim().toLowerCase());
-      const pos = col.stage.position ?? 999;
-      let g = groups.get(key);
-      if (!g) {
-        g = { stage: col.stage, deals: [], total_value: 0, count: 0, minPos: pos };
-        groups.set(key, g);
+      base = multiStore
+        ? filteredPipeline.map((c: any) => ({
+            ...c,
+            _storeName: storeByPipeline.get(c.stage?.pipeline_id),
+          }))
+        : filteredPipeline;
+    } else {
+      const groups = new Map<string, { stage: any; deals: any[]; total_value: number; count: number; minPos: number }>();
+      for (const col of filteredPipeline) {
+        const key = removeAccents((col.stage.name || "").trim().toLowerCase());
+        const pos = col.stage.position ?? 999;
+        let g = groups.get(key);
+        if (!g) {
+          g = { stage: col.stage, deals: [], total_value: 0, count: 0, minPos: pos };
+          groups.set(key, g);
+        }
+        // Representa a etapa pela de menor posição (mantém id/cor coerentes)
+        if (pos < g.minPos) { g.minPos = pos; g.stage = col.stage; }
+        for (const d of col.deals) {
+          g.deals.push({ ...d, _store: storeByPipeline.get((d as any).pipeline_id) });
+        }
+        g.total_value += col.total_value;
+        g.count += col.count;
       }
-      // Representa a etapa pela de menor posição (mantém id/cor coerentes)
-      if (pos < g.minPos) { g.minPos = pos; g.stage = col.stage; }
-      for (const d of col.deals) {
-        g.deals.push({ ...d, _store: storeByPipeline.get((d as any).pipeline_id) });
-      }
-      g.total_value += col.total_value;
-      g.count += col.count;
+      base = Array.from(groups.values())
+        .sort((a, b) => a.minPos - b.minPos)
+        .map((g) => ({ stage: g.stage, deals: g.deals, total_value: g.total_value, count: g.count }));
     }
-    return Array.from(groups.values())
-      .sort((a, b) => a.minPos - b.minPos)
-      .map((g) => ({ stage: g.stage, deals: g.deals, total_value: g.total_value, count: g.count }));
-  }, [isAllStores, filteredPipeline, storeByPipeline]);
+
+    // Ao filtrar por vendedor, esconde as colunas/etapas vazias (das outras lojas)
+    // pra sobrar só onde ele realmente tem lead — evita dezenas de colunas vazias.
+    if (repParam) return base.filter((c: any) => (c.count || 0) > 0);
+    return base;
+  }, [isAllStores, filteredPipeline, storeByPipeline, repParam]);
 
   // Contar totais de urgência para mostrar no filtro
   const urgencyCounts = useMemo(() => {
