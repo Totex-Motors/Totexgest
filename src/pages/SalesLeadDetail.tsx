@@ -1150,7 +1150,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               </div>
               <div className="text-center p-2 rounded-lg bg-muted/50">
                 <p className="text-lg font-bold">{contactDeals?.length || 0}</p>
-                <p className="text-[10px] text-muted-foreground">Deals</p>
+                <p className="text-[10px] text-muted-foreground">Vendas</p>
               </div>
               <div className="text-center p-2 rounded-lg bg-muted/50">
                 <p className="text-lg font-bold">{daysAsLead}d</p>
@@ -2114,16 +2114,20 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               {/* Transactions Tab */}
               <TabsContent value="transactions">
                 <div className="space-y-6">
-                  {/* Lucro da operação + comissão por faixa (+ consignado) da negociação */}
-                  {selectedDeal?.id && (
-                    <ProfitCommissionCard
-                      dealId={selectedDeal.id}
-                      salesRepId={(selectedDeal as any).sales_rep_id}
-                      salesRepName={(selectedDeal as any).sales_rep?.name}
-                      profitBreakdown={(selectedDeal as any).profit_breakdown}
-                      isConsignado={(selectedDeal as any).is_consignado}
-                    />
-                  )}
+                  {/* Lucro da operação + comissão por faixa (+ consignado).
+                      Usa a negociação selecionada; se não houver, a 1ª do lead. */}
+                  {(() => {
+                    const d: any = selectedDeal || contactDeals?.[0];
+                    return d?.id ? (
+                      <ProfitCommissionCard
+                        dealId={d.id}
+                        salesRepId={d.sales_rep_id}
+                        salesRepName={d.sales_rep?.name}
+                        profitBreakdown={d.profit_breakdown}
+                        isConsignado={d.is_consignado}
+                      />
+                    ) : null;
+                  })()}
 
                   {/* Financial Summary Cards */}
                   <FinancialSummaryCards leadId={id!} />
