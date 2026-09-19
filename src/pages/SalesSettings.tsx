@@ -778,6 +778,7 @@ export function CommissionsTab() {
 export function TeamTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { teamMember } = useAuth();
 
   // --- Team Members CRUD ---
   const { data: allMembers = [], isLoading: loadingMembers } = useAllTeamMembers();
