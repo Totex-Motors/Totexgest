@@ -815,8 +815,8 @@ export function CreateLeadOrDealModal({
       if (mode === "deal") {
         const deal = await createDealMutation.mutateAsync(lead.id);
         toast({
-          title: "Negociação criada!",
-          description: `Negociação para ${lead.name} foi criada com sucesso.`,
+          title: "Lead criado!",
+          description: `Lead de ${lead.name} criado com sucesso.`,
         });
         // Disparar notificação de deal criado
         if (deal?.id) {
@@ -868,8 +868,8 @@ export function CreateLeadOrDealModal({
       const deal = await createDealMutation.mutateAsync(selectedLead.id);
 
       toast({
-        title: "Negociação criada!",
-        description: `Negociação para ${selectedLead.name} foi criada.`,
+        title: "Lead criado!",
+        description: `Lead de ${selectedLead.name} criado.`,
       });
 
       // Disparar notificação de deal criado
@@ -948,7 +948,7 @@ export function CreateLeadOrDealModal({
             {mode === "deal" ? (
               <>
                 <Briefcase className="h-5 w-5" />
-                Nova Negociação
+                Novo Lead
               </>
             ) : (
               <>
@@ -960,7 +960,7 @@ export function CreateLeadOrDealModal({
           <DialogDescription>
             {step === "search" && "Busque por email/telefone ou cole um print para extrair com IA"}
             {step === "create-lead" && "Preencha os dados do novo lead"}
-            {step === "create-deal" && `Configurar negociação para ${selectedLead?.name}`}
+            {step === "create-deal" && `Configurar lead de ${selectedLead?.name}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -1112,7 +1112,7 @@ export function CreateLeadOrDealModal({
               )}
               {mode === "deal" && selectedLead && (
                 <Button onClick={() => setStep("create-deal")}>
-                  Criar Deal
+                  Continuar
                   <Briefcase className="h-4 w-4 ml-2" />
                 </Button>
               )}
@@ -1414,7 +1414,7 @@ export function CreateLeadOrDealModal({
               </Button>
               <Button onClick={handleCreateLeadAndDeal} disabled={isLoading || checkDuplicate.isPending}>
                 {(isLoading || checkDuplicate.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {mode === "deal" ? "Criar Lead e Negociação" : "Criar Lead"}
+                Criar Lead
               </Button>
             </DialogFooter>
           </>
@@ -1563,7 +1563,7 @@ export function CreateLeadOrDealModal({
               </Button>
               <Button onClick={handleCreateDealForExisting} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Criar Negociação
+                Salvar
               </Button>
             </DialogFooter>
           </>

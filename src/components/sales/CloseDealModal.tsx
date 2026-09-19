@@ -225,7 +225,7 @@ export function RegisterNegotiationModal({
       console.error("Error registering negotiation:", error);
       setStep("config");
       toast({
-        title: "Erro ao registrar negociacao",
+        title: "Erro ao registrar venda",
         description: "Tente novamente ou contate o suporte",
         variant: "destructive",
       });

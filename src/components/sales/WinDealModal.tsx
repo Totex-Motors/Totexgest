@@ -186,7 +186,7 @@ export function WinDealModal({ open, onOpenChange, deal }: WinDealModalProps) {
         } catch { /* silent */ }
       }
 
-      toast({ title: "Deal ganho!", description: `${formatCurrency(editableValue)} — Parabéns!` });
+      toast({ title: "Venda ganha!", description: `${formatCurrency(editableValue)} — Parabéns!` });
       onOpenChange(false);
     } catch (error) {
       console.error("Error winning deal:", error);

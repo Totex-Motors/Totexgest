@@ -1277,7 +1277,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                     {/* Deal em comum */}
                     {linkedData.deals.length > 0 && (
                       <div className="pt-2 border-t">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Negociação</p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Venda</p>
                         {linkedData.deals.map((deal) => (
                           <div
                             key={deal.id}
@@ -1577,7 +1577,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                         <div className="mt-6 pt-4 border-t">
                           <p className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                             <Users className="h-4 w-4" />
-                            Participa como contato em {dealParticipations.filter((p: any) => !contactDeals?.some((d: any) => d.id === p.deal_id)).length} outra(s) negociação(ões)
+                            Participa como contato em {dealParticipations.filter((p: any) => !contactDeals?.some((d: any) => d.id === p.deal_id)).length} outro(s) lead(s)
                           </p>
                           <div className="space-y-2">
                             {dealParticipations.filter((p: any) => !contactDeals?.some((d: any) => d.id === p.deal_id)).map((participation: any) => (
@@ -1587,14 +1587,14 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                                 onClick={(e) => navigateTo(e, `/comercial/deals/${participation.deal?.id}`, navigate)}
                               >
                                 <div>
-                                  <p className="font-medium text-sm">{participation.deal?.title || "Deal"}</p>
+                                  <p className="font-medium text-sm">{participation.deal?.title || "Lead"}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {participation.role && (
                                       <Badge variant="secondary" className="text-xs mr-2">
                                         {participation.role}
                                       </Badge>
                                     )}
-                                    {participation.deal?.pipeline_stage?.name || "Em negociação"}
+                                    {participation.deal?.pipeline_stage?.name || "Em andamento"}
                                   </p>
                                 </div>
                                 <div className="text-right">
@@ -2899,12 +2899,12 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir Deal</AlertDialogTitle>
+            <AlertDialogTitle>Excluir venda</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir este deal? Esta acao nao pode ser desfeita.
+              Tem certeza que deseja excluir esta venda? Esta acao nao pode ser desfeita.
               {deleteDealConfirm && (
                 <div className="mt-2 p-3 bg-muted rounded-lg">
-                  <p className="font-medium">{deleteDealConfirm.product?.name || "Deal"}</p>
+                  <p className="font-medium">{deleteDealConfirm.product?.name || "Venda"}</p>
                   <p className="text-sm">
                     Valor: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(deleteDealConfirm.negotiated_price || 0)}
                   </p>
@@ -2920,10 +2920,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                 if (!deleteDealConfirm) return;
                 try {
                   await deleteDeal.mutateAsync(deleteDealConfirm.id);
-                  toast({ title: "Negociação excluída com sucesso" });
+                  toast({ title: "Venda excluída com sucesso" });
                   setDeleteDealConfirm(null);
                 } catch {
-                  toast({ title: "Erro ao excluir negociação", variant: "destructive" });
+                  toast({ title: "Erro ao excluir venda", variant: "destructive" });
                 }
               }}
             >
@@ -3008,7 +3008,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               Gerenciar Decisores / Contatos
             </DialogTitle>
             <DialogDescription>
-              Adicione decisores, influenciadores e outros contatos a esta negociação.
+              Adicione decisores, influenciadores e outros contatos a este lead.
             </DialogDescription>
           </DialogHeader>
           {managingContactsDealId && (

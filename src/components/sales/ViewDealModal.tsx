@@ -261,7 +261,7 @@ export function ViewDealModal({ open, onOpenChange, deal }: ViewDealModalProps) 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
-              Detalhes do Deal
+              Detalhes da Oportunidade
             </DialogTitle>
           </DialogHeader>
 

@@ -131,10 +131,10 @@ const SalesDeals = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-3">
               <Briefcase className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
-              Negociações
+              Oportunidades
             </h1>
             <p className="text-sm text-muted-foreground">
-              {filteredDeals.length} negociações encontradas
+              {filteredDeals.length} oportunidades encontradas
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -148,7 +148,7 @@ const SalesDeals = () => {
             </Button>
             <Button onClick={() => navigate("/comercial/deals/new")}>
               <Plus className="h-4 w-4 mr-2" />
-              Nova Negociação
+              Nova oportunidade
             </Button>
           </div>
         </div>
@@ -352,11 +352,11 @@ const SalesDeals = () => {
           <Card>
             <CardContent className="py-12 text-center">
               <Briefcase className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhum deal encontrado</h3>
+              <h3 className="text-lg font-semibold mb-2">Nenhuma oportunidade encontrada</h3>
               <p className="text-muted-foreground mb-4">
                 {search
                   ? "Tente ajustar sua busca ou filtros"
-                  : "Não há deals com os filtros selecionados"}
+                  : "Não há oportunidades com os filtros selecionados"}
               </p>
               <div className="flex justify-center gap-2">
                 {(search || selectedStage !== "all" || selectedStatus !== "active") && (
@@ -373,7 +373,7 @@ const SalesDeals = () => {
                 )}
                 <Button onClick={() => navigate("/comercial/deals/new")}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Criar deal
+                  Nova oportunidade
                 </Button>
               </div>
             </CardContent>

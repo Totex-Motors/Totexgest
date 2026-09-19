@@ -325,7 +325,7 @@ export function CreateDealModal({
         await createPaymentsBatch.mutateAsync(paymentsToCreate);
       }
 
-      toast({ title: "Sucesso", description: "Deal criado com sucesso!" });
+      toast({ title: "Sucesso", description: "Oportunidade criada com sucesso!" });
       onOpenChange(false);
 
       // Reset form
@@ -352,7 +352,7 @@ export function CreateDealModal({
       console.error("Erro ao criar deal:", error);
       toast({
         title: "Erro",
-        description: "Erro ao criar deal",
+        description: "Erro ao criar oportunidade",
         variant: "destructive",
       });
     }
@@ -373,7 +373,7 @@ export function CreateDealModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-green-600" />
-            Nova Negociação
+            Nova oportunidade
           </DialogTitle>
           {leadName && (
             <p className="text-sm text-muted-foreground">Lead: {leadName}</p>
@@ -657,7 +657,7 @@ export function CreateDealModal({
           <div className="space-y-2">
             <Label>Observacoes</Label>
             <Textarea
-              placeholder="Detalhes da negociacao..."
+              placeholder="Detalhes da oportunidade..."
               value={formData.notes || ""}
               onChange={(e) =>
                 setFormData({ ...formData, notes: e.target.value })
@@ -671,7 +671,7 @@ export function CreateDealModal({
             <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-green-700 dark:text-green-300">
-                  Valor do Deal
+                  Valor
                 </span>
                 <span className="text-xl font-bold text-green-600">
                   {formatCurrency(formData.negotiated_price)}
@@ -704,7 +704,7 @@ export function CreateDealModal({
               {isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              Criar Negociação
+              Criar oportunidade
             </Button>
           </DialogFooter>
         </form>

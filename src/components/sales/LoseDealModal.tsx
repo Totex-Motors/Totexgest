@@ -188,13 +188,13 @@ export function LoseDealModal({ open, onOpenChange, deal }: LoseDealModalProps) 
             });
 
             toast({
-              title: "Deal perdido + nova oportunidade criada",
+              title: "Venda perdida + nova oportunidade criada",
               description: `${product.name} — R$ ${(product.price || 0).toLocaleString("pt-BR")}`,
             });
           }
         } else {
           toast({
-            title: "Deal marcado como perdido",
+            title: "Marcado como perdido",
             description: `Motivo: ${reason}`,
           });
         }

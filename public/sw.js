@@ -1,4 +1,4 @@
-const CACHE_NAME = 'event-app-v4';
+const CACHE_NAME = 'event-app-v5';
 
 // Install - skip waiting immediately to activate new SW
 self.addEventListener('install', (event) => {

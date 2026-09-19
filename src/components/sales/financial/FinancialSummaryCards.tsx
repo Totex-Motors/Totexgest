@@ -49,9 +49,9 @@ export function FinancialSummaryCards({ leadId }: FinancialSummaryCardsProps) {
 
   const cards = [
     {
-      title: "Deals Ganhos",
+      title: "Vendas Ganhas",
       value: summary.total_deals.toString(),
-      subtitle: "total de deals",
+      subtitle: "total de vendas",
       icon: Briefcase,
       color: "text-blue-600",
       bgColor: "bg-blue-50",

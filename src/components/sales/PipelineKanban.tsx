@@ -490,7 +490,7 @@ function KanbanColumn({
               <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
                 <Target className="h-5 w-5 text-slate-400" />
               </div>
-              <p className="text-xs text-slate-500">Nenhuma negociação neste estágio</p>
+              <p className="text-xs text-slate-500">Nenhum lead neste estágio</p>
               {onAddDeal && !stage.is_won && !stage.is_lost && (
                 <Button
                   variant="link"
