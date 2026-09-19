@@ -213,9 +213,13 @@ export function useAIAgents() {
   return useQuery({
     queryKey: ['ai-agents'],
     queryFn: async () => {
+      // NOTA: a tabela ai_sales_agents não tem colunas instance_id/pipeline_id nem FKs
+      // para whatsapp_instances/sales_pipelines. Fazer embed dessas relações retorna 400
+      // no PostgREST e quebra TODA a query (lista de agentes vazia → badge "Carregando..."
+      // travado no lead). Buscamos só as colunas reais; instance_name/pipeline_name ficam null.
       const { data, error } = await supabase
         .from('ai_sales_agents')
-        .select('*, instance:whatsapp_instances(name, status), pipeline:sales_pipelines!ai_sales_agents_pipeline_id_fkey(name)')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

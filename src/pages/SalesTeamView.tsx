@@ -79,7 +79,7 @@ export default function SalesTeamView() {
           <h1 className="text-2xl font-bold text-foreground">Vendedores</h1>
         </div>
         <p className="text-sm text-muted-foreground -mt-2">
-          Cada pessoa do time com as negociações ativas e a comissão do mês. Clique para ver as negociações dela no funil.
+          Cada pessoa do time com os leads ativos e a comissão do mês. Clique para ver os leads dela no funil.
         </p>
 
         {isLoading ? (
@@ -111,7 +111,7 @@ export default function SalesTeamView() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-4">
                         <div className="rounded-lg bg-muted/50 p-2.5">
-                          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Briefcase className="h-3 w-3" /> Negociações</p>
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Briefcase className="h-3 w-3" /> Leads ativos</p>
                           <p className="text-lg font-bold leading-tight">{s.count}</p>
                           <p className="text-[11px] text-muted-foreground">{brl(s.value)} em aberto</p>
                         </div>
