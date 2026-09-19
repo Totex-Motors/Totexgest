@@ -121,6 +121,18 @@ export const useResetTeamMemberPassword = () => {
   });
 };
 
+export const useDeleteTeamMember = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { member_id: string }) =>
+      callManageTeamMember('delete', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members-all'] });
+    },
+  });
+};
+
 // Buscar um membro específico por ID
 export const useTeamMember = (memberId: string | undefined) => {
   return useQuery({

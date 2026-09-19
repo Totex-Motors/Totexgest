@@ -261,8 +261,52 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
+    if (action === "delete") {
+      const { member_id } = data;
+
+      if (!member_id) {
+        return jsonResponse({ error: "Missing required field: member_id" }, 400);
+      }
+
+      // Confirma que o alvo é do mesmo tenant e pega o auth_user_id
+      const { data: target } = await supabase
+        .from("team_members")
+        .select("id, auth_user_id")
+        .eq("id", member_id)
+        .eq("tenant_id", callerTenantId)
+        .maybeSingle();
+
+      if (!target) {
+        return jsonResponse({ error: "Forbidden: target not in caller tenant" }, 403);
+      }
+
+      // Impede o admin de excluir a si mesmo
+      if (target.id === callerMember.id) {
+        return jsonResponse({ error: "Você não pode excluir a si mesmo." }, 400);
+      }
+
+      // Exclusão segura via RPC (anula referências, apaga configs, protege comissões)
+      const { error: rpcErr } = await supabase.rpc("admin_delete_team_member", {
+        p_member_id: member_id,
+      });
+
+      if (rpcErr) {
+        return jsonResponse({ error: rpcErr.message }, 400);
+      }
+
+      // Remove a conta de autenticação (login) — profiles cai por cascade
+      if (target.auth_user_id) {
+        const { error: authDelErr } = await supabase.auth.admin.deleteUser(target.auth_user_id);
+        if (authDelErr) {
+          console.error("[manage-team-member] Falha ao apagar conta auth:", authDelErr.message);
+        }
+      }
+
+      return jsonResponse({ success: true });
+    }
+
     return jsonResponse(
-      { error: `Unknown action: ${action}. Valid: create, update, toggle_active, reset_password` },
+      { error: `Unknown action: ${action}. Valid: create, update, toggle_active, reset_password, delete` },
       400
     );
   } catch (err) {

@@ -354,6 +354,7 @@ function KanbanColumn({
 }: KanbanColumnProps) {
   const { dv } = useDemoMode();
   const { stage, deals, total_value, count } = column;
+  const storeName = (column as any)._storeName as string | undefined;
   const colors = stageColors[stage.color] || stageColors.gray;
 
   // Contar deals críticos e com alerta nesta coluna
@@ -415,6 +416,13 @@ function KanbanColumn({
             </Button>
           )}
         </div>
+        {storeName && (
+          <div className="mb-1">
+            <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-900/5 text-slate-600 max-w-full truncate">
+              🏪 {storeName}
+            </span>
+          </div>
+        )}
         <p className="text-sm font-medium text-slate-700">
           {formatCurrency(dv(total_value))}
         </p>

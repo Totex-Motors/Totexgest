@@ -121,6 +121,7 @@ import {
   useUpdateTeamMember,
   useToggleTeamMember,
   useResetTeamMemberPassword,
+  useDeleteTeamMember,
   type TeamMember,
 } from "@/hooks/useTeamMembers";
 import {
@@ -784,6 +785,7 @@ export function TeamTab() {
   const updateMember = useUpdateTeamMember();
   const toggleMember = useToggleTeamMember();
   const resetPassword = useResetTeamMemberPassword();
+  const deleteMember = useDeleteTeamMember();
 
   // --- WhatsApp instances (leitura) para vincular na tabela ---
   const [instances, setInstances] = useState<{ id: string; name: string; status: string }[]>([]);
@@ -885,6 +887,8 @@ export function TeamTab() {
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [resetMember, setResetMember] = useState<TeamMember | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -941,6 +945,18 @@ export function TeamTab() {
       setNewPassword("");
     } catch (error) {
       toast({ title: error instanceof Error ? error.message : "Erro ao resetar senha", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteMember.mutateAsync({ member_id: deleteTarget.id });
+      toast({ title: "Membro excluído definitivamente" });
+      setDeleteTarget(null);
+      setDeleteConfirm("");
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Erro ao excluir membro", variant: "destructive" });
     }
   };
 
@@ -1135,6 +1151,17 @@ export function TeamTab() {
                             title="Resetar senha"
                           >
                             <KeyRound className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {member.id !== teamMember?.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDeleteTarget(member)}
+                            title="Excluir definitivamente"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
                       </div>
@@ -1332,6 +1359,54 @@ export function TeamTab() {
             >
               {resetPassword.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Alterar Senha
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== EXCLUIR MEMBRO (DEFINITIVO) ===== */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteConfirm(""); } }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Excluir membro definitivamente
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação <strong>não pode ser desfeita</strong>. Vai remover o acesso (login) de{" "}
+              <strong>{deleteTarget?.name}</strong> e apagar o cadastro. O histórico ligado a ele
+              (leads, vendas) fica preservado, só perde o vínculo com o nome.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300">
+              Se o membro tiver <strong>comissões registradas</strong>, a exclusão é bloqueada
+              (histórico financeiro) — nesse caso, <strong>desative-o</strong> em vez de excluir.
+            </div>
+            <div className="space-y-2">
+              <Label>Para confirmar, digite <strong>EXCLUIR</strong></Label>
+              <Input
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                placeholder="EXCLUIR"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteConfirm(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteConfirm.trim().toUpperCase() !== "EXCLUIR" || deleteMember.isPending}
+            >
+              {deleteMember.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Excluir definitivamente
             </Button>
           </DialogFooter>
         </DialogContent>
