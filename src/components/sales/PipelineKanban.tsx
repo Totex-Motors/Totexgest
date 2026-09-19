@@ -498,7 +498,7 @@ function KanbanColumn({
                   className="mt-2 text-xs h-auto p-0"
                   onClick={() => onAddDeal(stage.id)}
                 >
-                  + Adicionar negociação
+                  + Adicionar lead
                 </Button>
               )}
             </div>
@@ -794,7 +794,7 @@ function DealCard({
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p>Excluir negociação</p>
+              <p>Excluir lead</p>
             </TooltipContent>
           </Tooltip>
         )}

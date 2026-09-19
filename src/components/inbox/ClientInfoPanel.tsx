@@ -781,7 +781,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
             <div className="flex items-center gap-1.5">
               <Link2 className="h-3.5 w-3.5 text-indigo-600" />
               <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
-                Contatos da negociação
+                Contatos
               </span>
             </div>
             <Button
@@ -1392,7 +1392,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
                 </div>
 
                 <div>
-                  <Label className="text-xs">Papel na negociação</Label>
+                  <Label className="text-xs">Papel</Label>
                   <Select value={newContact.role} onValueChange={(v) => setNewContact(f => ({ ...f, role: v }))}>
                     <SelectTrigger className="mt-1 h-9">
                       <SelectValue placeholder="Selecione..." />
@@ -1443,7 +1443,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Papel na negociação</Label>
+                  <Label className="text-xs">Papel</Label>
                   <Select value={newContact.role} onValueChange={(v) => setNewContact(f => ({ ...f, role: v }))}>
                     <SelectTrigger className="mt-1 h-9">
                       <SelectValue placeholder="Selecione..." />
@@ -1460,7 +1460,7 @@ export function ClientInfoPanel({ conversation, currentUserId, instanceId }: Cli
                 <div className="p-2 rounded-md bg-indigo-50/80 border border-indigo-100 text-[11px] text-indigo-600">
                   <span className="font-medium">Herda: </span>
                   {[lead?.company_name, lead?.utm_source && `UTM: ${lead.utm_source}`]
-                    .filter(Boolean).join(" · ") || "dados da negociação"}
+                    .filter(Boolean).join(" · ") || "dados do lead"}
                 </div>
 
                 <Button
