@@ -574,14 +574,14 @@ export function PipelineBoardContent() {
             transferredByName: teamMember?.name || 'Sistema (auto-transfer)',
           });
           toast({
-            title: "Negociação transferida para Closer",
-            description: "Movida automaticamente para Closer → Call Agendada",
+            title: "Lead transferido para Closer",
+            description: "Movido automaticamente para Closer → Call Agendada",
           });
           return;
         } catch {
           toast({
-            title: "Negociação movida, mas erro na transferência",
-            description: "A negociação foi movida para Call Agendada mas não foi transferida para o Closer.",
+            title: "Lead movido, mas erro na transferência",
+            description: "O lead foi movido para Call Agendada mas não foi transferido para o Closer.",
             variant: "destructive",
           });
           return;
@@ -589,14 +589,14 @@ export function PipelineBoardContent() {
       }
 
       toast({
-        title: "Negociação movida",
-        description: "A negociação foi movida para o novo estágio.",
+        title: "Lead movido",
+        description: "O lead foi movido para o novo estágio.",
       });
     } catch (e) {
       // Mensagem do banco (ex.: gate da intermediação: "Só depois do contrato assinado…")
       const msg = e instanceof Error ? e.message : (e as { message?: string } | null)?.message;
       toast({
-        title: "Erro ao mover negociação",
+        title: "Erro ao mover lead",
         description: msg || "Tente novamente.",
         variant: "destructive",
       });
@@ -609,13 +609,13 @@ export function PipelineBoardContent() {
   };
 
   const handleDeleteDeal = useCallback((dealId: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta negociação? Esta ação não pode ser desfeita.")) return;
+    if (!confirm("Tem certeza que deseja excluir este lead? Esta ação não pode ser desfeita.")) return;
     deleteDealMutation.mutate(dealId, {
       onSuccess: () => {
-        toast({ title: "Negociação excluída com sucesso" });
+        toast({ title: "Lead excluído com sucesso" });
       },
       onError: (err: any) => {
-        toast({ title: "Erro ao excluir negociação", description: err?.message, variant: "destructive" });
+        toast({ title: "Erro ao excluir lead", description: err?.message, variant: "destructive" });
       },
     });
   }, [deleteDealMutation, toast]);
@@ -669,7 +669,7 @@ export function PipelineBoardContent() {
             <div className="flex items-center gap-2 shrink-0">
               <Button onClick={() => handleAddDeal()} className="h-9 px-4 text-sm">
                 <Plus className="h-4 w-4 mr-1.5" />
-                Nova Negociação
+                Novo Lead
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -769,7 +769,7 @@ export function PipelineBoardContent() {
               <SelectContent>
                 <SelectItem value="urgency">Urgencia</SelectItem>
                 <SelectItem value="recent">Mais recentes</SelectItem>
-                <SelectItem value="value">Maior valor negociação</SelectItem>
+                <SelectItem value="value">Maior valor</SelectItem>
                 <SelectItem value="revenue">Maior faturamento</SelectItem>
                 <SelectItem value="score">Score do lead</SelectItem>
                 <SelectItem value="time_in_stage">Tempo na etapa</SelectItem>
@@ -1230,11 +1230,11 @@ export function PipelineBoardContent() {
             </div>
             <h3 className="text-lg font-medium text-slate-800 mb-1">Pipeline vazio</h3>
             <p className="text-slate-500 mb-6 text-sm">
-              Crie sua primeira negociação para visualizá-la aqui
+              Crie seu primeiro lead para visualizá-lo aqui
             </p>
             <Button onClick={() => handleAddDeal()} className="h-9 px-4">
               <Plus className="h-4 w-4 mr-1.5" />
-              Criar negociação
+              Criar lead
             </Button>
           </div>
         )}

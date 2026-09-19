@@ -89,7 +89,7 @@ export function TransferPipelineModal({
       const targetName = pipelines?.find((p) => p.id === selectedPipelineId)?.name;
       const stageName = selectedStage?.name;
       toast({
-        title: "Deal transferido",
+        title: "Lead transferido",
         description: `Movido para ${targetName} - ${stageName}`,
       });
       onOpenChange(false);

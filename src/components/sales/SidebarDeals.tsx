@@ -88,7 +88,7 @@ export function SidebarDeals({
             <Briefcase className="h-6 w-6 mx-auto mb-1.5 opacity-30" />
             <p className="text-[10px]">Nenhuma oportunidade</p>
             <Button variant="outline" size="sm" className="mt-1.5 h-6 text-[10px]" onClick={onCreateDeal}>
-              <Plus className="h-3 w-3 mr-1" /> Criar deal
+              <Plus className="h-3 w-3 mr-1" /> Nova oportunidade
             </Button>
           </div>
         ) : (

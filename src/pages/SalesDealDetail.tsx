@@ -113,9 +113,9 @@ const SalesDealDetail = () => {
       <AppLayout>
         <div className="flex flex-col items-center justify-center py-24">
           <Briefcase className="h-16 w-16 text-muted-foreground/50 mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Deal nao encontrado</h2>
-          <p className="text-muted-foreground mb-4">O deal que voce procura nao existe.</p>
-          <Button onClick={() => navigate("/comercial/deals")}>Voltar para Deals</Button>
+          <h2 className="text-xl font-semibold mb-2">Oportunidade nao encontrada</h2>
+          <p className="text-muted-foreground mb-4">A oportunidade que voce procura nao existe.</p>
+          <Button onClick={() => navigate("/comercial/deals")}>Voltar para Oportunidades</Button>
         </div>
       </AppLayout>
     );
@@ -278,7 +278,7 @@ const SalesDealDetail = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Briefcase className="h-4 w-4" />
-                Detalhes do Deal
+                Detalhes da Oportunidade
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">

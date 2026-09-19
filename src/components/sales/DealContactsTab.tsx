@@ -230,7 +230,7 @@ export function DealContactsTab({ dealId, primaryLeadId }: DealContactsTabProps)
   const handleRemove = async (contactId: string) => {
     try {
       await removeContact.mutateAsync({ id: contactId, dealId });
-      toast({ title: "Contato removido do deal" });
+      toast({ title: "Contato removido" });
     } catch (error) {
       toast({ title: "Erro ao remover contato", variant: "destructive" });
     }

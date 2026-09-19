@@ -156,7 +156,7 @@ export function HorizontalFunnel({ stages, isLoading }: { stages: any[] | undefi
   }
 
   if (!stages || stages.length === 0) {
-    return <div className="h-[180px] flex items-center justify-center text-muted-foreground text-sm">Nenhum deal no pipeline</div>;
+    return <div className="h-[180px] flex items-center justify-center text-muted-foreground text-sm">Nenhuma oportunidade no pipeline</div>;
   }
 
   return (
