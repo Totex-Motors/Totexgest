@@ -41,7 +41,7 @@ interface AIAgentBadgeProps {
 export function AIAgentBadge({ leadId, showControls = true, className }: AIAgentBadgeProps) {
   const queryClient = useQueryClient();
   const { data: status, isLoading, refetch: refetchStatus } = useAIAgentStatusForLead(leadId);
-  const { data: agents } = useAIAgents();
+  const { data: agents, isLoading: agentsLoading } = useAIAgents();
   const toggleConversation = useToggleAIAgentConversation();
   const testAgent = useTestAIAgent();
   const [testMessage, setTestMessage] = useState('');
@@ -388,7 +388,8 @@ export function AIAgentBadge({ leadId, showControls = true, className }: AIAgent
   // Se não tem conversa ativa com agente, mostra botão para ativar
   if (!isLoading && !status?.has_agent) {
     const hasActiveAgent = agents && agents.length > 0 && agents.some(a => a.is_active);
-    const isLoadingAgents = !agents;
+    // usa o loading real do react-query — em caso de erro NÃO fica preso em "Carregando..."
+    const isLoadingAgents = agentsLoading;
 
     return (
       <Popover>

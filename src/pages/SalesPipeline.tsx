@@ -22,6 +22,7 @@ import { usePipelines } from "@/hooks/usePipelineConfig";
 // Webinar configs foi removido junto com o m\u00f3dulo de eventos.
 const useWebinarConfigs = () => ({ data: [] as Array<{ id: string; name: string }> });
 import { useMoveDealStage, useTransferDealPipeline, useDeleteDeal } from "@/hooks/useSalesDeals";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useLeadGlobalSearch } from "@/hooks/useSalesLeads";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -228,13 +229,23 @@ export function PipelineBoardContent() {
   const WEBINAR_PIPELINE_ID = '90b09d81-8282-4503-a869-1787baf8f736';
   const isWebinarPipeline = activePipelineId === WEBINAR_PIPELINE_ID;
 
-  const salesRepId = viewFilter === "mine" ? teamMember?.id : undefined;
+  // Deep-link vindo da tela Vendedores: /comercial/pipeline?rep=<id> mostra só os leads daquele vendedor
+  const repParam = searchParams.get("rep") || undefined;
+  const { data: allTeamMembers } = useTeamMembers();
+  const repName = repParam ? allTeamMembers?.find((m) => m.id === repParam)?.name : undefined;
+
+  // rep da URL tem prioridade sobre o toggle Todos/Meus
+  const salesRepId = repParam ?? (viewFilter === "mine" ? teamMember?.id : undefined);
+
+  // ao filtrar por vendedor, superadmin vê os leads dele em TODAS as lojas
+  // (não prende no tab de loja atual, que poderia esconder os leads do vendedor)
+  const effectivePipelineId = repParam && isSuperAdmin ? undefined : activePipelineId;
 
   const {
     data: pipeline,
     isLoading,
     refetch,
-  } = usePipelineDeals(salesRepId, activePipelineId, isWebinarPipeline ? webinarFilter : undefined);
+  } = usePipelineDeals(salesRepId, effectivePipelineId, isWebinarPipeline ? webinarFilter : undefined);
 
   const moveDealMutation = useMoveDealStage();
   const transferMutation = useTransferDealPipeline();
@@ -736,29 +747,42 @@ export function PipelineBoardContent() {
               )}
             </div>
 
-            {/* View toggle: Todos / Meus */}
-            <div className="flex items-center rounded-md border border-slate-200 overflow-hidden h-9">
-              <button
-                onClick={() => setViewFilter("all")}
-                className={`px-3 h-full text-sm font-medium transition-colors ${
-                  viewFilter === "all"
-                    ? "bg-slate-900 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => setViewFilter("mine")}
-                className={`px-3 h-full text-sm font-medium transition-colors border-l border-slate-200 ${
-                  viewFilter === "mine"
-                    ? "bg-slate-900 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                Meus
-              </button>
-            </div>
+            {/* Filtro por vendedor (deep-link da tela Vendedores) OU toggle Todos/Meus */}
+            {repParam ? (
+              <div className="flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 h-9 pl-3 pr-1.5 text-sm font-medium text-primary">
+                <span className="max-w-[160px] truncate">Leads de {repName || "vendedor"}</span>
+                <button
+                  onClick={() => navigate("/comercial/pipeline")}
+                  className="rounded p-1 hover:bg-primary/20"
+                  title="Ver todos os leads"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center rounded-md border border-slate-200 overflow-hidden h-9">
+                <button
+                  onClick={() => setViewFilter("all")}
+                  className={`px-3 h-full text-sm font-medium transition-colors ${
+                    viewFilter === "all"
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setViewFilter("mine")}
+                  className={`px-3 h-full text-sm font-medium transition-colors border-l border-slate-200 ${
+                    viewFilter === "mine"
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Meus
+                </button>
+              </div>
+            )}
 
             {/* Sort */}
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as PipelineSortBy)}>
