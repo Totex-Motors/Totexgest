@@ -372,7 +372,35 @@ conclui (R$ 50). Não crie caminho que mova o card na mão pra essas etapas — 
 `trg_intermediation_deal_gate` bloqueia e é proposital. Toda automação que mova o
 funil usa `capture_move_stage`/`intermediation_move_deal` (bypass do gate).
 
+## TABELA FIPE — porta única `fipe-lookup` (regra de ouro)
+
+Toda consulta FIPE (CRM, site, agente, demais projetos) passa por **UMA** edge function
+`fipe-lookup` no Supabase do Totexgest. **Nenhum projeto/front chama fipeX ou a FIPE
+direto.** A função devolve SEMPRE o mesmo formato com o campo `fonte` indicando a origem,
+e valores SEMPRE em centavos (formatar em reais só na tela). Sempre mostrar o mês de
+referência junto do preço ("FIPE jul/2026").
+
+Cascata de fontes (nesta ordem): **cache → API fipeX → dataset importado → FIPE oficial**.
+- `fipe_price_cache` (global): resposta do fipeX do mês corrente.
+- API fipeX: `https://api.fipex.com.br/v1` (sem auth; 10 req/s por IP; docs em `/v1/docs`).
+- `fipe_prices` (global): dataset fipeX (merged) importado como reserva (release mensal em
+  github.com/fipex-labs/dataset). Chave natural: codigo_fipe + ano_modelo + zero_km + sigla_combustivel.
+- FIPE oficial (`veiculos.fipe.org.br`): **só emergência**, volume baixo, registrar em log.
+
+Tabelas: `fipe_prices`, `fipe_price_cache`, `fipe_model_match` (de-para texto da placa →
+modelo FIPE, confirmado por pessoa — global, cresce com o uso) são **globais**; só
+`vehicle_fipe_snapshot` (preço da negociação) é por tenant + RLS e é **append-only**
+(nunca sobrescreve). Contrato de entrada/saída e o fluxo placa→FIPE: ver
+`docs/FIPE.md`. Fluxo: `vehicle-lookup` (placa) → `fipe-lookup` (de-para/confirmação de
+modelo → preço + análise) → snapshot na captação.
+
+Regras: vocabulário de compra/venda/intermediação/captação/estoque (nada de "deal");
+consulta FIPE **não envia mensagem pra ninguém**; margem e preço de compra só para
+admin/comercial/closer (promotora vê preço e faixa). Automação sem usuário logado usa
+`x-fipe-token` (config `FIPE_LOOKUP_TOKEN`), nunca a service role no n8n.
+
 ## Armadilhas conhecidas (NAO caia nelas)
+- ❌ Chamar fipeX/FIPE direto do front ou de outro projeto → SEMPRE via `fipe-lookup`
 - ❌ Enviar mensagem privada por instância UAZAPI (ver regra inviolável acima)
 
 - ❌ Criar instancia UAZAPI ANTES dos webhooks estarem no ar → msgs nao chegam

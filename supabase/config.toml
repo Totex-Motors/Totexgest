@@ -144,6 +144,11 @@ verify_jwt = false
 [functions.telegram-webhook]
 verify_jwt = false
 
+# FIPE — porta única. Faz a própria auth (JWT do usuário OU x-fipe-token p/ n8n/cron),
+# então precisa de verify_jwt=false pra aceitar o caminho de token de serviço.
+[functions.fipe-lookup]
+verify_jwt = false
+
 # ============================================================
 # DEFAULT (verify_jwt = true) — não listadas aqui
 # ============================================================
