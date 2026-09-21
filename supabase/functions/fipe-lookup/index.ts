@@ -15,13 +15,18 @@ import { getIntegrationKey } from "../_shared/config.ts";
 // A função devolve SEMPRE o mesmo formato, com `fonte` indicando a origem.
 // Valores SEMPRE em centavos (inteiro). Nunca chama fipeX/FIPE do front.
 //
-// Autenticação: JWT do usuário (verify_jwt=true). Para automações sem usuário
-// (n8n/cron) aceita o header `x-fipe-token` == config FIPE_LOOKUP_TOKEN + tenant_id no body.
+// Autenticação: JWT do usuário (front) OU header `x-fipe-token` == FIPE_LOOKUP_TOKEN
+// (config) + tenant_id no body (n8n/cron).
 //
-// ATENÇÃO: os nomes de campos da API fipeX abaixo seguem o documento; confirmar
-// contra https://api.fipex.com.br/v1/docs e ajustar o mapeamento se necessário.
-// Enquanto o dataset não é importado e/ou o fipeX não é validado ao vivo, a função
-// responde pelas fontes que tiver (cache/dataset) e sinaliza `fonte`/`ok`.
+// Schema fipeX validado em 2026-09-21:
+//   GET /search?q=<texto>          → data[{price_id, fipe_code, make_name, model_name,
+//                                    model_slug, fuel_acronym (com espaços!), model_year,
+//                                    latest_market_price_cents, type_name, ref_month, ref_year}]
+//   GET /prices/expanded?model_slug=&year=&fuel_acronym=
+//                                  → { price{price_cents, reference{month,year}, fipe_code, make/model/fuel},
+//                                      analytics{annual_depreciation_rate, value_retention_pct, anomaly_status, ...},
+//                                      history[{year, month, market_price_cents}] }
+//   fuel acronyms (minúsculos): g Gasolina · a Álcool · d Diesel · f Flex · l Elétrico · n GNV · h Híbrido
 // ============================================================================
 
 const corsHeaders = {
@@ -40,23 +45,27 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-const onlyDigits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+const trim = (s: unknown) => String(s ?? "").trim();
 
-// combustível (texto PuxaPlaca ou sigla) → sigla de 1 letra da FIPE
-function siglaCombustivel(v: unknown): string | null {
+// combustível (texto PuxaPlaca ou sigla) → acrônimo minúsculo da FIPE/fipeX
+function fuelAcronym(v: unknown): string | null {
   const s = norm(v);
   if (!s) return null;
-  if (["g", "gasolina"].includes(s)) return "G";
-  if (["a", "alcool", "álcool", "etanol"].includes(s)) return "A";
-  if (["d", "diesel"].includes(s)) return "D";
-  if (["f", "flex", "gasolina e alcool", "gasolina e álcool", "flexível", "flexivel"].includes(s)) return "F";
-  return s[0].toUpperCase();
+  if (["g", "gasolina"].includes(s)) return "g";
+  if (["a", "alcool", "álcool", "etanol"].includes(s)) return "a";
+  if (["d", "diesel"].includes(s)) return "d";
+  if (["l", "eletrico", "elétrico"].includes(s)) return "l";
+  if (["n", "gnv", "gas natural", "gás natural"].includes(s)) return "n";
+  if (["h", "hibrido", "híbrido"].includes(s)) return "h";
+  if (["f", "flex", "gasolina e alcool", "gasolina e álcool", "flexível", "flexivel"].includes(s)) return "f";
+  return s[0];
 }
 
 function nowRef(): { ano: number; mes: number } {
   const d = new Date();
   return { ano: d.getUTCFullYear(), mes: d.getUTCMonth() + 1 };
 }
+const mmRef = (ano: number | null, mes: number | null) => (ano && mes ? `${ano}-${String(mes).padStart(2, "0")}` : null);
 
 interface Member { id: string; tenant_id: string; role: string; name: string | null }
 async function resolveMember(sb: SupabaseClient, user: { id: string; email?: string }): Promise<Member | null> {
@@ -69,22 +78,21 @@ async function resolveMember(sb: SupabaseClient, user: { id: string; email?: str
   return (data as Member | null) ?? null;
 }
 
-async function fetchJSON(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data: any }> {
+async function fetchJSON(url: string): Promise<any> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal });
-    const data = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, data };
+    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: ctrl.signal });
+    const data = await res.json().catch(() => null);
+    return res.ok ? data : null;
   } catch (err) {
-    console.warn(LOG, "fetch falhou", url, err instanceof Error ? err.message : String(err));
-    return { ok: false, status: 0, data: null };
+    console.warn(LOG, "fetch falhou", url.replace(/\?.*/, ""), err instanceof Error ? err.message : String(err));
+    return null;
   } finally {
     clearTimeout(t);
   }
 }
 
-// Resposta padrão da função (mesmo formato venha de onde vier).
 function emptyResult() {
   return {
     ok: true,
@@ -93,53 +101,58 @@ function emptyResult() {
     candidatos: [] as any[],
     veiculo: null as any,
     preco: null as any,
-    analise: { depreciacao_anual_pct: null, retencao_valor_pct: null, anomalia: null } as any,
+    analise: { depreciacao_anual_pct: null, retencao_valor_pct: null, anomalia: null, ranking: null, volatilidade_pct: null } as any,
     historico: [] as any[],
   };
 }
 
-// ─── fipeX: preço por model_slug + fuel_acronym + year ───────────────────────
-async function fipexPrice(model_slug: string, fuel_acronym: string, year: number) {
-  const zero = year === 0;
-  const qs = new URLSearchParams({ model_slug, fuel_acronym, year: String(year) });
-  const r = await fetchJSON(`${FIPEX_BASE}/prices?${qs.toString()}`, { headers: { Accept: "application/json" } });
-  if (!r.ok || !r.data) return null;
-  // a doc indica: /v1/prices devolve o registro; /v1/prices/{id} traz analytics+histórico
-  const rec = Array.isArray(r.data?.data) ? r.data.data[0] : (r.data?.data ?? r.data);
-  if (!rec) return null;
-  const id = rec.id ?? rec.price_id;
-  let full = rec;
-  if (id) {
-    const e = await fetchJSON(`${FIPEX_BASE}/prices/${encodeURIComponent(id)}`, { headers: { Accept: "application/json" } });
-    if (e.ok && e.data) full = e.data?.data ?? e.data;
-  }
-  return { rec, full, zero };
+// ─── fipeX: busca por texto → candidatos com preço/identidade ────────────────
+async function fipexSearch(q: string, limit = 8): Promise<any[]> {
+  const d = await fetchJSON(`${FIPEX_BASE}/search?${new URLSearchParams({ q, limit: String(limit) })}`);
+  const arr = Array.isArray(d?.data) ? d.data : [];
+  return arr.map((r: any) => ({
+    price_id: r.price_id,
+    codigo_fipe: r.fipe_code ?? null,
+    nome_marca: r.make_name ?? null,
+    nome_modelo: r.model_name ?? null,
+    model_slug: r.model_slug ?? null,
+    fuel_acronym: trim(r.fuel_acronym) || null,
+    ano_modelo: r.model_year ?? null,
+    valor_centavos: r.latest_market_price_cents ?? null,
+    tipo_veiculo: r.type_name ?? null,
+    ref_ano: r.ref_year ?? null,
+    ref_mes: r.ref_month ?? null,
+  }));
 }
 
-// mapeia o registro do fipeX para o nosso contrato (defensivo com nomes de campos)
-function mapFipex(full: any) {
-  const val = full?.value_cents ?? full?.valor_centavos ?? (full?.value != null ? Math.round(Number(full.value) * 100) : null);
-  const an = full?.analytics ?? full?.analise ?? {};
-  const hist = (full?.history ?? full?.historico ?? []).map((h: any) => ({
-    ano: h.year ?? h.ano ?? null,
-    mes: h.month ?? h.mes ?? null,
-    valor_centavos: h.value_cents ?? h.valor_centavos ?? (h.value != null ? Math.round(Number(h.value) * 100) : null),
-  }));
+// ─── fipeX: detalhe completo (preço + analytics + histórico) ─────────────────
+async function fipexExpanded(model_slug: string, year: number, fuel_acronym: string): Promise<any | null> {
+  const qs = new URLSearchParams({ model_slug, year: String(year), fuel_acronym });
+  const d = await fetchJSON(`${FIPEX_BASE}/prices/expanded?${qs}`);
+  const p = d?.price;
+  if (!p) return null;
+  const an = d?.analytics ?? {};
+  const pct = (x: unknown) => (x == null ? null : Math.round(Number(x) * 1000) / 10); // fração → % com 1 casa
   return {
-    codigo_fipe: full?.fipe_code ?? full?.codigo_fipe ?? null,
-    nome_marca: full?.make ?? full?.marca ?? full?.brand ?? null,
-    nome_modelo: full?.model ?? full?.modelo ?? null,
-    ano_modelo: full?.year ?? full?.ano_modelo ?? null,
-    sigla_combustivel: full?.fuel_acronym ?? full?.sigla_combustivel ?? null,
-    valor_centavos: val,
-    ref_ano: full?.reference_year ?? full?.ano_referencia ?? null,
-    ref_mes: full?.reference_month ?? full?.mes_referencia ?? null,
-    analise: {
-      depreciacao_anual_pct: an?.annual_depreciation_pct ?? an?.depreciacao_anual_pct ?? null,
-      retencao_valor_pct: an?.value_retention_pct ?? an?.retencao_valor_pct ?? null,
-      anomalia: an?.anomaly ?? an?.anomalia ?? null,
+    veiculo: {
+      marca: p.make?.name ?? null,
+      modelo: p.model?.name ?? null,
+      ano_modelo: p.model_year ?? year,
+      combustivel: p.fuel?.name ?? null,
+      codigo_fipe: p.fipe_code ?? null,
     },
-    historico: hist,
+    preco: { valor_centavos: p.price_cents ?? null, mes_referencia: mmRef(p.reference?.year, p.reference?.month) },
+    analise: {
+      depreciacao_anual_pct: pct(an.annual_depreciation_rate),
+      retencao_valor_pct: pct(an.value_retention_pct),
+      anomalia: an.anomaly_status ?? null,
+      ranking: an.price_rank != null ? { posicao: an.price_rank, total: an.price_rank_total_in_category } : null,
+      volatilidade_pct: pct(an.price_volatility),
+    },
+    historico: (d?.history ?? []).map((h: any) => ({ ano: h.year, mes: h.month, valor_centavos: h.market_price_cents })),
+    codigo_fipe: p.fipe_code ?? null,
+    model_slug: p.model?.slug ?? model_slug,
+    fuel_acronym: p.fuel?.acronym ?? fuel_acronym,
   };
 }
 
@@ -152,7 +165,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
   try {
-    // ── Autenticação: JWT do usuário OU token de serviço (n8n/cron) ──
+    // ── Auth: JWT do usuário OU token de serviço ──
     let tenantId: string | null = null;
     let memberId: string | null = null;
     const svcToken = req.headers.get("x-fipe-token");
@@ -168,151 +181,132 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "Sessão inválida ou expirada" }, 401);
       const member = await resolveMember(sb, user);
       if (!member) return json({ error: "Membro do time não encontrado" }, 403);
-      tenantId = member.tenant_id;
-      memberId = member.id;
+      tenantId = member.tenant_id; memberId = member.id;
     }
 
     // ── Identidade do veículo ──
     let codigo_fipe = (typeof body.codigo_fipe === "string" && body.codigo_fipe) || null;
-    let model_slug = (typeof body.modelo_slug === "string" && body.modelo_slug) || null;
-    let fuel_acronym = (typeof body.fuel_acronym === "string" && body.fuel_acronym) || null;
+    let model_slug = (typeof body.modelo_slug === "string" && body.modelo_slug) || (typeof body.model_slug === "string" && body.model_slug) || null;
     const ano = Number.isFinite(Number(body.ano)) ? Number(body.ano) : null;
     const zero_km = body.zero_km === true || ano === 0;
-    let sigla = siglaCombustivel(body.combustivel);
-    let marcaTxt: string | null = null, modeloTxt: string | null = null;
+    let fa = fuelAcronym(body.fuel_acronym ?? body.combustivel);
+    let marcaTxt: string | null = typeof body.marca === "string" ? body.marca : null;
+    let modeloTxt: string | null = typeof body.modelo === "string" ? body.modelo : null;
     const leadId = (typeof body.lead_id === "string" && body.lead_id) || null;
     const sellerVehicleId = (typeof body.seller_vehicle_id === "string" && body.seller_vehicle_id) || null;
-    const placa = onlyDigits(body.placa) ? String(body.placa).toUpperCase().replace(/[^A-Z0-9]/g, "") : null;
+    const placa = String(body.placa ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
 
-    // Se veio só a placa, tenta puxar marca/modelo do cache de placa do tenant.
-    if (!codigo_fipe && !model_slug && placa && tenantId) {
+    // Só a placa → puxa marca/modelo/combustível do cache de placa do tenant
+    if (!codigo_fipe && !model_slug && !modeloTxt && placa && tenantId) {
       const { data: pl } = await sb.from("vehicle_plate_lookups").select("vehicle").eq("tenant_id", tenantId).eq("plate", placa).maybeSingle();
       const v = (pl?.vehicle ?? {}) as Record<string, unknown>;
-      marcaTxt = v.marca ? String(v.marca) : null;
-      modeloTxt = v.modelo ? String(v.modelo) : null;
-      if (!sigla) sigla = siglaCombustivel(v.combustivel);
+      marcaTxt = marcaTxt || (v.marca ? String(v.marca) : null);
+      modeloTxt = modeloTxt || (v.modelo ? String(v.modelo) : null);
+      if (!fa) fa = fuelAcronym(v.combustivel);
     }
-    if (typeof body.marca === "string") marcaTxt = body.marca;
-    if (typeof body.modelo === "string") modeloTxt = body.modelo;
 
     const result = emptyResult();
     const ref = nowRef();
 
-    // ── Resolver modelo FIPE (codigo_fipe/model_slug) ──
-    // 1) confirmação explícita vinda da tela → grava de-para e segue
+    // ── Confirmação explícita da tela → grava de-para e segue ──
     const confirmar = (body.confirmar && typeof body.confirmar === "object") ? body.confirmar as Record<string, unknown> : null;
     if (confirmar) {
       codigo_fipe = (confirmar.codigo_fipe as string) || codigo_fipe;
       model_slug = (confirmar.model_slug as string) || model_slug;
-      fuel_acronym = (confirmar.fuel_acronym as string) || fuel_acronym;
+      fa = fuelAcronym(confirmar.fuel_acronym) || fa;
       if (marcaTxt && modeloTxt) {
         await sb.from("fipe_model_match").upsert({
-          marca_texto: norm(marcaTxt), modelo_texto: norm(modeloTxt), ano_modelo: ano, sigla_combustivel: sigla,
-          codigo_fipe, model_slug, fuel_acronym, nome_modelo_fipe: (confirmar.nome_modelo as string) ?? null,
+          marca_texto: norm(marcaTxt), modelo_texto: norm(modeloTxt), ano_modelo: ano, sigla_combustivel: fa,
+          codigo_fipe, model_slug, fuel_acronym: fa, nome_modelo_fipe: (confirmar.nome_modelo as string) ?? null,
           confirmado_por: memberId, tenant_id: tenantId, last_used_at: new Date().toISOString(),
         }, { onConflict: "marca_texto,modelo_texto,ano_modelo,sigla_combustivel" });
       }
     }
 
-    // 2) de-para já conhecido
-    if (!codigo_fipe && !model_slug && marcaTxt && modeloTxt) {
+    // ── De-para já conhecido ──
+    if (!model_slug && marcaTxt && modeloTxt) {
       const { data: mm } = await sb.from("fipe_model_match").select("*")
         .eq("marca_texto", norm(marcaTxt)).eq("modelo_texto", norm(modeloTxt))
-        .eq("ano_modelo", ano ?? -1).eq("sigla_combustivel", sigla ?? "").maybeSingle();
+        .eq("ano_modelo", ano ?? -1).eq("sigla_combustivel", fa ?? "").maybeSingle();
       if (mm) {
-        codigo_fipe = mm.codigo_fipe; model_slug = mm.model_slug; fuel_acronym = mm.fuel_acronym;
+        model_slug = mm.model_slug; codigo_fipe = codigo_fipe || mm.codigo_fipe; fa = fa || mm.fuel_acronym;
         await sb.from("fipe_model_match").update({ hits: (mm.hits ?? 1) + 1, last_used_at: new Date().toISOString() }).eq("id", mm.id);
       }
     }
 
-    // 3) ainda sem modelo → autocomplete no fipeX (candidatos p/ a pessoa confirmar)
-    if (!codigo_fipe && !model_slug && (modeloTxt || marcaTxt)) {
-      const q = [marcaTxt, modeloTxt].filter(Boolean).join(" ");
-      const r = await fetchJSON(`${FIPEX_BASE}/search/labels?${new URLSearchParams({ q, limit: "5" }).toString()}`, { headers: { Accept: "application/json" } });
-      const list = Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []);
-      result.precisa_confirmar_modelo = true;
-      result.candidatos = list.slice(0, 5).map((c: any) => ({
-        label: c.label ?? c.name ?? c.model ?? null,
-        model_slug: c.model_slug ?? c.slug ?? null,
-        codigo_fipe: c.fipe_code ?? c.codigo_fipe ?? null,
-        fuel_acronym: c.fuel_acronym ?? null,
-        nome_modelo: c.model ?? c.modelo ?? null,
-        nome_marca: c.make ?? c.marca ?? null,
-      }));
-      return json(result); // sem preço até confirmar o modelo
-    }
-
-    fuel_acronym = fuel_acronym || sigla; // fallback
-
-    // ── Cascata de PREÇO ──
-    const idKey = { codigo_fipe, ano_modelo: ano, zero_km, fuel_acronym };
-
-    // (a) cache do mês corrente
-    if (codigo_fipe) {
-      const { data: c } = await sb.from("fipe_price_cache").select("*")
-        .eq("codigo_fipe", codigo_fipe).eq("ano_modelo", ano ?? -1).eq("zero_km", zero_km)
-        .eq("fuel_acronym", fuel_acronym ?? "").order("fetched_at", { ascending: false }).limit(1).maybeSingle();
-      if (c) {
-        const sameMonth = c.ano_referencia === ref.ano && c.mes_referencia === ref.mes;
-        const fetchedMonth = c.fetched_at && new Date(c.fetched_at).getUTCFullYear() === ref.ano && (new Date(c.fetched_at).getUTCMonth() + 1) === ref.mes;
-        if (sameMonth || fetchedMonth) {
-          const p = c.payload as any;
-          result.fonte = "cache";
-          result.veiculo = p.veiculo ?? null;
-          result.preco = p.preco ?? null;
-          result.analise = p.analise ?? result.analise;
-          result.historico = p.historico ?? [];
-          await sb.from("fipe_price_cache").update({ hits: (c.hits ?? 1) + 1 }).eq("id", c.id);
-        }
+    // ── Sem modelo resolvido → busca no fipeX; 1 match usa, vários = confirmar ──
+    if (!model_slug && (modeloTxt || marcaTxt)) {
+      const cand = await fipexSearch([marcaTxt, modeloTxt].filter(Boolean).join(" "));
+      let filtered = cand;
+      if (ano != null) filtered = filtered.filter((c) => c.ano_modelo === ano);
+      if (fa) filtered = filtered.filter((c) => !c.fuel_acronym || c.fuel_acronym === fa);
+      const uniqSlugs = [...new Set(filtered.map((c) => c.model_slug))];
+      if (uniqSlugs.length === 1 && filtered[0]) {
+        model_slug = filtered[0].model_slug; codigo_fipe = codigo_fipe || filtered[0].codigo_fipe; fa = fa || filtered[0].fuel_acronym;
+      } else {
+        // devolve candidatos (sem preço final até confirmar)
+        const seen = new Set<string>();
+        result.precisa_confirmar_modelo = true;
+        result.candidatos = (filtered.length ? filtered : cand).filter((c) => {
+          const k = `${c.model_slug}|${c.ano_modelo}`; if (seen.has(k)) return false; seen.add(k); return true;
+        }).slice(0, 6).map((c) => ({
+          label: `${c.nome_marca} ${c.nome_modelo} ${c.ano_modelo}`.trim(),
+          model_slug: c.model_slug, codigo_fipe: c.codigo_fipe, fuel_acronym: c.fuel_acronym,
+          nome_marca: c.nome_marca, nome_modelo: c.nome_modelo, ano_modelo: c.ano_modelo, valor_centavos: c.valor_centavos,
+        }));
+        return json(result);
       }
     }
 
-    // (b) API fipeX
-    if (!result.fonte && model_slug && fuel_acronym && ano != null) {
-      const fx = await fipexPrice(model_slug, fuel_acronym, ano);
-      if (fx) {
-        const m = mapFipex(fx.full);
-        codigo_fipe = codigo_fipe || m.codigo_fipe;
-        result.fonte = "fipex";
-        result.veiculo = { marca: m.nome_marca, modelo: m.nome_modelo, ano_modelo: m.ano_modelo, combustivel: fuel_acronym, codigo_fipe };
-        result.preco = { valor_centavos: m.valor_centavos, mes_referencia: m.ref_ano && m.ref_mes ? `${m.ref_ano}-${String(m.ref_mes).padStart(2, "0")}` : null };
-        result.analise = m.analise;
-        result.historico = m.historico;
-        // grava no cache global
-        if (codigo_fipe && m.valor_centavos != null) {
-          await sb.from("fipe_price_cache").upsert({
-            codigo_fipe, model_slug, fuel_acronym, ano_modelo: ano, zero_km,
-            ano_referencia: m.ref_ano ?? ref.ano, mes_referencia: m.ref_mes ?? ref.mes,
-            payload: { veiculo: result.veiculo, preco: result.preco, analise: result.analise, historico: result.historico },
-            fonte: "fipex", fetched_at: new Date().toISOString(),
-          }, { onConflict: "codigo_fipe,ano_modelo,zero_km,fuel_acronym,ano_referencia,mes_referencia" });
-        }
+    const anoFinal = ano ?? (result.candidatos[0]?.ano_modelo ?? null);
+
+    // ── (a) cache do mês corrente ──
+    if (model_slug || codigo_fipe) {
+      const q = sb.from("fipe_price_cache").select("*").order("fetched_at", { ascending: false }).limit(1);
+      if (model_slug) q.eq("model_slug", model_slug); else q.eq("codigo_fipe", codigo_fipe!);
+      if (anoFinal != null) q.eq("ano_modelo", anoFinal);
+      if (fa) q.eq("fuel_acronym", fa);
+      const { data: c } = await q.maybeSingle();
+      if (c && c.ano_referencia === ref.ano && c.mes_referencia === ref.mes) {
+        const p = c.payload as any;
+        result.fonte = "cache"; result.veiculo = p.veiculo; result.preco = p.preco; result.analise = p.analise ?? result.analise; result.historico = p.historico ?? [];
+        codigo_fipe = codigo_fipe || p.veiculo?.codigo_fipe;
+        await sb.from("fipe_price_cache").update({ hits: (c.hits ?? 1) + 1 }).eq("id", c.id);
       }
     }
 
-    // (c) dataset importado (fipe_prices) — release mais recente
+    // ── (b) API fipeX (expanded) ──
+    if (!result.fonte && model_slug && fa && anoFinal != null) {
+      const ex = await fipexExpanded(model_slug, anoFinal, fa);
+      if (ex && ex.preco?.valor_centavos != null) {
+        result.fonte = "fipex"; result.veiculo = ex.veiculo; result.preco = ex.preco; result.analise = ex.analise; result.historico = ex.historico;
+        codigo_fipe = codigo_fipe || ex.codigo_fipe;
+        const [ry, rm] = String(ex.preco.mes_referencia ?? "").split("-");
+        await sb.from("fipe_price_cache").upsert({
+          codigo_fipe, model_slug, fuel_acronym: fa, ano_modelo: anoFinal, zero_km,
+          ano_referencia: ry ? Number(ry) : ref.ano, mes_referencia: rm ? Number(rm) : ref.mes,
+          payload: { veiculo: ex.veiculo, preco: ex.preco, analise: ex.analise, historico: ex.historico },
+          fonte: "fipex", fetched_at: new Date().toISOString(),
+        }, { onConflict: "codigo_fipe,ano_modelo,zero_km,fuel_acronym,ano_referencia,mes_referencia" });
+      }
+    }
+
+    // ── (c) dataset importado (fipe_prices) ──
     if (!result.fonte && codigo_fipe) {
       const { data: rows } = await sb.from("fipe_prices").select("*")
-        .eq("codigo_fipe", codigo_fipe).eq("ano_modelo", ano ?? -1).eq("zero_km", zero_km)
+        .eq("codigo_fipe", codigo_fipe).eq("ano_modelo", anoFinal ?? -1).eq("zero_km", zero_km)
         .order("ano_referencia", { ascending: false }).order("mes_referencia", { ascending: false }).limit(24);
-      const arr = (rows ?? []).filter((r: any) => !sigla || r.sigla_combustivel === sigla);
+      const arr = (rows ?? []).filter((r: any) => !fa || r.sigla_combustivel === fa);
       if (arr.length) {
-        const latest = arr[0] as any;
+        const l = arr[0] as any;
         result.fonte = "dataset";
-        result.veiculo = { marca: latest.nome_marca, modelo: latest.nome_modelo, ano_modelo: latest.ano_modelo, combustivel: latest.sigla_combustivel, codigo_fipe };
-        result.preco = { valor_centavos: latest.valor_centavos, mes_referencia: `${latest.ano_referencia}-${String(latest.mes_referencia).padStart(2, "0")}` };
+        result.veiculo = { marca: l.nome_marca, modelo: l.nome_modelo, ano_modelo: l.ano_modelo, combustivel: l.nome_combustivel, codigo_fipe };
+        result.preco = { valor_centavos: l.valor_centavos, mes_referencia: mmRef(l.ano_referencia, l.mes_referencia) };
         result.historico = arr.map((r: any) => ({ ano: r.ano_referencia, mes: r.mes_referencia, valor_centavos: r.valor_centavos }));
       }
     }
 
-    // (d) FIPE oficial (emergência) — só quando temos o código FIPE
-    if (!result.fonte && codigo_fipe) {
-      console.log(LOG, "fallback FIPE oficial p/", codigo_fipe);
-      // POST https://veiculos.fipe.org.br/api/veiculos/ConsultarValorComTodosParametros com tipoConsulta:"codigo"
-      // Implementação de emergência — habilitar com volume baixo (pode bloquear).
-      // Deixado como TODO controlado: retorna sem preço, registrando a tentativa.
-      result.fonte = null;
-    }
+    // ── (d) FIPE oficial (emergência) — TODO habilitar com volume baixo ──
 
     // ── Snapshot na captação (append-only) ──
     if (result.preco?.valor_centavos != null && (leadId || sellerVehicleId) && tenantId) {
@@ -320,14 +314,14 @@ Deno.serve(async (req) => {
       await sb.from("vehicle_fipe_snapshot").insert({
         tenant_id: tenantId, lead_id: leadId, seller_vehicle_id: sellerVehicleId,
         codigo_fipe, model_slug, nome_marca: result.veiculo?.marca ?? marcaTxt, nome_modelo: result.veiculo?.modelo ?? modeloTxt,
-        ano_modelo: ano, sigla_combustivel: sigla, valor_centavos: result.preco.valor_centavos,
+        ano_modelo: anoFinal, sigla_combustivel: fa, valor_centavos: result.preco.valor_centavos,
         ano_referencia: ry ? Number(ry) : ref.ano, mes_referencia: rm ? Number(rm) : ref.mes,
         fonte: result.fonte, analise: result.analise, historico: result.historico, created_by: memberId,
       });
     }
 
     if (!result.fonte && !result.precisa_confirmar_modelo) {
-      return json({ ...result, ok: false, motivo: "Sem preço FIPE: dataset não importado e/ou fipeX indisponível. Confirme o modelo ou tente mais tarde." });
+      return json({ ...result, ok: false, motivo: "Não encontrei o preço FIPE. Confirme marca/modelo/ano ou tente de novo." });
     }
     return json(result);
   } catch (err) {
