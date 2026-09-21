@@ -811,7 +811,19 @@ export function TeamTab() {
       return;
     }
     try {
-      const existing = getMemberWavoip(wavoipModalMember.id);
+      // Checa direto no banco (não confia só na lista em cache) pra NUNCA duplicar o device.
+      let existing = getMemberWavoip(wavoipModalMember.id);
+      if (!existing) {
+        const { data: dbDev } = await supabase
+          .from("wavoip_devices")
+          .select("id")
+          .eq("team_member_id", wavoipModalMember.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (dbDev) existing = dbDev as unknown as WavoipDevice;
+      }
       if (existing) {
         await updateWavoip.mutateAsync({
           deviceId: existing.id,
