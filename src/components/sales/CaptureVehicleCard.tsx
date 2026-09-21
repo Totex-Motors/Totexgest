@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FipePanel } from "@/components/sales/FipePanel";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -391,6 +392,25 @@ export function CaptureVehicleCard({ leadId }: Props) {
                   {status === "vendido" ? (fmtBRL(vehicle.sold_price) ?? "—") : fmtDate(vehicle.captured_at)}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* FIPE do carro captado: preço + análise + selo de oportunidade; grava snapshot */}
+          {vehicle && (
+            <div className="mt-2">
+              <FipePanel
+                marca={(vehicle as any).brand}
+                modelo={(vehicle as any).model || (vehicle as any).description}
+                ano={vehicle.year_model}
+                combustivel={(vehicle as any).fuel}
+                placa={(vehicle as any).plate}
+                leadId={leadId}
+                sellerVehicleId={(vehicle as any).id}
+                askPriceCents={(() => {
+                  const p = (vehicle as any).listing_price ?? vehicle.expected_price;
+                  return p != null ? Math.round(Number(p) * 100) : null;
+                })()}
+              />
             </div>
           )}
 

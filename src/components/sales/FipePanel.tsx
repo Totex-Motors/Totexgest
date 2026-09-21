@@ -17,10 +17,12 @@ interface Props {
   sellerVehicleId?: string;
   /** Consulta automática quando tiver marca+modelo+ano. Default true. */
   auto?: boolean;
+  /** Preço pedido/anúncio (em centavos) — mostra o selo de oportunidade "abaixo/acima da FIPE". */
+  askPriceCents?: number | null;
   className?: string;
 }
 
-export function FipePanel({ marca, modelo, ano, combustivel, placa, leadId, sellerVehicleId, auto = true, className }: Props) {
+export function FipePanel({ marca, modelo, ano, combustivel, placa, leadId, sellerVehicleId, auto = true, askPriceCents, className }: Props) {
   const fipe = useFipeLookup();
   const [result, setResult] = useState<Awaited<ReturnType<typeof fipe.mutateAsync>> | null>(null);
   const lastKey = useRef<string>("");
@@ -130,6 +132,23 @@ export function FipePanel({ marca, modelo, ano, combustivel, placa, leadId, sell
                 </div>
               )}
             </div>
+
+            {/* Selo de oportunidade: preço pedido vs FIPE */}
+            {askPriceCents != null && askPriceCents > 0 && result.preco.valor_centavos > 0 && (() => {
+              const fipe = result.preco.valor_centavos as number;
+              const diffPct = Math.round(((askPriceCents - fipe) / fipe) * 100);
+              const abaixo = diffPct < 0;
+              return (
+                <div className={cn("flex items-center justify-between rounded-md px-2 py-1.5 text-xs", abaixo ? "bg-emerald-100 dark:bg-emerald-950/40" : diffPct === 0 ? "bg-slate-100 dark:bg-slate-800/40" : "bg-amber-100 dark:bg-amber-950/40")}>
+                  <span className="font-medium">
+                    {abaixo ? "🔥 Abaixo da FIPE" : diffPct === 0 ? "Na FIPE" : "Acima da FIPE"}
+                  </span>
+                  <span className={cn("font-bold", abaixo ? "text-emerald-700 dark:text-emerald-300" : diffPct === 0 ? "text-slate-600" : "text-amber-700 dark:text-amber-300")}>
+                    {diffPct > 0 ? "+" : ""}{diffPct}% ({formatBRLCents(askPriceCents)})
+                  </span>
+                </div>
+              );
+            })()}
 
             {a?.anomalia && a.anomalia !== "normal" && (
               <p className="text-[11px] text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Preço fora do padrão da categoria ({a.anomalia}).</p>
