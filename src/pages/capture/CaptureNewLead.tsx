@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useCheckLeadDuplicate } from "@/hooks/useMergeLeads";
 import { useCreateCaptureLead } from "@/hooks/useCaptureLeads";
 import { useVehicleLookup } from "@/hooks/useVehicleLookup";
+import { FipePanel } from "@/components/sales/FipePanel";
 import {
   computeCaptureScore,
   temperatureFromScore,
@@ -355,6 +356,8 @@ export default function CaptureNewLead() {
               </select>
             </div>
           </div>
+          {/* Preço FIPE do carro (informativo na captação) */}
+          <FipePanel marca={d.brand} modelo={d.model || d.vehicle} ano={d.year} combustivel={d.fuel} placa={d.plate} />
           <div className="space-y-1.5">
             <Label>O que a pessoa quer?</Label>
             <Segment
