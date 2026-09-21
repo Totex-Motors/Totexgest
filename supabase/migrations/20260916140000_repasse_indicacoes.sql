@@ -81,13 +81,14 @@ ALTER TABLE public.capture_events ADD CONSTRAINT capture_events_event_type_check
   CHECK (event_type IN ('lead_submitted','lead_validated','lead_invalidated','vehicle_captured','vehicle_sold','monthly_champion',
                         'reward_approved','reward_paid','reward_cancelled','intermediation_formalized','intermediation_completed','repasse_converted'));
 
--- NOTA: a comissão padrão de R$ 150 por indicação convertida foi REMOVIDA do template
--- (decisão do dono). O repasse continua sendo rastreado/convertido, mas sem comissão
--- automática. Para reativar, crie uma regra 'repasse_converted' em capture_reward_rules
--- (ou em Configurações > Prêmios da captação). Removido também via migration
--- 20260922200000_repasse_sem_comissao.sql para bases que já tinham aplicado este seed.
---
--- (INSERT/UPDATE da regra R$150 removidos de propósito.)
+-- regra padrão R$ 150 por indicação convertida, por tenant que já tem regras de intermediação.
+-- include_folgista=true: repasse é indicação (não depende de escala/plantão da promotora).
+INSERT INTO public.capture_reward_rules (tenant_id, name, event_type, reward_type, amount_cents, cap_per_period, include_folgista, active)
+SELECT DISTINCT tenant_id, 'Indicação de repasse convertida (comprou)', 'repasse_converted', 'cash', 15000, 999, true, true
+FROM public.capture_reward_rules r
+WHERE NOT EXISTS (SELECT 1 FROM capture_reward_rules x WHERE x.tenant_id = r.tenant_id AND x.event_type = 'repasse_converted');
+-- se a regra já existia sem o flag, corrige
+UPDATE public.capture_reward_rules SET include_folgista = true WHERE event_type = 'repasse_converted' AND include_folgista IS DISTINCT FROM true;
 
 -- ─── 4) Registrar o toque/confirmação (chamado pela edge fn pública) ─────────
 -- Resolve a promotora pelo código, grava a indicação (dedupe), devolve o link do grupo.
