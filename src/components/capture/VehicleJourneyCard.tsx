@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Car, Check, ExternalLink, UserCheck, Sparkles, FileSignature, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { FipeOpportunityBadge } from "@/components/sales/FipeOpportunityBadge";
 import {
   CONTRACT_STATUS_LABEL,
   INTERMEDIATION_STATUS_LABEL,
@@ -55,11 +56,16 @@ export function VehicleJourneyCard({
   vehicle: v,
   compact,
   showRewards = true,
+  fipeCents,
+  fipeRef,
 }: {
   vehicle: MyCaptureVehicle;
   compact?: boolean;
   /** false = esconde o bloco "Seu prêmio" (folgista) */
   showRewards?: boolean;
+  /** Preço FIPE (centavos) do último snapshot — mostra o selo de oportunidade. */
+  fipeCents?: number | null;
+  fipeRef?: string | null;
 }) {
   const reduce = useReducedMotion();
   const [openStep, setOpenStep] = useState<number | null>(null);
@@ -258,6 +264,11 @@ export function VehicleJourneyCard({
             <ExternalLink className="h-3.5 w-3.5" />
             Ver anúncio no site da Totex{v.listing_price ? ` · ${v.listing_price.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}` : ""}
           </a>
+        )}
+
+        {/* Selo de oportunidade: preço do anúncio vs FIPE (do último snapshot) */}
+        {!compact && fipeCents != null && v.listing_price != null && (
+          <FipeOpportunityBadge fipeCents={fipeCents} askCents={Math.round(Number(v.listing_price) * 100)} mesReferencia={fipeRef} />
         )}
 
         {/* Especialista */}
