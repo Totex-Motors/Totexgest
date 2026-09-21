@@ -130,12 +130,11 @@ export const useWavoipDevices = () => {
   return useQuery({
     queryKey: ["wavoip-devices"],
     queryFn: async () => {
+      // Sem embed de team_members: o painel casa por team_member_id (o nome vem de
+      // useAllTeamMembers). Embed desnecessário só arrisca 400 e some com a lista.
       const { data, error } = await supabase
         .from("wavoip_devices")
-        .select(`
-          *,
-          team_member:team_members(id, name, email)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
