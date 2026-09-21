@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyCaptureVehicles } from "@/hooks/useCaptureRewards";
 import { useCaptureHomeStats } from "@/hooks/useCaptureLeads";
+import { useFipeSnapshots } from "@/hooks/useFipeLookup";
 import { VehicleJourneyCard } from "@/components/capture/VehicleJourneyCard";
 import type { CaptureVehicleStatus } from "@/types/capture";
 
@@ -33,6 +34,7 @@ export default function CaptureMyVehicles() {
     if (filter === "ativos") return ACTIVE.includes(v.status);
     return true;
   });
+  const fipeSnaps = useFipeSnapshots(list.map((v) => v.vehicle_id));
   const vendidos = all.filter((v) => v.status === "vendido").length;
   // captados_mes = contratos assinados no mês (desde a migration de intermediação, 'captado' = contrato assinado)
   const formalizadas = stats.data?.captados_mes ?? 0;
@@ -94,9 +96,14 @@ export default function CaptureMyVehicles() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {list.map((v) => (
-            <li key={v.vehicle_id}><VehicleJourneyCard vehicle={v} showRewards={showRewards} /></li>
-          ))}
+          {list.map((v) => {
+            const snap = fipeSnaps.data?.get(v.vehicle_id);
+            return (
+              <li key={v.vehicle_id}>
+                <VehicleJourneyCard vehicle={v} showRewards={showRewards} fipeCents={snap?.valor_centavos ?? null} fipeRef={snap?.mes_referencia ?? null} />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

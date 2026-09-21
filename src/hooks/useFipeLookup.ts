@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
 // Consulta FIPE pela porta única `fipe-lookup` (cache → fipeX → dataset → FIPE oficial).
@@ -71,6 +71,35 @@ export function useFipeLookup() {
         throw new Error((data as { error: string }).error);
       }
       return data as FipeResult;
+    },
+  });
+}
+
+export interface FipeSnapshot { valor_centavos: number | null; mes_referencia: string | null }
+
+/** Último snapshot FIPE por veículo (seller_vehicle_id) — leitura, sem chamada ao vivo. */
+export function useFipeSnapshots(vehicleIds: (string | null | undefined)[]) {
+  const ids = [...new Set(vehicleIds.filter((x): x is string => !!x))].sort();
+  return useQuery({
+    queryKey: ["fipe-snapshots", ids],
+    enabled: ids.length > 0,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vehicle_fipe_snapshot")
+        .select("seller_vehicle_id, valor_centavos, ano_referencia, mes_referencia, created_at")
+        .in("seller_vehicle_id", ids)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const map = new Map<string, FipeSnapshot>();
+      for (const r of (data ?? []) as any[]) {
+        if (!r.seller_vehicle_id || map.has(r.seller_vehicle_id)) continue; // 1ª = mais recente
+        map.set(r.seller_vehicle_id, {
+          valor_centavos: r.valor_centavos,
+          mes_referencia: r.ano_referencia && r.mes_referencia ? `${r.ano_referencia}-${String(r.mes_referencia).padStart(2, "0")}` : null,
+        });
+      }
+      return map;
     },
   });
 }
