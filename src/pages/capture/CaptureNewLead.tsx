@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronLeft, Loader2, AlertTriangle, Flame } from "lucide-react";
+import { Check, ChevronLeft, Loader2, AlertTriangle, Flame, ShoppingCart, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,11 @@ import { cn } from "@/lib/utils";
 import { useCheckLeadDuplicate } from "@/hooks/useMergeLeads";
 import { useCreateCaptureLead } from "@/hooks/useCaptureLeads";
 import { useVehicleLookup } from "@/hooks/useVehicleLookup";
+import { useMarketplaceStores } from "@/hooks/useMarketplaceStores";
+import { useCaptarComprador, type CaptarCompradorResult } from "@/hooks/useCaptarComprador";
 import { FipePanel } from "@/components/sales/FipePanel";
+import { StockPicker } from "@/components/capture/StockPicker";
+import type { Vehicle } from "@/hooks/useVehicles";
 import {
   computeCaptureScore,
   temperatureFromScore,
@@ -114,6 +118,14 @@ export default function CaptureNewLead() {
   const [plateInfo, setPlateInfo] = useState<string | null>(null);
   const [plateDupe, setPlateDupe] = useState<string | null>(null);
 
+  // ── Fluxo "Comprar": promotora capta um comprador olhando um carro do totem ──
+  const isComprar = d.intent === "comprar";
+  const stores = useMarketplaceStores();
+  const captar = useCaptarComprador();
+  const [buyStoreId, setBuyStoreId] = useState("");
+  const [buyVehicle, setBuyVehicle] = useState<Vehicle | null>(null);
+  const [doneComprar, setDoneComprar] = useState<CaptarCompradorResult | null>(null);
+
   const buscarPlaca = async () => {
     const placa = maskPlateBR(d.plate);
     if (!PLATE_RE.test(placa)) { toast.error("Placa incompleta. Use o padrão ABC1D23."); return; }
@@ -168,14 +180,20 @@ export default function CaptureNewLead() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.phone]);
 
+  const nameOk = d.name.trim().length >= 2;
+  const phoneOk = d.phone.replace(/\D/g, "").length >= 10;
+
   const step1Ok =
-    d.name.trim().length >= 2 &&
-    d.phone.replace(/\D/g, "").length >= 10 &&
+    nameOk &&
+    phoneOk &&
     d.vehicle.trim().length >= 2 &&
     /^\d{4}$/.test(d.year) &&
     !!d.intent &&
     !!d.prazo &&
     typeof d.autoriza_contato === "boolean";
+
+  // Comprar precisa só de: nome, WhatsApp, loja e o carro escolhido do estoque.
+  const comprarOk = nameOk && phoneOk && !!buyStoreId && !!buyVehicle;
 
   const previewScore = useMemo(
     () => computeCaptureScore(
@@ -219,12 +237,77 @@ export default function CaptureNewLead() {
     }
   };
 
+  const submitComprar = async () => {
+    if (!comprarOk || !buyVehicle) return;
+    const store = stores.data?.find((s) => s.tenant_id === buyStoreId);
+    try {
+      const res = await captar.mutateAsync({
+        name: d.name.trim(),
+        phone: d.phone,
+        target_tenant_id: buyStoreId,
+        vehicle_id: buyVehicle.id,
+        loja: store?.name ?? buyVehicle.dealership ?? null,
+        marketplace_url: buyVehicle.url,
+        titulo: [buyVehicle.title, buyVehicle.year].filter(Boolean).join(" ") || null,
+        preco: buyVehicle.price != null ? String(buyVehicle.price) : null,
+      });
+      setDoneComprar(res);
+      try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui enviar. Tenta de novo.");
+    }
+  };
+
   const reset = () => {
     setD(EMPTY);
     setDone(null);
+    setDoneComprar(null);
     setDupe(null);
+    setBuyStoreId("");
+    setBuyVehicle(null);
     setStep(1);
   };
+
+  // ── Tela de sucesso: Comprar (comprador enviado pro atendimento da loja) ──
+  if (doneComprar) {
+    const store = stores.data?.find((s) => s.tenant_id === buyStoreId);
+    return (
+      <div className="space-y-5 pt-6 text-center">
+        <div className="mx-auto h-16 w-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+          <ShoppingCart className="h-9 w-9" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold">Comprador enviado!</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {doneComprar.distribuido
+              ? <>Mandei pro atendimento da <strong>{store?.name ?? "loja"}</strong>. O agente já assume a conversa no WhatsApp.</>
+              : <>Lead salvo. O time da <strong>{store?.name ?? "loja"}</strong> vai assumir o atendimento.</>}
+          </p>
+        </div>
+        {buyVehicle && (
+          <Card className="text-left bg-muted/40">
+            <CardContent className="pt-4 pb-4 flex items-center gap-3">
+              {buyVehicle.images[0]
+                ? <img src={buyVehicle.images[0]} alt="" className="h-12 w-16 rounded object-cover shrink-0" />
+                : <div className="h-12 w-16 rounded bg-muted shrink-0" />}
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{buyVehicle.title}{buyVehicle.year ? ` ${buyVehicle.year}` : ""}</p>
+                <p className="text-xs text-muted-foreground">Carro de interesse</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        <p className="text-sm text-emerald-700 flex items-center justify-center gap-1">
+          <Check className="h-4 w-4" /> Indicação no seu nome
+        </p>
+        <div className="grid gap-2">
+          <Button size="lg" className="h-12 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={reset}>
+            + Atender outro cliente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Tela de sucesso ──
   if (done) {
@@ -298,12 +381,16 @@ export default function CaptureNewLead() {
           <button type="button" onClick={() => setStep(1)} className="text-muted-foreground -ml-1 p-1"><ChevronLeft className="h-5 w-5" /></button>
         ) : null}
         <div className="flex-1">
-          <h1 className="text-lg font-bold leading-tight">{step === 1 ? "Capte uma oportunidade" : "Mais 10 segundos?"}</h1>
+          <h1 className="text-lg font-bold leading-tight">
+            {isComprar ? "Atender um comprador" : step === 1 ? "Capte uma oportunidade" : "Mais 10 segundos?"}
+          </h1>
           <p className="text-xs text-muted-foreground">
-            {step === 1 ? "7 campos. Dá pra fazer de pé." : "Esses dados deixam o lead quente pro especialista. Pode pular."}
+            {isComprar
+              ? "Escolha a loja e o carro que a pessoa viu no totem."
+              : step === 1 ? "7 campos. Dá pra fazer de pé." : "Esses dados deixam o lead quente pro especialista. Pode pular."}
           </p>
         </div>
-        <span className="text-xs text-muted-foreground tabular-nums">{step}/2</span>
+        {!isComprar && <span className="text-xs text-muted-foreground tabular-nums">{step}/2</span>}
       </div>
 
       {step === 1 ? (
@@ -323,71 +410,86 @@ export default function CaptureNewLead() {
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="plate">Placa do carro <span className="text-muted-foreground font-normal">(opcional — preenche o resto sozinho)</span></Label>
-            <div className="flex gap-2">
-              <Input id="plate" className="h-12 text-base uppercase font-mono tracking-wider" placeholder="ABC1D23" maxLength={7}
-                value={d.plate} inputMode="text"
-                onChange={(e) => { setD({ ...d, plate: maskPlateBR(e.target.value) }); setPlateInfo(null); setPlateDupe(null); }}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarPlaca(); } }} autoComplete="off" />
-              <Button type="button" variant="secondary" className="h-12 shrink-0"
-                disabled={plateLookup.isPending || !PLATE_RE.test(maskPlateBR(d.plate))} onClick={buscarPlaca}>
-                {plateLookup.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
-              </Button>
-            </div>
-            {plateInfo && <p className="text-[11px] text-emerald-700 flex items-center gap-1"><Check className="h-3.5 w-3.5" /> {plateInfo}</p>}
-            {plateDupe && <p className="text-[11px] text-amber-700 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> {plateDupe}</p>}
-          </div>
-          <div className="grid grid-cols-[1fr_110px] gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="vehicle">Qual o carro?</Label>
-              <Input id="vehicle" className="h-12 text-base" placeholder="Ex.: Civic EXL" value={d.vehicle}
-                onChange={(e) => setD({ ...d, vehicle: e.target.value })} autoComplete="off" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="year">Ano</Label>
-              <select
-                id="year"
-                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base"
-                value={d.year}
-                onChange={(e) => setD({ ...d, year: e.target.value })}
-              >
-                <option value="">—</option>
-                {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-          </div>
-          {/* Preço FIPE do carro (informativo na captação) */}
-          <FipePanel marca={d.brand} modelo={d.model || d.vehicle} ano={d.year} combustivel={d.fuel} placa={d.plate} />
-          <div className="space-y-1.5">
             <Label>O que a pessoa quer?</Label>
             <Segment
               value={d.intent}
+              cols={2}
               options={(Object.keys(INTENT_LABEL) as CaptureIntent[]).map((k) => ({ value: k, label: INTENT_LABEL[k] }))}
               onChange={(intent) => setD({ ...d, intent })}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label>Quando pensa em vender?</Label>
-            <Segment
-              value={d.prazo}
-              cols={2}
-              options={(Object.keys(PRAZO_LABEL) as CapturePrazo[]).map((k) => ({ value: k, label: PRAZO_LABEL[k] }))}
-              onChange={(prazo) => setD({ ...d, prazo })}
+
+          {isComprar ? (
+            <StockPicker
+              stores={stores.data ?? []}
+              storesLoading={stores.isLoading}
+              storeId={buyStoreId}
+              onStoreChange={setBuyStoreId}
+              selected={buyVehicle}
+              onSelect={setBuyVehicle}
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Autoriza nosso especialista a chamar no WhatsApp?</Label>
-            <Segment
-              value={d.autoriza_contato === true ? "sim" : d.autoriza_contato === false ? "nao" : undefined}
-              options={[{ value: "sim", label: "Sim, autoriza" }, { value: "nao", label: "Não" }]}
-              onChange={(v) => setD({ ...d, autoriza_contato: v === "sim" })}
-            />
-            <p className={cn("text-[11px]", d.autoriza_contato === false ? "text-amber-700" : "text-muted-foreground")}>
-              {d.autoriza_contato === false
-                ? "Sem autorização o lead é salvo, mas não conta na meta semanal."
-                : "Consentimento pra contato (LGPD). Sem ele o lead não conta na meta."}
-            </p>
-          </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="plate">Placa do carro <span className="text-muted-foreground font-normal">(opcional — preenche o resto sozinho)</span></Label>
+                <div className="flex gap-2">
+                  <Input id="plate" className="h-12 text-base uppercase font-mono tracking-wider" placeholder="ABC1D23" maxLength={7}
+                    value={d.plate} inputMode="text"
+                    onChange={(e) => { setD({ ...d, plate: maskPlateBR(e.target.value) }); setPlateInfo(null); setPlateDupe(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarPlaca(); } }} autoComplete="off" />
+                  <Button type="button" variant="secondary" className="h-12 shrink-0"
+                    disabled={plateLookup.isPending || !PLATE_RE.test(maskPlateBR(d.plate))} onClick={buscarPlaca}>
+                    {plateLookup.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
+                  </Button>
+                </div>
+                {plateInfo && <p className="text-[11px] text-emerald-700 flex items-center gap-1"><Check className="h-3.5 w-3.5" /> {plateInfo}</p>}
+                {plateDupe && <p className="text-[11px] text-amber-700 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> {plateDupe}</p>}
+              </div>
+              <div className="grid grid-cols-[1fr_110px] gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vehicle">Qual o carro?</Label>
+                  <Input id="vehicle" className="h-12 text-base" placeholder="Ex.: Civic EXL" value={d.vehicle}
+                    onChange={(e) => setD({ ...d, vehicle: e.target.value })} autoComplete="off" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="year">Ano</Label>
+                  <select
+                    id="year"
+                    className="h-12 w-full rounded-md border border-input bg-background px-3 text-base"
+                    value={d.year}
+                    onChange={(e) => setD({ ...d, year: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              </div>
+              {/* Preço FIPE do carro (informativo na captação) */}
+              <FipePanel marca={d.brand} modelo={d.model || d.vehicle} ano={d.year} combustivel={d.fuel} placa={d.plate} />
+              <div className="space-y-1.5">
+                <Label>Quando pensa em vender?</Label>
+                <Segment
+                  value={d.prazo}
+                  cols={2}
+                  options={(Object.keys(PRAZO_LABEL) as CapturePrazo[]).map((k) => ({ value: k, label: PRAZO_LABEL[k] }))}
+                  onChange={(prazo) => setD({ ...d, prazo })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Autoriza nosso especialista a chamar no WhatsApp?</Label>
+                <Segment
+                  value={d.autoriza_contato === true ? "sim" : d.autoriza_contato === false ? "nao" : undefined}
+                  options={[{ value: "sim", label: "Sim, autoriza" }, { value: "nao", label: "Não" }]}
+                  onChange={(v) => setD({ ...d, autoriza_contato: v === "sim" })}
+                />
+                <p className={cn("text-[11px]", d.autoriza_contato === false ? "text-amber-700" : "text-muted-foreground")}>
+                  {d.autoriza_contato === false
+                    ? "Sem autorização o lead é salvo, mas não conta na meta semanal."
+                    : "Consentimento pra contato (LGPD). Sem ele o lead não conta na meta."}
+                </p>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -430,7 +532,12 @@ export default function CaptureNewLead() {
       {/* Rodapé de ação — fixo acima do bottom-nav */}
       <div className="fixed bottom-16 inset-x-0 z-20 pointer-events-none">
         <div className="mx-auto max-w-[520px] px-4 pb-3 pt-6 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-auto">
-          {step === 1 ? (
+          {isComprar ? (
+            <Button size="lg" className="w-full h-12 text-base bg-emerald-600 hover:bg-emerald-700 text-white" disabled={!comprarOk || captar.isPending} onClick={submitComprar}>
+              {captar.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Enviar pro atendimento
+            </Button>
+          ) : step === 1 ? (
             <Button size="lg" className="w-full h-12 text-base bg-emerald-600 hover:bg-emerald-700 text-white" disabled={!step1Ok || create.isPending} onClick={() => setStep(2)}>
               Continuar
             </Button>

@@ -3,7 +3,7 @@
  * intermediar o carro. Espelham a migration 20260910100000_captacao_promotoras_base.
  */
 
-export type CaptureIntent = "vender" | "trocar" | "entender";
+export type CaptureIntent = "vender" | "trocar" | "entender" | "comprar";
 export type CapturePrazo = "agora" | "ate_30_dias" | "ate_90_dias" | "sem_prazo";
 export type CaptureAceitaAvaliacao = "sim" | "talvez" | "nao";
 export type CaptureTemperatura = "quente" | "morno" | "frio";
@@ -13,6 +13,7 @@ export const INTENT_LABEL: Record<CaptureIntent, string> = {
   vender: "Vender",
   trocar: "Trocar",
   entender: "Quer entender",
+  comprar: "Comprar",
 };
 
 export const PRAZO_LABEL: Record<CapturePrazo, string> = {

@@ -127,9 +127,21 @@ Deno.serve(async (req: Request) => {
     // pra mostrar SÓ o estoque dela — nunca o de lojas concorrentes da rede.
     // Fallback: tenant do chamador (usuário do CRM logado). Sem nenhum dos dois,
     // vê o estoque conjunto (browse humano genérico).
-    const lojaArg = String(args.loja ?? args.dealership ?? "").trim();
     let dealershipId: string | null = null;
-    if (lojaArg) {
+
+    // Prioridade: tenant_id explícito (fluxo "Comprar" da captação passa o id da
+    // loja escolhida). Determinístico — imune a nomes de loja duplicados na rede.
+    const tenantArg = String(args.tenant_id ?? args.tenantId ?? "").trim();
+    if (tenantArg) {
+      const { data: m } = await supabase
+        .from("marketplace_store_mappings")
+        .select("marketplace_store_id")
+        .eq("tenant_id", tenantArg).eq("active", true).maybeSingle();
+      dealershipId = m?.marketplace_store_id ?? null;
+    }
+
+    const lojaArg = String(args.loja ?? args.dealership ?? "").trim();
+    if (!dealershipId && lojaArg) {
       const alvo = norm(lojaArg);
       const { data: tRows } = await supabase.from("tenants").select("id, name");
       const t = (tRows || []).find((x: any) => {
