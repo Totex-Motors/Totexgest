@@ -40,7 +40,7 @@ export function StockPicker({
 }) {
   const [search, setSearch] = useState("");
   const store = useMemo(() => stores.find((s) => s.tenant_id === storeId) ?? null, [stores, storeId]);
-  const { data: vehicles = [], isFetching } = useVehicles({ search, loja: store?.name });
+  const { data: vehicles = [], isFetching } = useVehicles({ search, tenantId: store?.tenant_id, loja: store?.name });
 
   const searchLen = search.trim().length;
 
