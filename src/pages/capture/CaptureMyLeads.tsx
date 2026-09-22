@@ -8,10 +8,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskPhoneBR } from "@/lib/phone";
-import { useCaptureLeads, useCaptureLeadValidity, useMyBuyerLeads } from "@/hooks/useCaptureLeads";
+import { toast } from "sonner";
+import { useCaptureLeads, useCaptureLeadValidity, useMyBuyerLeads, useMarkBuyerSold } from "@/hooks/useCaptureLeads";
 import { useLeadCaptureEvents } from "@/hooks/useCaptureHandoff";
+import { useAuth } from "@/contexts/AuthContext";
 import { SellerQualificationCard } from "@/components/capture/SellerQualificationCard";
-import { TEMP_META, INTENT_LABEL, HANDOFF_STATUS_LABEL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
+import { TEMP_META, INTENT_LABEL, HANDOFF_STATUS_LABEL, formatBRL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
 
 /**
  * "Meus Leads" — só os leads que a promotora captou (RPC list_my_capture_leads +
@@ -95,15 +97,28 @@ function LeadTimeline({ leadId }: { leadId: string }) {
   );
 }
 
-/** Leads de COMPRA que a promotora enviou pro atendimento das lojas (fluxo "Comprar"). */
+/** Leads de COMPRA do fluxo "Comprar". Promotora vê os dela; gestor vê todos e
+ *  pode marcar a venda (lança R$150 pendentes pra promotora). */
 function BuyerLeadsSection() {
+  const { isAdmin } = useAuth();
   const buyers = useMyBuyerLeads();
+  const markSold = useMarkBuyerSold();
+
+  const marcarVendido = async (leadId: string) => {
+    try {
+      const id = await markSold.mutateAsync(leadId);
+      toast.success(id ? "Venda registrada — R$150 pendente de aprovação." : "Esse comprador já estava marcado como vendido.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui registrar a venda.");
+    }
+  };
+
   if (buyers.isLoading || buyers.isError || (buyers.data?.length ?? 0) === 0) return null;
   return (
     <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-1.5 text-sm font-semibold">
         <ShoppingCart className="h-4 w-4 text-emerald-600" />
-        Compradores que enviei
+        {isAdmin ? "Compradores (totem)" : "Compradores que enviei"}
         <span className="ml-auto text-xs font-normal text-muted-foreground">{buyers.data!.length}</span>
       </div>
       <ul className="space-y-1.5">
@@ -118,11 +133,16 @@ function BuyerLeadsSection() {
                 {b.loja && (
                   <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
                     <Store className="h-3 w-3" /> {b.loja}
+                    {isAdmin && b.promoter_name ? ` · ${b.promoter_name}` : ""}
                   </p>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
-                {b.distribuido ? (
+                {b.vendido ? (
+                  <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    🎉 Vendido · {formatBRL(b.comissao_cents)}
+                  </span>
+                ) : b.distribuido ? (
                   <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
                     <Send className="h-3 w-3" /> No atendimento
                   </span>
@@ -135,6 +155,13 @@ function BuyerLeadsSection() {
               </div>
             </div>
             {b.observacao && <p className="mt-1 text-[11px] text-muted-foreground italic truncate">“{b.observacao}”</p>}
+            {isAdmin && !b.vendido && (
+              <Button size="sm" variant="outline" className="mt-2 h-8 w-full text-xs"
+                disabled={markSold.isPending}
+                onClick={() => marcarVendido(b.lead_id)}>
+                Marcar vendido (R$150 pra promotora)
+              </Button>
+            )}
           </li>
         ))}
       </ul>
