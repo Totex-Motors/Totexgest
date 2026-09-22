@@ -7,6 +7,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GoalRing } from "@/components/capture/GoalRing";
+import { CopilotShareCard } from "@/components/capture/CopilotShareCard";
 import { useRepasseStats, useMyReferrals, useEnsureRepasseCode, type RepasseReferralStatus } from "@/hooks/useRepasse";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { cn } from "@/lib/utils";
@@ -144,6 +145,9 @@ export default function CaptureRepasse() {
           )}
         </CardContent>
       </Card>
+
+      {/* Presentear o Totexcar Co-pilot (isca pro dono do carro) — mesmo código da promotora */}
+      <CopilotShareCard code={code} />
 
       {/* Números */}
       <div className="grid grid-cols-3 gap-2">
