@@ -154,6 +154,10 @@ verify_jwt = false
 [functions.import-copilot-leads]
 verify_jwt = false
 
+# Repasse: reconcilia "entrou no grupo" puxando a lista de participantes (cron).
+[functions.repasse-reconcile-joins]
+verify_jwt = false
+
 # ============================================================
 # DEFAULT (verify_jwt = true) — não listadas aqui
 # ============================================================
