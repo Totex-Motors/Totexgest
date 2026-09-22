@@ -33,21 +33,24 @@ export type Vehicle = {
 
 export type VehicleFilters = {
   search?: string;
+  /** Nome da loja (tenant) pra escopar o estoque a uma loja só — usado na captação "Comprar". */
+  loja?: string;
 };
 
 const MIN_SEARCH_LEN = 2;
 
 export const useVehicles = (filters: VehicleFilters = {}) => {
   const search = (filters.search || "").trim();
+  const loja = (filters.loja || "").trim();
 
   return useQuery({
-    queryKey: ["vehicles-marketplace", search],
+    queryKey: ["vehicles-marketplace", search, loja],
     staleTime: 60_000,
     // API do marketplace exige termo de busca (500 sem `search`)
     enabled: search.length >= MIN_SEARCH_LEN,
     queryFn: async (): Promise<Vehicle[]> => {
       const { data, error } = await supabase.functions.invoke("consultar-estoque", {
-        body: { arguments: { busca: search, limite: 24, formato: "completo" } },
+        body: { arguments: { busca: search, limite: 24, formato: "completo", ...(loja ? { loja } : {}) } },
       });
       if (error) throw new Error(error.message || "Erro consultando estoque");
       const list: any[] = Array.isArray(data?.veiculos) ? data.veiculos : [];
