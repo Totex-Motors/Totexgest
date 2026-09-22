@@ -149,6 +149,11 @@ verify_jwt = false
 [functions.fipe-lookup]
 verify_jwt = false
 
+# Ponte Co-pilot → Totexgest: cron que importa leads de stand. Só funciona com a
+# COPILOT_SUPABASE_KEY configurada; sem ela é no-op.
+[functions.import-copilot-leads]
+verify_jwt = false
+
 # ============================================================
 # DEFAULT (verify_jwt = true) — não listadas aqui
 # ============================================================
