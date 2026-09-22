@@ -18,6 +18,7 @@ export type CaptarCompradorInput = {
   marketplace_url?: string | null;
   titulo?: string | null;
   preco?: string | null;
+  observacao?: string | null;
 };
 
 export type CaptarCompradorResult = {

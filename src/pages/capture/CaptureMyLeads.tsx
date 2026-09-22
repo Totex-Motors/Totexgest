@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Flame, Phone, Car, UserCheck, Clock, Check, AlertTriangle } from "lucide-react";
+import { Search, Flame, Phone, Car, UserCheck, Clock, Check, AlertTriangle, ShoppingCart, Store, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskPhoneBR } from "@/lib/phone";
-import { useCaptureLeads, useCaptureLeadValidity } from "@/hooks/useCaptureLeads";
+import { useCaptureLeads, useCaptureLeadValidity, useMyBuyerLeads } from "@/hooks/useCaptureLeads";
 import { useLeadCaptureEvents } from "@/hooks/useCaptureHandoff";
 import { SellerQualificationCard } from "@/components/capture/SellerQualificationCard";
 import { TEMP_META, INTENT_LABEL, HANDOFF_STATUS_LABEL, type CaptureLead, type CaptureTemperatura } from "@/types/capture";
@@ -95,6 +95,53 @@ function LeadTimeline({ leadId }: { leadId: string }) {
   );
 }
 
+/** Leads de COMPRA que a promotora enviou pro atendimento das lojas (fluxo "Comprar"). */
+function BuyerLeadsSection() {
+  const buyers = useMyBuyerLeads();
+  if (buyers.isLoading || buyers.isError || (buyers.data?.length ?? 0) === 0) return null;
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-sm font-semibold">
+        <ShoppingCart className="h-4 w-4 text-emerald-600" />
+        Compradores que enviei
+        <span className="ml-auto text-xs font-normal text-muted-foreground">{buyers.data!.length}</span>
+      </div>
+      <ul className="space-y-1.5">
+        {buyers.data!.map((b) => (
+          <li key={b.lead_id} className="rounded-lg border border-border/60 bg-card px-3 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{b.name}</p>
+                <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                  <Car className="h-3 w-3" /> {b.veiculo || "Carro não informado"}
+                </p>
+                {b.loja && (
+                  <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
+                    <Store className="h-3 w-3" /> {b.loja}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                {b.distribuido ? (
+                  <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    <Send className="h-3 w-3" /> No atendimento
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">Enviando…</span>
+                )}
+                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                  <Clock className="h-3 w-3" /> {relDate(b.created_at)}
+                </span>
+              </div>
+            </div>
+            {b.observacao && <p className="mt-1 text-[11px] text-muted-foreground italic truncate">“{b.observacao}”</p>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function CaptureMyLeads() {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -115,6 +162,8 @@ export default function CaptureMyLeads() {
   return (
     <div className="space-y-3">
       <h1 className="text-lg font-bold">Meus leads</h1>
+
+      <BuyerLeadsSection />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

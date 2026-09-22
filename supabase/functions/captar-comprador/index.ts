@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
       preco: (body.preco as string) || null,
       link: (body.marketplace_url as string) || null,
     };
+    const observacao = String(body.observacao ?? "").trim().slice(0, 500) || null;
 
     // 1. Cria o lead do comprador no tenant da promotora (master), com o carro de interesse.
     //    NÃO seta captured_by_member_id (isso é pra captação de consignação) — este é um
@@ -82,6 +83,7 @@ Deno.serve(async (req) => {
         promoter_id: member.id,
         promoter_code: member.repasse_code ?? null,
         promoter_name: member.name ?? null,
+        observacao,
       },
     }).select("id").single();
     if (lErr) return json({ error: `Falha ao criar o lead: ${lErr.message}` }, 500);
@@ -92,7 +94,11 @@ Deno.serve(async (req) => {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/distribuir-lead`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
-        body: JSON.stringify({ lead_id: lead.id, target_tenant_id: targetTenantId, motivo: "Comprador captado no totem" }),
+        body: JSON.stringify({
+          lead_id: lead.id,
+          target_tenant_id: targetTenantId,
+          motivo: observacao ? `Comprador captado no totem — ${observacao}` : "Comprador captado no totem",
+        }),
       });
       const r = await res.json().catch(() => ({}));
       distribuido = !!r?.success;

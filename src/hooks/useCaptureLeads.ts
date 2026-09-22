@@ -68,6 +68,30 @@ export function useCaptureLeadValidity(ids: string[]) {
   });
 }
 
+/** Lead de COMPRA que a promotora captou no totem (fluxo "Comprar"). */
+export interface BuyerLead {
+  lead_id: string;
+  name: string;
+  phone: string | null;
+  created_at: string;
+  veiculo: string | null;
+  loja: string | null;
+  distribuido: boolean;
+  observacao: string | null;
+}
+
+export function useMyBuyerLeads(memberId?: string | null) {
+  return useQuery({
+    queryKey: ["capture", "buyer-leads", memberId ?? ""],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_my_buyer_leads", { p_member_id: memberId ?? null });
+      if (error) throw error;
+      return (data ?? []) as BuyerLead[];
+    },
+    staleTime: 15_000,
+  });
+}
+
 export function useCaptureHomeStats(memberId?: string | null) {
   return useQuery({
     queryKey: captureKeys.stats(memberId),
