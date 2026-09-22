@@ -68,6 +68,52 @@ export function useCaptureLeadValidity(ids: string[]) {
   });
 }
 
+/** Lead de COMPRA que a promotora captou no totem (fluxo "Comprar"). */
+export interface BuyerLead {
+  lead_id: string;
+  name: string;
+  phone: string | null;
+  created_at: string;
+  veiculo: string | null;
+  loja: string | null;
+  distribuido: boolean;
+  observacao: string | null;
+  /** Nome da promotora que captou (relevante na visão do gestor). */
+  promoter_name: string | null;
+  /** Venda registrada (comissão lançada). */
+  vendido: boolean;
+  comissao_cents: number | null;
+  comissao_status: "pending" | "approved" | "paid" | "cancelled" | null;
+}
+
+export function useMyBuyerLeads(memberId?: string | null) {
+  return useQuery({
+    queryKey: ["capture", "buyer-leads", memberId ?? ""],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_my_buyer_leads", { p_member_id: memberId ?? null });
+      if (error) throw error;
+      return (data ?? []) as BuyerLead[];
+    },
+    staleTime: 15_000,
+  });
+}
+
+/** Gestor marca o comprador como vendido → lança R$150 pendentes pra promotora. */
+export function useMarkBuyerSold() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (leadId: string) => {
+      const { data, error } = await supabase.rpc("capture_mark_buyer_sold", { p_lead_id: leadId });
+      if (error) throw error;
+      return data as string | null; // ledger id, ou null se já lançado
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["capture", "buyer-leads"] });
+      qc.invalidateQueries({ queryKey: captureKeys.all });
+    },
+  });
+}
+
 export function useCaptureHomeStats(memberId?: string | null) {
   return useQuery({
     queryKey: captureKeys.stats(memberId),

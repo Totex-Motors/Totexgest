@@ -93,8 +93,8 @@ Deno.serve(async (req) => {
       const { data: inst } = await sb.from("whatsapp_instances")
         .select("id").eq("provider", "uazapi").eq("status", "connected").limit(1).maybeSingle();
       if (inst?.id) {
-        const carro = meta?.vehicle?.title || meta?.vehicle?.titulo || null;
-        const preco = meta?.vehicle?.price || meta?.vehicle?.preco || null;
+        const carro = meta?.vehicle?.title || meta?.vehicle?.titulo || meta?.veiculo_interesse?.titulo || null;
+        const preco = meta?.vehicle?.price || meta?.vehicle?.preco || meta?.veiculo_interesse?.preco || null;
         const texto =
           `🚗 *Novo lead pra vocês!*\n\n` +
           `👤 ${src.name || phone}\n` +

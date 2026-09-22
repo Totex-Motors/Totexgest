@@ -250,6 +250,7 @@ export default function CaptureNewLead() {
         marketplace_url: buyVehicle.url,
         titulo: [buyVehicle.title, buyVehicle.year].filter(Boolean).join(" ") || null,
         preco: buyVehicle.price != null ? String(buyVehicle.price) : null,
+        observacao: d.observacao.trim() || null,
       });
       setDoneComprar(res);
       try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -420,14 +421,26 @@ export default function CaptureNewLead() {
           </div>
 
           {isComprar ? (
-            <StockPicker
-              stores={stores.data ?? []}
-              storesLoading={stores.isLoading}
-              storeId={buyStoreId}
-              onStoreChange={setBuyStoreId}
-              selected={buyVehicle}
-              onSelect={setBuyVehicle}
-            />
+            <>
+              <StockPicker
+                stores={stores.data ?? []}
+                storesLoading={stores.isLoading}
+                storeId={buyStoreId}
+                onStoreChange={setBuyStoreId}
+                selected={buyVehicle}
+                onSelect={setBuyVehicle}
+              />
+              {buyVehicle && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="buy-obs">Observação pro atendimento <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <Textarea id="buy-obs" rows={2}
+                    placeholder="Ex.: gostou do carro, quer saber de financiamento e entrada"
+                    value={d.observacao}
+                    onChange={(e) => setD({ ...d, observacao: e.target.value })} />
+                  <p className="text-[11px] text-muted-foreground">Chega junto com o lead pro time da loja qualificar melhor.</p>
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="space-y-1.5">
