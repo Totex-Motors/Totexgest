@@ -117,6 +117,10 @@ Deno.serve(async (req) => {
 // ==================== HANDLE INCOMING MESSAGE ====================
 
 async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], instanceId: string | null, tenantId: string | null) {
+  // Tenant DONO da instância (número oficial). O agente central (agente-stand) é
+  // deployado aqui — o roteador V2 precisa deste tenant, NÃO do tenant do lead
+  // (que vira a loja após a distribuição). Sem isso, lead em loja = agente mudo.
+  const instanceTenantId = tenantId;
   const from = msg.from; // número do lead (ex: 5531999999999)
   const msgId = msg.id; // wamid.xxxxx
   const timestamp = msg.timestamp; // unix timestamp
@@ -297,7 +301,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
         text: content,
         messageId: msgId,
         leadId: finalLeadId,
-        tenantId,
+        tenantId: instanceTenantId, // agente roteia pelo tenant da INSTÂNCIA (central), não do lead/loja
       });
       if (handledByV2) return; // agente V2 respondeu — não cai no legado
     } catch (e) {
