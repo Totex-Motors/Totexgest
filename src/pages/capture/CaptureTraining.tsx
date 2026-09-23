@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Circle, MessageSquareQuote, ShieldQuestion, Handshake, GraduationCap, Bot } from "lucide-react";
+import { CheckCircle2, Circle, MessageSquareQuote, ShieldQuestion, Handshake, GraduationCap, Bot, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,12 @@ function loadDone(): string[] {
 }
 
 const TAG_ICON = { Abordagem: MessageSquareQuote, Objeção: ShieldQuestion, Fechamento: Handshake } as const;
+
+const VIDEO_LESSONS = [
+  { id: "video-abordagem", title: "Abordagem e o jeito Totex", minutes: "03:18", src: "/treinamento/parte-01.mp4", summary: "Acolhimento, escuta e argumentos assertivos." },
+  { id: "video-captacao", title: "Cadastro e acompanhamento", minutes: "03:58", src: "/treinamento/parte-02.mp4", summary: "Captar, autorização, qualificação e Meus Leads." },
+  { id: "video-ferramentas", title: "Ferramentas, prêmios e treino", minutes: "04:08", src: "/treinamento/parte-03.mp4", summary: "Comprar, repasse, Co-pilot, carteira e metas." },
+];
 
 export default function CaptureTraining() {
   const summary = useTrainingSummary();
@@ -103,6 +109,31 @@ export default function CaptureTraining() {
         </TabsContent>
 
         <TabsContent value="aulas" className="space-y-2 mt-3">
+          <Card className="border-emerald-500/30 bg-emerald-500/[0.04]">
+            <CardContent className="pt-3 pb-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <PlayCircle className="h-5 w-5 text-emerald-600" />
+                <div>
+                  <p className="text-sm font-semibold">Treinamento em vídeo Totex</p>
+                  <p className="text-xs text-muted-foreground">Assista às aulas com a voz do Eliel e veja o passo a passo das telas.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {VIDEO_LESSONS.map((video) => (
+                  <div key={video.id} className="rounded-lg border bg-background/70 p-2.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{video.title}</p>
+                        <p className="text-xs text-muted-foreground">{video.minutes} · {video.summary}</p>
+                      </div>
+                      <PlayCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                    </div>
+                    <video className="w-full rounded-md bg-black" controls preload="metadata" src={video.src} />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
           {MICRO_LESSONS.map((l) => {
             const isDone = done.includes(l.id);
             const isOpen = openLesson === l.id;
