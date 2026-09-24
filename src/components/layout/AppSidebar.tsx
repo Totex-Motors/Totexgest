@@ -35,6 +35,7 @@ import {
   HandCoins,
   Handshake,
   ShieldCheck,
+  GraduationCap,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -71,6 +72,8 @@ interface NavItem {
   superAdminOnly?: boolean;
   /** opcional: sÃ³ para gestÃ£o (admin/comercial) â€” ex.: comissÃµes por vendedor */
   adminOnly?: boolean;
+  /** opcional: restringe o item aos papÃ©is que podem abrir a rota comercial */
+  commercialOnly?: boolean;
 }
 
 interface NavSection {
@@ -105,6 +108,7 @@ const sections: NavSection[] = [
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
+      { title: "Treinamento", url: "/comercial/treinamento", icon: GraduationCap, commercialOnly: true },
       { title: "Vendedores", url: "/comercial/vendedores", icon: Users, adminOnly: true },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "IntermediaÃ§Ã£o", url: "/comercial/intermediacao", icon: Handshake, superAdminOnly: true },
@@ -187,7 +191,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const { unreadWhatsAppCount, markWhatsAppAsRead } = useNotificationContext();
-  const { teamMember, signOut, isSuperAdmin } = useAuth();
+  const { teamMember, signOut, isSuperAdmin, isComercial } = useAuth();
   const isAdmin = teamMember?.role === "admin" || teamMember?.role === "comercial" || teamMember?.team === "admin";
   const { isModuleEnabled } = useEnabledModules();
 
@@ -216,11 +220,11 @@ export function AppSidebar() {
       .map((s) => ({
         ...s,
         items: s.items.filter(
-          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin) && (!i.adminOnly || isAdmin),
+          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin) && (!i.adminOnly || isAdmin) && (!i.commercialOnly || isAdmin || isComercial || teamMember?.role === "closer" || teamMember?.role === "sdr"),
         ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [isModuleEnabled, isSuperAdmin, isAdmin]);
+  }, [isModuleEnabled, isSuperAdmin, isAdmin, isComercial, teamMember?.role]);
 
   const userInitials =
     teamMember?.name
@@ -379,147 +383,4 @@ export function AppSidebar() {
                       "text-sidebar-muted hover:text-red-400",
                       "hover:bg-red-500/10",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40",
-                      "opacity-60 group-hover/user:opacity-100"
-                    )}
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Sair</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-        </SidebarFooter>
-      </Sidebar>
-    </TooltipProvider>
-  );
-}
-
-/* ---------------------------------------------------------------
- * Section â€” grupo com label uppercase + lista de itens
- * --------------------------------------------------------------- */
-
-interface SectionProps {
-  section: NavSection;
-  isCollapsed: boolean;
-  isActive: (path: string) => boolean;
-  unreadCount: number;
-}
-
-function Section({ section, isCollapsed, isActive, unreadCount }: SectionProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      {!isCollapsed && (
-        <div className="flex items-center justify-between px-3 pb-1">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sidebar-muted/70">
-            {section.label}
-          </span>
-          {/* mini-indicador decorativo */}
-          <span className="h-px flex-1 ml-3 bg-gradient-to-r from-sidebar-border/50 to-transparent" />
-        </div>
-      )}
-
-      <nav aria-label={section.label} className="flex flex-col gap-0.5">
-        {section.items.map((item) => {
-          const active = isActive(item.url);
-          const showBadge = item.url === "/comercial/inbox" && unreadCount > 0;
-          return (
-            <NavItemLink
-              key={item.url}
-              item={item}
-              active={active}
-              isCollapsed={isCollapsed}
-              badge={showBadge ? unreadCount : undefined}
-            />
-          );
-        })}
-      </nav>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------
- * NavItemLink â€” link individual (com active indicator refinado)
- * --------------------------------------------------------------- */
-
-interface NavItemLinkProps {
-  item: NavItem;
-  active: boolean;
-  isCollapsed: boolean;
-  badge?: number;
-}
-
-function NavItemLink({ item, active, isCollapsed, badge }: NavItemLinkProps) {
-  const Icon = item.icon;
-
-  const content = (
-    <NavLink
-      to={item.url}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "group relative flex items-center gap-3 h-10 rounded-lg text-[13px] transition-all duration-200",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-0",
-        isCollapsed ? "px-0 justify-center w-10 mx-auto" : "px-3",
-        active
-          ? "text-sidebar-accent-foreground font-medium bg-sidebar-accent/80"
-          : "text-sidebar-foreground/80 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/40"
-      )}
-    >
-      {/* Indicador lateral (barra dourada Ã  esquerda) */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full transition-all duration-300",
-          active
-            ? "bg-sidebar-primary opacity-100 scale-y-100"
-            : "bg-sidebar-primary opacity-0 scale-y-50 group-hover:opacity-40 group-hover:scale-y-75"
-        )}
-      />
-
-      <Icon
-        className={cn(
-          "h-[18px] w-[18px] shrink-0 transition-colors",
-          active ? "text-sidebar-primary" : "text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground"
-        )}
-        strokeWidth={active ? 2.25 : 1.9}
-      />
-
-      {!isCollapsed && (
-        <>
-          <span className="flex-1 truncate">{item.title}</span>
-          {badge !== undefined && (
-            <Badge
-              className={cn(
-                "h-5 min-w-[20px] px-1.5 text-[10px] font-semibold tabular-nums",
-                "bg-sidebar-primary text-sidebar-primary-foreground border-0",
-                "shadow-[0_0_0_0_hsl(var(--sidebar-primary)/0.45)]",
-                "animate-[pulse-ring_2.5s_ease-out_infinite]"
-              )}
-            >
-              {badge > 99 ? "99+" : badge}
-            </Badge>
-          )}
-        </>
-      )}
-    </NavLink>
-  );
-
-  if (isCollapsed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{content}</TooltipTrigger>
-        <TooltipContent side="right" className="flex items-center gap-2">
-          <span>{item.title}</span>
-          {badge !== undefined && (
-            <Badge className="h-4 px-1 text-[10px] bg-sidebar-primary text-sidebar-primary-foreground border-0">
-              {badge > 99 ? "99+" : badge}
-            </Badge>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return content;
-}
-
+            #7¶‰žËkºwµçqÍÁ…¸±…ÍÍ9…µ”ô‰ µÁà™±•à´Äµ°´Ì‰œµÉ…‘¥•¹ÐµÑ¼µÈ™É½´µÍ¥‘•‰…Èµ‰½É‘•È¼ÔÀÑ¼µÑÉ…¹ÍÁ…É•¹Ðˆ€¼ø4(€€€€€€€€ð½‘¥Øø4(€€€€€€¥ô4(4(€€€€€€ñ¹…Ø…É¥„µ±…‰•°õíÍ•Ñ¥½¸¹±…‰•±ô±…ÍÍ9…µ”ô‰™±•à™±•àµ½°…À´À¸Ôˆø4(€€€€€€€íÍ•Ñ¥½¸¹¥Ñ•µÌ¹µ…À ¡¥Ñ•´¤€ôøì4(€€€€€€€€€½¹ÍÐ…Ñ¥Ù”€ô¥ÍÑ¥Ù”¡¥Ñ•´¹ÕÉ°¤ì4(€€€€€€€€€½¹ÍÐÍ¡½Ý	…‘”€ô¥Ñ•´¹ÕÉ°€ôôô€ˆ½½µ•É¥…°½¥¹‰½àˆ€˜˜Õ¹É•…‘½Õ¹Ð€ø€Àì4(€€€€€€€€€É•ÑÕÉ¸€ 4(€€€€€€€€€€€€ñ9…Ù%Ñ•µ1¥¹¬4(€€€€€€€€€€€€€­•äõí¥Ñ•´¹ÕÉ±ô4(€€€€€€€€€€€€€¥Ñ•´õí¥Ñ•µô4(€€€€€€€€€€€€€…Ñ¥Ù”õí…Ñ¥Ù•ô4(€€€€€€€€€€€€€¥Í½±±…ÁÍ•õí¥Í½±±…ÁÍ•‘ô4(€€€€€€€€€€€€€‰…‘”õíÍ¡½Ý	…‘”€üÕ¹É•…‘½Õ¹Ð€èÕ¹‘•™¥¹•‘ô4(€€€€€€€€€€€€¼ø4(€€€€€€€€€€¤ì4(€€€€€€€ô¥ô4(€€€€€€ð½¹…Øø4(€€€€ð½‘¥Øø4(€€¤ì4)ô4(4(¼¨€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´4(€¨9…Ù%Ñ•µ1¥¹¬ƒŠP±¥¹¬¥¹‘¥Ù¥‘Õ…°€¡½´…Ñ¥Ù”¥¹‘¥…Ñ½ÈÉ•™¥¹…‘¼¤4(€¨€´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´€¨¼4(4)¥¹Ñ•É™…”9…Ù%Ñ•µ1¥¹­AÉ½ÁÌì4(€¥Ñ•´è9…Ù%Ñ•´ì4(€…Ñ¥Ù”è‰½½±•…¸ì4(€¥Í½±±…ÁÍ•è‰½½±•…¸ì4(€‰…‘”üè¹Õµ‰•Èì4)ô4(4)™Õ¹Ñ¥½¸9…Ù%Ñ•µ1¥¹¬¡ì¥Ñ•´°…Ñ¥Ù”°¥Í½±±…ÁÍ•°‰…‘”ôè9…Ù%Ñ•µ1¥¹­AÉ½ÁÌ¤ì4(€½¹ÍÐ%½¸€ô¥Ñ•´¹¥½¸ì4(4(€½¹ÍÐ½¹Ñ•¹Ð€ô€ 4(€€€€ñ9…Ù1¥¹¬4(€€€€€Ñ¼õí¥Ñ•´¹ÕÉ±ô4(€€€€€…É¥„µÕÉÉ•¹Ðõí…Ñ¥Ù”€ü€‰Á…”ˆ€èÕ¹‘•™¥¹•‘ô4(€€€€€±…ÍÍ9…µ”õí¸ 4(€€€€€€€€‰É½ÕÀÉ•±…Ñ¥Ù”™±•à¥Ñ•µÌµ•¹Ñ•È…À´Ì ´ÄÀÉ½Õ¹‘•µ±œÑ•áÐµlÄÍÁátÑÉ…¹Í¥Ñ¥½¸µ…±°‘ÕÉ…Ñ¥½¸´ÈÀÀˆ°4(€€€€€€€€‰™½ÕÌµÙ¥Í¥‰±”é½ÕÑ±¥¹”µ¹½¹”™½ÕÌµÙ¥Í¥‰±”éÉ¥¹œ´È™½ÕÌµÙ¥Í¥‰±”éÉ¥¹œµÍ¥‘•‰…ÈµÉ¥¹œ™½ÕÌµÙ¥Í¥‰±”éÉ¥¹œµ½™™Í•Ð´Àˆ°4(€€€€€€€¥Í½±±…ÁÍ•€ü€‰Áà´À©ÕÍÑ¥™äµ•¹Ñ•ÈÜ´ÄÀµàµ…ÕÑ¼ˆ€è€‰Áà´Ìˆ°4(€€€€€€€…Ñ¥Ù”4(€€€€€€€€€€ü€‰Ñ•áÐµÍ¥‘•‰…Èµ…•¹Ðµ™½É•É½Õ¹™½¹Ðµµ•‘¥Õ´‰œµÍ¥‘•‰…Èµ…•¹Ð¼àÀˆ4(€€€€€€€€€€è€‰Ñ•áÐµÍ¥‘•‰…Èµ™½É•É½Õ¹¼àÀ¡½Ù•ÈéÑ•áÐµÍ¥‘•‰…Èµ…•¹Ðµ™½É•É½Õ¹¡½Ù•Èé‰œµÍ¥‘•‰…Èµ…•¹Ð¼ÐÀˆ4(€€€€€€¥ô4(€€€€ø4(€€€€€ì¼¨%¹‘¥…‘½È±…Ñ•É…°€¡‰…ÉÉ„‘½ÕÉ…‘„ƒ€•ÍÅÕ•É‘„¤€¨½ô4(€€€€€€ñÍÁ…¸4(€€€€€€€…É¥„µ¡¥‘‘•¸4(€€€€€€€±…ÍÍ9…µ”õí¸ 4(€€€€€€€€€€‰…‰Í½±ÕÑ”±•™Ð´ÀÑ½À´Ä¸Ô‰½ÑÑ½´´Ä¸ÔÜµlÍÁátÉ½Õ¹‘•µÈµ™Õ±°ÑÉ…¹Í¥Ñ¥½¸µ…±°‘ÕÉ…Ñ¥½¸´ÌÀÀˆ°4(€€€€€€€€€…Ñ¥Ù”4(€€€€€€€€€€€€ü€‰‰œµÍ¥‘•‰…ÈµÁÉ¥µ…Éä½Á…¥Ñä´ÄÀÀÍ…±”µä´ÄÀÀˆ4(€€€€€€€€€€€€è€‰‰œµÍ¥‘•‰…ÈµÁÉ¥µ…Éä½Á…¥Ñä´ÀÍ…±”µä´ÔÀÉ½ÕÀµ¡½Ù•Èé½Á…¥Ñä´ÐÀÉ½ÕÀµ¡½Ù•ÈéÍ…±”µä´ÜÔˆ4(€€€€€€€€¥ô4(€€€€€€¼ø4(4(€€€€€€ñ%½¸4(€€€€€€€±…ÍÍ9…µ”õí¸ 4(€€€€€€€€€€‰ µlÄáÁátÜµlÄáÁátÍ¡É¥¹¬´ÀÑÉ…¹Í¥Ñ¥½¸µ½±½ÉÌˆ°4(€€€€€€€€€…Ñ¥Ù”€ü€‰Ñ•áÐµÍ¥‘•‰…ÈµÁÉ¥µ…Éäˆ€è€‰Ñ•áÐµÍ¥‘•‰…Èµ™½É•É½Õ¹¼ØÀÉ½ÕÀµ¡½Ù•ÈéÑ•áÐµÍ¥‘•‰…Èµ…•¹Ðµ™½É•É½Õ¹ˆ4(€€€€€€€€¥ô4(€€€€€€€ÍÑÉ½­•]¥‘Ñ õí…Ñ¥Ù”€ü€È¸ÈÔ€è€Ä¸åô4(€€€€€€¼ø4(4(€€€€€ì…¥Í½±±…ÁÍ•€˜˜€ 4(€€€€€€€€ðø4(€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰™±•à´ÄÑÉÕ¹…Ñ”ˆùí¥Ñ•´¹Ñ¥Ñ±•ôð½ÍÁ…¸ø4(€€€€€€€€€í‰…‘”€„ôôÕ¹‘•™¥¹•€˜˜€ 4(€€€€€€€€€€€€ñ	…‘”4(€€€€€€€€€€€€€±…ÍÍ9…µ”õí¸ 4(€€€€€€€€€€€€€€€€‰ ´Ôµ¥¸µÜµlÈÁÁátÁà´Ä¸ÔÑ•áÐµlÄÁÁát™½¹ÐµÍ•µ¥‰½±Ñ…‰Õ±…Èµ¹ÕµÌˆ°4(€€€€€€€€€€€€€€€€‰‰œµÍ¥‘•‰…ÈµÁÉ¥µ…ÉäÑ•áÐµÍ¥‘•‰…ÈµÁÉ¥µ…Éäµ™½É•É½Õ¹‰½É‘•È´Àˆ°4(€€€€€€€€€€€€€€€€‰Í¡…‘½ÜµlÁ|Á|Á|Á}¡Í°¡Ù…È ´µÍ¥‘•‰…ÈµÁÉ¥µ…Éä¤¼À¸ÐÔ¥tˆ°4(€€€€€€€€€€€€€€€€‰…¹¥µ…Ñ”µmÁÕ±Í”µÉ¥¹|È¸ÕÍ}•…Í”µ½ÕÑ}¥¹™¥¹¥Ñ•tˆ4(€€€€€€€€€€€€€€¥ô4(€€€€€€€€€€€€ø4(€€€€€€€€€€€€€í‰…‘”€ø€ää€ü€ˆää¬ˆ€è‰…‘•ô4(€€€€€€€€€€€€ð½	…‘”ø4(€€€€€€€€€€¥ô4(€€€€€€€€ð¼ø4(€€€€€€¥ô4(€€€€ð½9…Ù1¥¹¬ø4(€€¤ì4(4(€¥˜€¡¥Í½±±…ÁÍ•¤ì4(€€€É•ÑÕÉ¸€ 4(€€€€€€ñQ½½±Ñ¥Àø4(€€€€€€€€ñQ½½±Ñ¥ÁQÉ¥•È…Í¡¥±ùí½¹Ñ•¹Ñôð½Q½½±Ñ¥ÁQÉ¥•Èø4(€€€€€€€€ñQ½½±Ñ¥Á½¹Ñ•¹ÐÍ¥‘”ô‰É¥¡Ðˆ±…ÍÍ9…µ”ô‰™±•à¥Ñ•µÌµ•¹Ñ•È…À´Èˆø4(€€€€€€€€€€ñÍÁ…¸ùí¥Ñ•´¹Ñ¥Ñ±•ôð½ÍÁ…¸ø4(€€€€€€€€€í‰…‘”€„ôôÕ¹‘•™¥¹•€˜˜€ 4(€€€€€€€€€€€€ñ	…‘”±…ÍÍ9…µ”ô‰ ´ÐÁà´ÄÑ•áÐµlÄÁÁát‰œµÍ¥‘•‰…ÈµÁÉ¥µ…ÉäÑ•áÐµÍ¥‘•‰…ÈµÁÉ¥µ…Éäµ™½É•É½Õ¹‰½É‘•È´Àˆø4(€€€€€€€€€€€€€í‰…‘”€ø€ää€ü€ˆää¬ˆ€è‰…‘•ô4(€€€€€€€€€€€€ð½	…‘”ø4(€€€€€€€€€€¥ô4(€€€€€€€€ð½Q½½±Ñ¥Á½¹Ñ•¹Ðø4(€€€€€€ð½Q½½±Ñ¥Àø4(€€€€¤ì4(€ô4(4(€É•ÑÕÉ¸½¹Ñ•¹Ðì4)ô4(4(
