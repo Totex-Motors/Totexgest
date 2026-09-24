@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   Calendar,
@@ -35,6 +35,7 @@ import {
   HandCoins,
   Handshake,
   ShieldCheck,
+  GraduationCap,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useNotificationContext } from "@/hooks/useNotifications";
@@ -71,6 +72,8 @@ interface NavItem {
   superAdminOnly?: boolean;
   /** opcional: só para gestão (admin/comercial) — ex.: comissões por vendedor */
   adminOnly?: boolean;
+  /** opcional: restringe o item aos papéis que podem abrir a rota comercial */
+  commercialOnly?: boolean;
 }
 
 interface NavSection {
@@ -105,6 +108,7 @@ const sections: NavSection[] = [
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
+      { title: "Treinamento", url: "/comercial/treinamento", icon: GraduationCap, commercialOnly: true },
       { title: "Vendedores", url: "/comercial/vendedores", icon: Users, adminOnly: true },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake, superAdminOnly: true },
@@ -187,7 +191,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const { unreadWhatsAppCount, markWhatsAppAsRead } = useNotificationContext();
-  const { teamMember, signOut, isSuperAdmin } = useAuth();
+  const { teamMember, signOut, isSuperAdmin, isComercial } = useAuth();
   const isAdmin = teamMember?.role === "admin" || teamMember?.role === "comercial" || teamMember?.team === "admin";
   const { isModuleEnabled } = useEnabledModules();
 
@@ -216,11 +220,11 @@ export function AppSidebar() {
       .map((s) => ({
         ...s,
         items: s.items.filter(
-          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin) && (!i.adminOnly || isAdmin),
+          (i) => (!i.moduleId || isModuleEnabled(i.moduleId)) && (!i.superAdminOnly || isSuperAdmin) && (!i.adminOnly || isAdmin) && (!i.commercialOnly || isAdmin || isComercial || teamMember?.role === "closer" || teamMember?.role === "sdr"),
         ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [isModuleEnabled, isSuperAdmin, isAdmin]);
+  }, [isModuleEnabled, isSuperAdmin, isAdmin, isComercial, teamMember?.role]);
 
   const userInitials =
     teamMember?.name
@@ -244,43 +248,7 @@ export function AppSidebar() {
          *  HEADER — Brand
          * ========================================================= */}
         <SidebarHeader
-          className={cn(
-            "h-16 px-4 flex items-center border-b border-sidebar-border/50",
-            isCollapsed && "px-2 justify-center"
-          )}
-        >
-          <NavLink
-            to="/comercial"
-            aria-label="Ir para o início"
-            className="flex items-center gap-3 w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded-lg"
-          >
-            <div
-              className={cn(
-                "relative shrink-0 w-20 h-12",
-                "flex items-center justify-center",
-                "transition-transform duration-300 group-hover:scale-105"
-              )}
-            >
-              <img
-                src="/logo_totex1.png"
-                alt="Totex Motors"
-                className="w-[140%] h-[140%] object-contain"
-              />
-            </div>
-
-            {!isCollapsed && (
-              <div className="flex flex-col min-w-0 leading-tight">
-                <span className="text-[15px] font-semibold tracking-tight text-sidebar-accent-foreground truncate">
-                  TotexGest
-                </span>
-              </div>
-            )}
-          </NavLink>
-        </SidebarHeader>
-
-        {/* =========================================================
-         *  BODY — Navegação
-         * ========================================================= */}
+        .8��$z{-���jם=================================================== */}
         <SidebarContent
           className={cn(
             "px-3 py-5 gap-6",
