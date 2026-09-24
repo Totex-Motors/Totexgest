@@ -913,7 +913,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
     playDialingTone();
 
     try {
-      // Iniciar chamada via WaVoIP com timeout de 30s
+      // Iniciar chamada via WaVoIP com timeout de 60s.
+      // Atenção: startCall() só resolve quando o outro lado ATENDE — enquanto
+      // toca ("Chamando...") a promise fica pendente. Por isso o timeout precisa
+      // cobrir o ciclo de toque inteiro (um toque de WhatsApp passa de 30s), senão
+      // a gente corta uma chamada boa achando que travou. 60s dá folga pra atender;
+      // dispositivo realmente desconectado falha rápido pelo erro do próprio WaVoIP.
       const startCallPromise = wavoipRef.current.startCall({
         to: normalizedPhone,
         fromTokens: device?.token ? [device.token] : undefined,
@@ -922,7 +927,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const timeoutPromise = new Promise<{ call: null; err: { message: string } }>((resolve) => {
         setTimeout(() => {
           resolve({ call: null, err: { message: 'Tempo limite excedido. Verifique se o dispositivo WaVoIP está conectado e tente novamente.' } });
-        }, 30000); // 30 segundos de timeout
+        }, 60000); // 60 segundos — cobre o ciclo de toque até o atendimento
       });
 
       const { call, err } = await Promise.race([startCallPromise, timeoutPromise]);
