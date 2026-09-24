@@ -248,7 +248,43 @@ export function AppSidebar() {
          *  HEADER â€” Brand
          * ========================================================= */}
         <SidebarHeader
-        .8âÚ$z{-®éÜj×=================================================== */}
+          className={cn(
+            "h-16 px-4 flex items-center border-b border-sidebar-border/50",
+            isCollapsed && "px-2 justify-center"
+          )}
+        >
+          <NavLink
+            to="/comercial"
+            aria-label="Ir para o inÃ­cio"
+            className="flex items-center gap-3 w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded-lg"
+          >
+            <div
+              className={cn(
+                "relative shrink-0 w-20 h-12",
+                "flex items-center justify-center",
+                "transition-transform duration-300 group-hover:scale-105"
+              )}
+            >
+              <img
+                src="/logo_totex1.png"
+                alt="Totex Motors"
+                className="w-[140%] h-[140%] object-contain"
+              />
+            </div>
+
+            {!isCollapsed && (
+              <div className="flex flex-col min-w-0 leading-tight">
+                <span className="text-[15px] font-semibold tracking-tight text-sidebar-accent-foreground truncate">
+                  TotexGest
+                </span>
+              </div>
+            )}
+          </NavLink>
+        </SidebarHeader>
+
+        {/* =========================================================
+         *  BODY â€” NavegaÃ§Ã£o
+         * ========================================================= */}
         <SidebarContent
           className={cn(
             "px-3 py-5 gap-6",
