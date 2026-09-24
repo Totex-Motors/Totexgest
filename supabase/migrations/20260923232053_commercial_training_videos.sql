@@ -1,6 +1,23 @@
 -- Vídeos de treinamento comercial privados, associados a membros do próprio tenant.
 -- Upload e atribuição são feitos por um admin em /comercial/treinamento.
 
+-- A base de produção não possui current_member_id(); derive o membro da sessão
+-- autenticada dentro de uma função definer para respeitar também o RLS de team_members.
+CREATE OR REPLACE FUNCTION public.training_current_member_id() RETURNS uuid
+LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = public
+AS $$
+  SELECT tm.id
+  FROM public.team_members tm
+  WHERE tm.auth_user_id = auth.uid()
+    AND tm.tenant_id = public.get_tenant_id()
+    AND tm.is_active
+  ORDER BY tm.created_at
+  LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION public.training_current_member_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.training_current_member_id() TO authenticated;
+
 CREATE TABLE IF NOT EXISTS public.training_video_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL DEFAULT public.get_tenant_id(),
@@ -9,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.training_video_assignments (
   description text,
   storage_path text NOT NULL UNIQUE,
   is_published boolean NOT NULL DEFAULT true,
-  created_by uuid DEFAULT public.current_member_id() REFERENCES public.team_members(id) ON DELETE SET NULL,
+  created_by uuid DEFAULT public.training_current_member_id() REFERENCES public.team_members(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT training_video_path_matches_assignment CHECK (
     split_part(storage_path, '/', 1) = tenant_id::text
@@ -30,7 +47,7 @@ CREATE POLICY training_video_assignments_read ON public.training_video_assignmen
   FOR SELECT TO authenticated
   USING (
     tenant_id = public.get_tenant_id()
-    AND ((member_id = public.current_member_id() AND is_published) OR public.is_admin())
+    AND ((member_id = public.training_current_member_id() AND is_published) OR public.is_admin())
   );
 
 DROP POLICY IF EXISTS training_video_assignments_admin_insert ON public.training_video_assignments;
@@ -85,11 +102,11 @@ CREATE POLICY commercial_training_read_assigned ON storage.objects
     AND (
       public.is_admin()
       OR (
-        (storage.foldername(name))[2] = public.current_member_id()::text
+        (storage.foldername(name))[2] = public.training_current_member_id()::text
         AND EXISTS (
           SELECT 1 FROM public.training_video_assignments assignment
           WHERE assignment.tenant_id = public.get_tenant_id()
-            AND assignment.member_id = public.current_member_id()
+            AND assignment.member_id = public.training_current_member_id()
             AND assignment.storage_path = storage.objects.name
             AND assignment.is_published
         )
