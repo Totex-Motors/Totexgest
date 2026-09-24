@@ -158,6 +158,7 @@ const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads")
 const CaptureMyVehicles = React.lazy(() => import("./pages/capture/CaptureMyVehicles"));
 const CapturePrizes = React.lazy(() => import("./pages/capture/CapturePrizes"));
 const CaptureRepasse = React.lazy(() => import("./pages/capture/CaptureRepasse"));
+const CommercialTraining = React.lazy(() => import("./pages/CommercialTraining"));
 
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
@@ -310,6 +311,7 @@ const AppRoutes = () => {
       <Route path="/agentes/:slug/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
 
       {/* Sales/Commercial routes */}
+      <Route path="/comercial/treinamento" element={<ProtectedRoute><RoleRoute allow={["admin", "comercial", "closer", "sdr"]}><React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Carregando treinamento...</div>}><CommercialTraining /></React.Suspense></RoleRoute></ProtectedRoute>} />
       <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/intermediacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><IntermediationDashboard /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/rede" element={<ProtectedRoute><React.Suspense fallback={<div />}><NetworkDashboard /></React.Suspense></ProtectedRoute>} />
