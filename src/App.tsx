@@ -1,4 +1,4 @@
-п»їimport React, { useEffect, Component, type ReactNode, type ErrorInfo } from "react";
+import React, { useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -158,6 +158,7 @@ const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads")
 const CaptureMyVehicles = React.lazy(() => import("./pages/capture/CaptureMyVehicles"));
 const CapturePrizes = React.lazy(() => import("./pages/capture/CapturePrizes"));
 const CaptureRepasse = React.lazy(() => import("./pages/capture/CaptureRepasse"));
+const CommercialTraining = React.lazy(() => import("./pages/CommercialTraining"));
 
 // Public booking
 const BookMeeting = React.lazy(() => import("./pages/BookMeeting"));
@@ -310,6 +311,15 @@ const AppRoutes = () => {
       <Route path="/agentes/:slug/metricas" element={<ProtectedRoute><React.Suspense fallback={<div />}><AgentMetricsPage /></React.Suspense></ProtectedRoute>} />
 
       {/* Sales/Commercial routes */}
+      <Route path="/comercial/treinamento" element={
+        <ProtectedRoute>
+          <RoleRoute allow={["admin", "comercial", "closer", "sdr"]}>
+            <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Carregando treinamentoвЂ¦</div>}>
+              <CommercialTraining />
+            </React.Suspense>
+          </RoleRoute>
+        </ProtectedRoute>
+      } />
       <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/intermediacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><IntermediationDashboard /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/rede" element={<ProtectedRoute><React.Suspense fallback={<div />}><NetworkDashboard /></React.Suspense></ProtectedRoute>} />
@@ -345,62 +355,36 @@ const AppRoutes = () => {
       <Route path="/marketing/whatsapp-templates/novo" element={<ProtectedRoute><WhatsAppTemplateNew /></ProtectedRoute>} />
       <Route path="/comercial/campanhas" element={<ProtectedRoute><SalesCampaigns /></ProtectedRoute>} />
       <Route path="/comercial/campanhas/nova" element={<ProtectedRoute><SalesCampaignNew /></ProtectedRoute>} />
-      <Route path="/comercial/campanhas/:id" element={<ProtectedRoute><SalesCampaignDetail /></ProtectedRoute>} />
+      <Route path="/comercial/campanhas/:id" element={<Pro~µпЛh‘йм¶»§q«^v\РЫЫ\ЩY	‰€
+€]€Ы\ЬУ[YOH™›^][\ЛXЩ[ќ\€ќ\ЭYћKX™]ЩY[€LИ‹LHЏ‚€Ь[€Ы\ЬУ[YOHќ^VМLH›Ыќ\Щ[ZX›Ы\\Ш\ЩHXЪЪ[™ЛVМЊN[WH^\ЪYX\‹[]]YНМЏ‚€ЬЩXЭ[Ы‹›X™[B€ЬЬ[Џ‚€ЛК€Z[љKZ[™XШYЬ€XЫЬ]]›И
+‹ЯB€Ь[€Ы\ЬУ[YOHљ\›^LH[LИ™ЛYЬYY[ќ]Л\€њ›ЫK\ЪYX\‹X›Ь™\‹НLЛ][њЬ\™[ќ€П‚€Щ]Џ‚€
+_B‚€]€\љXK[X™[^ЬЩXЭ[Ы‹›X™[HЫ\ЬУ[YOH™›^›^XЫЫШ\LЌHЏ‚€ЬЩXЭ[Ы‹љ][\Л›X\
 
-      {/* Unsubscribe pГєblico (LGPD) вЂ” sem auth */}
-      <Route path="/unsubscribe" element={<React.Suspense fallback={null}><Unsubscribe /></React.Suspense>} />
-      <Route path="/comercial/inbox" element={<ProtectedRoute><SalesWhatsAppInbox /></ProtectedRoute>} />
-      <Route path="/comercial/relatorios" element={<Navigate to="/comercial?tab=gestao" replace />} />
-      <Route path="/comercial/comissoes" element={<ProtectedRoute><Commissions /></ProtectedRoute>} />
-      <Route path="/comercial/playbook" element={<ProtectedRoute><SalesPlaybook /></ProtectedRoute>} />
-      <Route path="/comercial/configuracoes" element={<Navigate to="/configuracoes?s=pipeline" replace />} />
-      <Route path="/comercial/materiais" element={<ProtectedRoute><SalesMaterialsConfig /></ProtectedRoute>} />
-      <Route path="/comercial/credere" element={<ProtectedRoute><CredereLeads /></ProtectedRoute>} />
-      <Route path="/comercial/marketplace" element={<ProtectedRoute><MarketplaceLeads /></ProtectedRoute>} />
-      <Route path="/comercial/totem" element={<ProtectedRoute><TotemLeads /></ProtectedRoute>} />
-      <Route path="/comercial/inteligencia" element={<ProtectedRoute><React.Suspense fallback={<div />}><DemandIntelligence /></React.Suspense></ProtectedRoute>} />
-      <Route path="/comercial/agente-ia" element={<Navigate to="/configuracoes?s=agente-ia" replace />} />
-
-      {/* GestГЈo bГЎsica (tarefas, calendГЎrio, reuniГµes) */}
-      <Route path="/gestao/tarefas" element={<ProtectedRoute><TaskManagement /></ProtectedRoute>} />
-      <Route path="/gestao/calendario" element={<ProtectedRoute><TeamCalendar /></ProtectedRoute>} />
-      <Route path="/gestao/reunioes" element={<ProtectedRoute><TeamMeetings /></ProtectedRoute>} />
-      <Route path="/gestao/melhorias" element={<ProtectedRoute><React.Suspense fallback={<div />}><GestaoMelhorias /></React.Suspense></ProtectedRoute>} />
-
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  );
-};
-
-const App = () => (
-  <ThemeProvider>
-  <QueryClientProvider client={queryClient}>
-  <DemoModeProvider>
-    <AuthProvider>
-      <CallProvider>
-        <MeetingProvider>
-          <NotificationProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <NavigationListener />
-                <FocusModeProvider>
-                  <ErrorBoundary name="Calls"><CallModals /></ErrorBoundary>
-                  <ErrorBoundary name="Meeting"><GlobalTranscriptionPanel /><MeetingRecoveryBanner /></ErrorBoundary>
-                  <FocusModeOverlay />
-                  <RouteErrorBoundary><AppRoutes /></RouteErrorBoundary>
-                </FocusModeProvider>
-              </BrowserRouter>
-            </TooltipProvider>
-          </NotificationProvider>
-        </MeetingProvider>
-      </CallProvider>
-    </AuthProvider>
-  </DemoModeProvider>
-  </QueryClientProvider>
-  </ThemeProvider>
-);
-
-export default App;
-
+][JHO€В€ЫЫњЭXЭ]™HH\РXЭ]™J][Kќ\›
+NВ€ЫЫњЭЪЭРYЩHH][Kќ\›OOH‹ШЫЫY\ЪX[Ъ[›Ю€	‰€[њ™XYЫЭ[ќ€В€™]\›€
+€]’][S[љВ€Щ^O^Ъ][Kќ\›B€][O^Ъ][_B€XЭ]™O^ШXЭ]™_B€\РЫЫ\ЩY^Ъ\РЫЫ\ЩYB€YЩO^ЬЪЭРYЩHИ[њ™XYЫЭ[ќ€[™Yљ[™YB€П‚€
+NВ€J_B€Ы]Џ‚€Щ]Џ‚€
+NВџB‚‹К€KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKB€
+€]’][S[љИ8 %[љИ[™]љYX[
+ЫЫHXЭ]™H[™XШ]Ь€™Yљ[YКB€
+€KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKH
+‹В‚љ[ќ\™XЩH]’][S[љФ›ЬИВ€][N€]’][NВ€XЭ]™N€›ЫЫX[ЋВ€\РЫЫ\ЩY€›ЫЫX[ЋВ€YЩOО€ќ[X™\ЋВџB‚™ќ[Э[Ы€]’][S[љКИ][KXЭ]™K\РЫЫ\ЩYYЩHN€]’][S[љФ›ЬКHВ€ЫЫњЭXЫЫ€H][KљXЫЫЋВ‚€ЫЫњЭЫЫќ[ќH
+€]“[љВ€П^Ъ][Kќ\›B€\љXKXЭ\њ™[ќ^ШXЭ]™HИњYЩH€€[™Yљ[™YB€Ы\ЬУ[YO^ШЫЉ€™Ь›Э\™[]]™H›^][\ЛXЩ[ќ\€Ш\LИLL›Э[™Y[И^VМLЬH[њЪ][Ы‹X[\][Ы‹LЊ‹€™›ШЭ\Л]љ\ЪX›N›Э][™K[›Ы™H›ШЭ\Л]љ\ЪX›Nњљ[™ЛL€›ШЭ\Л]љ\ЪX›Nњљ[™Л\ЪYX\‹\љ[™И›ШЭ\Л]љ\ЪX›Nњљ[™Л[Щ™њЩ]L‹€\РЫЫ\ЩYИњLќ\ЭYћKXЩ[ќ\€ЛLL^X]]И€€њLИ‹€XЭ]™B€Иќ^\ЪYX\‹XXШЩ[ќY›Ь™YЬ›Э[™›Ыќ[YY][H™Л\ЪYX\‹XXШЩ[ќО‚€€ќ^\ЪYX\‹Y›Ь™YЬ›Э[™ОЭ™\Ћќ^\ЪYX\‹XXШЩ[ќY›Ь™YЬ›Э[™Э™\Ћ™Л\ЪYX\‹XXШЩ[ќН‚€
+_B€‚€ЛК€[™XШYЬ€]\[
+\њHЭ\YH0и\Ь]Y\™JH
+‹ЯB€Ь[‚€\љXKZY[‚€Ы\ЬУ[YO^ШЫЉ€XњЫЫ]HYќLЬLKЌH›ЭЫKLKЌHЛVМЬH›Э[™Y\‹Yќ[[њЪ][Ы‹X[\][Ы‹LМ‹€XЭ]™B€И™Л\ЪYX\‹\љ[X\ћHЬXЪ]KLLШШ[K^KLL‚€€™Л\ЪYX\‹\љ[X\ћHЬXЪ]KLШШ[K^KMLЬ›Э\ZЭ™\Ћ›ЬXЪ]KMЬ›Э\ZЭ™\ЋњШШ[K^KMНH‚€
+_B€П‚‚€XЫЫ‚€Ы\ЬУ[YO^ШЫЉ€љVМNHЛVМNHЪљ[љЛL[њЪ][Ы‹XЫЫЬњИ‹€XЭ]™HИќ^\ЪYX\‹\љ[X\ћH€€ќ^\ЪYX\‹Y›Ь™YЬ›Э[™НЊЬ›Э\ZЭ™\Ћќ^\ЪYX\‹XXШЩ[ќY›Ь™YЬ›Э[™‚€
+_B€Э›ЪЩUЪY^ШXЭ]™HИ‹ЊЌH€KЋ_B€П‚‚€ИZ\РЫЫ\ЩY	‰€
+€‚€Ь[€Ы\ЬУ[YOH™›^LHќ[Ш]HЏћЪ][Kќ]_OЬЬ[Џ‚€ШYЩHOOH[™Yљ[™Y	‰€
+€YЩB€Ы\ЬУ[YO^ШЫЉ€љMHZ[‹]ЛVМЊHLKЌH^VМLH›Ыќ\Щ[ZX›ЫXќ[\‹[ќ[\И‹€™Л\ЪYX\‹\љ[X\ћH^\ЪYX\‹\љ[X\ћKY›Ь™YЬ›Э[™›Ь™\‹L‹€њЪYЭЛVММММЪЫ
+\ЉK\ЪYX\‹\љ[X\ћJKМЌJWH‹€[љ[X]KVЬ[ЩK\љ[™ЧМ‹Ќ\ЧЩX\ЩK[Э]Ъ[™љ[љ]WH‚€
+_B€‚€ШYЩH€NHИЋNJИ€€YЩ_B€РYЩO‚€
+_B€П‚€
+_B€У]“[љП‚€
+NВ‚€Y€
+\РЫЫ\ЩY
+HВ€™]\›€
+€ЫЫ\‚€ЫЫ\љYЩЩ\€\РЪ[ћШЫЫќ[ќOХЫЫ\љYЩЩ\Џ‚€ЫЫ\ЫЫќ[ќЪYOHњљYЪ€Ы\ЬУ[YOH™›^][\ЛXЩ[ќ\€Ш\L€Џ‚€Ь[ЏћЪ][Kќ]_OЬЬ[Џ‚€ШYЩHOOH[™Yљ[™Y	‰€
+€YЩHЫ\ЬУ[YOHљMLH^VМLH™Л\ЪYX\‹\љ[X\ћH^\ЪYX\‹\љ[X\ћKY›Ь™YЬ›Э[™›Ь™\‹LЏ‚€ШYЩH€NHИЋNJИ€€YЩ_B€РYЩO‚€
+_B€ХЫЫ\ЫЫќ[ќ‚€ХЫЫ\‚€
+NВ€B‚€™]\›€ЫЫќ[ќВџB‚
