@@ -79,6 +79,8 @@ import { useContactDeals, useDeleteDeal } from "@/hooks/useSalesDeals";
 import { useLeadDeals, useLinkedContacts, useUnlinkContact, type LinkedContact } from "@/hooks/useDealContacts";
 import { useLeadTransactions, convertTransactionAmount } from "@/hooks/useTransactions";
 import { useClientTimeline } from "@/hooks/useClientTimeline";
+import { useCallHistory } from "@/hooks/useWavoip";
+import { useLeadAndDealNotes } from "@/hooks/useSalesNotes";
 import { useInstagramProfile, useInstagramPosts, useInstagramStories, useInstagramBusinessProfile } from "@/hooks/useInstagramProfile";
 import { LeadInstagramChat, InstagramStoriesCarousel, PostViewerModal } from "@/components/sales/instagram";
 import { useClientTasks, useCreateTask, Task } from "@/hooks/useTasks";
@@ -128,6 +130,17 @@ import { cn, navigateTo } from "@/lib/utils";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { supabase } from "@/lib/supabase";
 import type { SalesStage } from "@/types/sales.types";
+
+// Badge de contagem nas abas — sinaliza que há conteúdo ali (ex.: nº de notas).
+// Fica visível também no mobile (onde o rótulo da aba some), colado no ícone.
+const TabCount = ({ n }: { n: number }) => {
+  if (!n) return null;
+  return (
+    <span className="ml-0.5 inline-flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold leading-none text-primary">
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+};
 
 // Reusable content component (used by FocusMode and the page itself)
 export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
@@ -316,6 +329,18 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   // Tasks — use cluster of lead IDs to show tasks from all linked leads
   const { data: clientTasks } = useClientTasks(undefined, partnerLeadIds && partnerLeadIds.length > 1 ? partnerLeadIds : id);
   const pendingTasks = (clientTasks || []).filter(t => !t.completed);
+
+  // Contadores por aba — mostram um "númerozinho" no ícone pra sinalizar que há
+  // conteúdo ali (ex.: acabou de criar uma nota → badge na aba Notas).
+  const { data: leadCalls } = useCallHistory({ leadId: id, leadIds: partnerLeadIds, limit: 100 });
+  const { data: leadNotesAll } = useLeadAndDealNotes(id);
+  const tabCounts = {
+    timeline: timeline?.length ?? 0,
+    comercial: contactDeals?.length ?? 0,
+    interacoes: leadCalls?.length ?? 0,
+    transactions: transactions?.length ?? 0,
+    notas: leadNotesAll?.length ?? 0,
+  };
   const completedTasks = (clientTasks || []).filter(t => t.completed);
   const [taskFilter, setTaskFilter] = useState<'pending' | 'completed'>('pending');
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
@@ -1536,29 +1561,34 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
           <div className="lg:col-span-8 space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="grid w-full grid-cols-6 h-12">
-                <TabsTrigger value="timeline" className="flex items-center gap-2">
+                <TabsTrigger value="timeline" className="flex items-center gap-1.5">
                   <Clock className="h-4 w-4" />
                   <span className="hidden sm:inline">Timeline</span>
+                  <TabCount n={tabCounts.timeline} />
                 </TabsTrigger>
-                <TabsTrigger value="comercial" className="flex items-center gap-2">
+                <TabsTrigger value="comercial" className="flex items-center gap-1.5">
                   <Briefcase className="h-4 w-4" />
                   <span className="hidden sm:inline">Comercial</span>
+                  <TabCount n={tabCounts.comercial} />
                 </TabsTrigger>
-                <TabsTrigger value="mensagens" className="flex items-center gap-2">
+                <TabsTrigger value="mensagens" className="flex items-center gap-1.5">
                   <MessageSquare className="h-4 w-4" />
                   <span className="hidden sm:inline">Mensagens</span>
                 </TabsTrigger>
-                <TabsTrigger value="interacoes" className="flex items-center gap-2">
+                <TabsTrigger value="interacoes" className="flex items-center gap-1.5">
                   <Phone className="h-4 w-4" />
                   <span className="hidden sm:inline">Interações</span>
+                  <TabCount n={tabCounts.interacoes} />
                 </TabsTrigger>
-                <TabsTrigger value="transactions" className="flex items-center gap-2">
+                <TabsTrigger value="transactions" className="flex items-center gap-1.5">
                   <DollarSign className="h-4 w-4" />
                   <span className="hidden sm:inline">Financeiro</span>
+                  <TabCount n={tabCounts.transactions} />
                 </TabsTrigger>
-                <TabsTrigger value="notas" className="flex items-center gap-2">
+                <TabsTrigger value="notas" className="flex items-center gap-1.5">
                   <StickyNote className="h-4 w-4" />
                   <span className="hidden sm:inline">Notas</span>
+                  <TabCount n={tabCounts.notas} />
                 </TabsTrigger>
               </TabsList>
 
