@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { maskPhoneBR } from "@/lib/phone";
 import { toast } from "sonner";
-import { useCaptureLeads, useCaptureLeadValidity, useMyBuyerLeads, useMarkBuyerSold } from "@/hooks/useCaptureLeads";
+import { useCaptureLeads, useCaptureLeadValidity, useMyBuyerLeads, useMarkBuyerSold, type BuyerLead } from "@/hooks/useCaptureLeads";
 import { useLeadCaptureEvents } from "@/hooks/useCaptureHandoff";
 import { useAuth } from "@/contexts/AuthContext";
 import { SellerQualificationCard } from "@/components/capture/SellerQualificationCard";
@@ -97,17 +97,60 @@ function LeadTimeline({ leadId }: { leadId: string }) {
   );
 }
 
+/** Selo de status do comprador (venda > no atendimento > enviando). */
+function BuyerStatusBadge({ b }: { b: BuyerLead }) {
+  if (b.vendido) {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+        🎉 Vendido · {formatBRL(b.comissao_cents)}
+      </span>
+    );
+  }
+  if (b.distribuido) {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+        <Send className="h-3 w-3" /> No atendimento
+      </span>
+    );
+  }
+  return <span className="text-[10px] text-muted-foreground">Enviando…</span>;
+}
+
+/** Uma etapa da jornada (ícone + rótulo + valor), com destaque quando falta algo. */
+function JourneyStep({ icon: Icon, label, value, pending }: {
+  icon: typeof Store; label: string; value: string; pending?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className={cn(
+        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
+        pending ? "border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                : "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400",
+      )}>
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className={cn("text-sm font-medium", pending && "text-amber-700 dark:text-amber-400")}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
 /** Leads de COMPRA do fluxo "Comprar". Promotora vê os dela; gestor vê todos e
- *  pode marcar a venda (lança R$150 pendentes pra promotora). */
+ *  pode marcar a venda (lança R$150 pendentes pra promotora). Cada card abre a
+ *  JORNADA do comprador: quem trouxe → loja → especialista → etapa atual. */
 function BuyerLeadsSection() {
   const { isAdmin } = useAuth();
   const buyers = useMyBuyerLeads();
   const markSold = useMarkBuyerSold();
+  const [selected, setSelected] = useState<BuyerLead | null>(null);
 
   const marcarVendido = async (leadId: string) => {
     try {
       const id = await markSold.mutateAsync(leadId);
       toast.success(id ? "Venda registrada — R$150 pendente de aprovação." : "Esse comprador já estava marcado como vendido.");
+      setSelected(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui registrar a venda.");
     }
@@ -123,48 +166,104 @@ function BuyerLeadsSection() {
       </div>
       <ul className="space-y-1.5">
         {buyers.data!.map((b) => (
-          <li key={b.lead_id} className="rounded-lg border border-border/60 bg-card px-3 py-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{b.name}</p>
-                <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                  <Car className="h-3 w-3" /> {b.veiculo || "Carro não informado"}
-                </p>
-                {b.loja && (
-                  <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
-                    <Store className="h-3 w-3" /> {b.loja}
-                    {isAdmin && b.promoter_name ? ` · ${b.promoter_name}` : ""}
+          <li key={b.lead_id}>
+            <button
+              type="button"
+              onClick={() => setSelected(b)}
+              className="w-full text-left rounded-lg border border-border/60 bg-card px-3 py-2 active:bg-muted/60"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{b.name}</p>
+                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                    <Car className="h-3 w-3" /> {b.veiculo || "Carro não informado"}
                   </p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                {b.vendido ? (
-                  <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    🎉 Vendido · {formatBRL(b.comissao_cents)}
+                  {b.loja && (
+                    <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
+                      <Store className="h-3 w-3" /> {b.loja}
+                      {isAdmin && b.promoter_name ? ` · ${b.promoter_name}` : ""}
+                    </p>
+                  )}
+                  {/* Onde o lead está: especialista + etapa (o "pra onde vai") */}
+                  <p className="mt-0.5 text-[11px] truncate flex items-center gap-1">
+                    <UserCheck className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className={cn(b.especialista ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+                      {b.especialista ?? "Sem especialista"}
+                    </span>
+                    {b.etapa && <span className="text-muted-foreground">· {b.etapa}</span>}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <BuyerStatusBadge b={b} />
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                    <Clock className="h-3 w-3" /> {relDate(b.created_at)}
                   </span>
-                ) : b.distribuido ? (
-                  <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    <Send className="h-3 w-3" /> No atendimento
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">Enviando…</span>
-                )}
-                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                  <Clock className="h-3 w-3" /> {relDate(b.created_at)}
-                </span>
+                </div>
               </div>
-            </div>
-            {b.observacao && <p className="mt-1 text-[11px] text-muted-foreground italic truncate">“{b.observacao}”</p>}
-            {isAdmin && !b.vendido && (
-              <Button size="sm" variant="outline" className="mt-2 h-8 w-full text-xs"
-                disabled={markSold.isPending}
-                onClick={() => marcarVendido(b.lead_id)}>
-                Marcar vendido (R$150 pra promotora)
-              </Button>
-            )}
+              {b.observacao && <p className="mt-1 text-[11px] text-muted-foreground italic truncate">“{b.observacao}”</p>}
+            </button>
           </li>
         ))}
       </ul>
+
+      {/* Ficha de jornada do comprador */}
+      <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-2xl px-4 pb-8">
+          {selected && (
+            <div className="space-y-4">
+              <SheetHeader className="text-left space-y-1">
+                <SheetTitle className="text-lg flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4 text-emerald-600" /> {selected.name}
+                </SheetTitle>
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Car className="h-3.5 w-3.5" /> {selected.veiculo || "Carro não informado"}
+                </p>
+                <div className="pt-1"><BuyerStatusBadge b={selected} /></div>
+              </SheetHeader>
+
+              {/* A jornada: quem trouxe → loja → especialista → etapa */}
+              <div className="rounded-lg border border-border/60 p-3 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground">Jornada do lead</p>
+                <JourneyStep icon={Send} label="Trouxe (promotora)" value={selected.promoter_name ?? "—"} />
+                <JourneyStep icon={Store} label="Loja que atende" value={selected.loja ?? "Sem loja definida"} pending={!selected.loja} />
+                <JourneyStep icon={UserCheck} label="Especialista"
+                  value={selected.especialista ?? "Ainda sem especialista"} pending={!selected.especialista} />
+                <JourneyStep icon={Flame} label="Etapa na loja"
+                  value={selected.etapa ?? (selected.distribuido ? "Aguardando a loja" : "Enviando…")}
+                  pending={!selected.etapa} />
+                {selected.primeiro_contato_at && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 pl-9">
+                    <Check className="h-3 w-3" /> Especialista já fez o 1º contato em {fmtDateTime(selected.primeiro_contato_at)}
+                  </p>
+                )}
+              </div>
+
+              {selected.observacao && (
+                <div className="rounded-md border border-border/60 p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Observação da promotora</p>
+                  <p className="text-sm italic">“{selected.observacao}”</p>
+                </div>
+              )}
+
+              {selected.phone && (
+                <Button asChild variant="outline" className="w-full h-11">
+                  <a href={`https://wa.me/${selected.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">
+                    <Phone className="h-4 w-4 mr-2" /> {maskPhoneBR(selected.phone)}
+                  </a>
+                </Button>
+              )}
+
+              {isAdmin && !selected.vendido && (
+                <Button variant="default" className="w-full h-11"
+                  disabled={markSold.isPending}
+                  onClick={() => marcarVendido(selected.lead_id)}>
+                  Marcar vendido (R$150 pra promotora)
+                </Button>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
