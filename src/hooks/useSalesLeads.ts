@@ -8,7 +8,7 @@ import type {
 } from '@/types/sales.types';
 
 // Fetch all sales leads with pagination
-export const useSalesLeads = (filters?: SalesLeadFilters & { page?: number; pageSize?: number }) => {
+export const useSalesLeads = (filters?: SalesLeadFilters & { page?: number; pageSize?: number; created_after?: string }) => {
   return useQuery({
     queryKey: ['sales-leads', filters],
     queryFn: async () => {
@@ -31,6 +31,9 @@ export const useSalesLeads = (filters?: SalesLeadFilters & { page?: number; page
       }
       if (filters?.min_score) {
         query = query.gte('sales_score', filters.min_score);
+      }
+      if (filters?.created_after) {
+        query = query.gte('created_at', filters.created_after);
       }
       if (filters?.search) {
         query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,instagram.ilike.%${filters.search}%`);
