@@ -144,6 +144,7 @@ const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
 const InstagramCampaigns = React.lazy(() => import("./pages/marketing/InstagramCampaigns"));
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
 const OperationTower = React.lazy(() => import("./pages/OperationTower"));
+const RastreamentoLeads = React.lazy(() => import("./pages/RastreamentoLeads"));
 const IntermediationDashboard = React.lazy(() => import("./pages/IntermediationDashboard"));
 const NetworkDashboard = React.lazy(() => import("./pages/NetworkDashboard"));
 const ApprovalsInbox = React.lazy(() => import("./pages/ApprovalsInbox"));
@@ -321,6 +322,7 @@ const AppRoutes = () => {
         </ProtectedRoute>
       } />
       <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
+      <Route path="/comercial/rastreamento" element={<ProtectedRoute><React.Suspense fallback={<div />}><RastreamentoLeads /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/intermediacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><IntermediationDashboard /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/rede" element={<ProtectedRoute><React.Suspense fallback={<div />}><NetworkDashboard /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/aprovacoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><ApprovalsInbox /></React.Suspense></ProtectedRoute>} />

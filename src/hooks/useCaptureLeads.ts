@@ -84,6 +84,14 @@ export interface BuyerLead {
   vendido: boolean;
   comissao_cents: number | null;
   comissao_status: "pending" | "approved" | "paid" | "cancelled" | null;
+  /** Jornada na loja (cópia trabalhada, apontada por distributed_to). */
+  especialista: string | null;
+  etapa: string | null;
+  etapa_ganho: boolean;
+  etapa_perdido: boolean;
+  primeiro_contato_at: string | null;
+  store_lead_id: string | null;
+  store_tenant_id: string | null;
 }
 
 export function useMyBuyerLeads(memberId?: string | null) {
