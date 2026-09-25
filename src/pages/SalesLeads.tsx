@@ -31,6 +31,7 @@ import {
   RefreshCw,
   UserPlus,
   Zap,
+  CalendarClock,
 } from "lucide-react";
 import { cn, navigateTo } from "@/lib/utils";
 import type { SalesStage, SalesLead } from "@/types/sales.types";
@@ -58,18 +59,38 @@ const SalesLeads = () => {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"score" | "recent">("score");
   const [showHotOnly, setShowHotOnly] = useState(searchParams.get("hot") === "true");
+  const [period, setPeriod] = useState<"all" | "today" | "7d">(
+    (searchParams.get("period") as "all" | "today" | "7d") || "all"
+  );
   const [page, setPage] = useState(0);
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
 
   const ativarEmMassa = useAtivarLeadsEmMassa();
 
+  // Recorte por data de criação (created_at) — "Hoje" = desde 00h; "7 dias" = últimos 7 dias.
+  const createdAfter = useMemo(() => {
+    const d = new Date();
+    if (period === "today") { d.setHours(0, 0, 0, 0); return d.toISOString(); }
+    if (period === "7d") { d.setDate(d.getDate() - 7); d.setHours(0, 0, 0, 0); return d.toISOString(); }
+    return undefined;
+  }, [period]);
+
+  const togglePeriod = (p: "today" | "7d") => {
+    const next = period === p ? "all" : p;
+    setPeriod(next);
+    setPage(0);
+    if (next === "all") searchParams.delete("period"); else searchParams.set("period", next);
+    setSearchParams(searchParams);
+  };
+
   const filters = useMemo(() => ({
     sales_stage: selectedStage !== "all" ? selectedStage : undefined,
     search: search || undefined,
     min_score: showHotOnly ? 70 : undefined,
+    created_after: createdAfter,
     page,
     pageSize: 50,
-  }), [selectedStage, search, showHotOnly, page]);
+  }), [selectedStage, search, showHotOnly, createdAfter, page]);
 
   const { data: leadsData, isLoading, refetch } = useSalesLeads(filters);
   const leads = leadsData?.leads || [];
@@ -151,6 +172,23 @@ const SalesLeads = () => {
             >
               <Flame className="h-4 w-4 mr-1" />
               Quentes
+            </Button>
+            <Button
+              variant={period === "today" ? "default" : "outline"}
+              size="sm"
+              onClick={() => togglePeriod("today")}
+              className={cn(period === "today" && "bg-primary hover:bg-primary/90")}
+            >
+              <CalendarClock className="h-4 w-4 mr-1" />
+              Hoje
+            </Button>
+            <Button
+              variant={period === "7d" ? "default" : "outline"}
+              size="sm"
+              onClick={() => togglePeriod("7d")}
+              className={cn(period === "7d" && "bg-primary hover:bg-primary/90")}
+            >
+              7 dias
             </Button>
             <Button
               variant="outline"
