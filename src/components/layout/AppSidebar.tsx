@@ -10,6 +10,7 @@ import {
   Video,
   Headphones,
   Radar,
+  Waypoints,
   Kanban,
   LogOut,
   TrendingUp,
@@ -105,6 +106,7 @@ const sections: NavSection[] = [
     moduleId: "comercial",
     items: [
       { title: "Torre de Controle", url: "/comercial/operacao", icon: Radar, superAdminOnly: true },
+      { title: "Rastreamento", url: "/comercial/rastreamento", icon: Waypoints, superAdminOnly: true },
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
