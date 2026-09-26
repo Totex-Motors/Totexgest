@@ -186,6 +186,8 @@ export function PipelineBoardContent() {
   const [urgencyFilter, setUrgencyFilter] = useSessionState<string>("pipeline_urgencyFilter", "all");
   const [revenueFilter, setRevenueFilter] = useSessionState<string>("pipeline_revenueFilter", "all");
   const [activityFilter, setActivityFilter] = useSessionState<string>("pipeline_activityFilter", "all");
+  // "Precisam atenção": só os deals parados há 7+ dias (mesma regra do tile do header).
+  const [attentionOnly, setAttentionOnly] = useSessionState<boolean>("pipeline_attentionOnly", false);
   const [portalFilter, setPortalFilter] = useSessionState<string>("pipeline_portalFilter", "all");
   const [modalidadeFilter, setModalidadeFilter] = useSessionState<string>("pipeline_modalidadeFilter", "all");
   const [utmSourceFilter, setUtmSourceFilter] = useState<string>("all");
@@ -282,16 +284,20 @@ export function PipelineBoardContent() {
     const hasUrgencyFilter = urgencyFilter !== "all";
     const hasRevenueFilter = revenueFilter !== "all";
     const hasActivityFilter = activityFilter !== "all";
+    const hasAttentionFilter = attentionOnly;
     const hasUtmSourceFilter = utmSourceFilter !== "all";
     const hasUtmCampaignFilter = utmCampaignFilter !== "all";
     const hasUtmContentFilter = utmContentFilter !== "all";
     const dateRange = getDateRange(periodFilter, customDateFrom, customDateTo);
     const hasPeriodFilter = dateRange !== null;
 
-    if (!hasSearch && !hasPortalFilter && !hasModalidadeFilter && !hasUrgencyFilter && !hasActivityFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
+    if (!hasSearch && !hasPortalFilter && !hasModalidadeFilter && !hasUrgencyFilter && !hasActivityFilter && !hasAttentionFilter && !hasRevenueFilter && !hasUtmSourceFilter && !hasUtmCampaignFilter && !hasUtmContentFilter && !hasPeriodFilter) return pipeline;
 
     return pipeline.map((column): PipelineColumn => {
       const filteredDeals = column.deals.filter((deal) => {
+        // "Precisam atenção" = parado há 7+ dias sem interação.
+        if (hasAttentionFilter && (((deal as any).days_since_interaction) || 0) < 7) return false;
+
         // Filtro de busca (nome, email, telefone)
         if (hasSearch) {
           const leadName = removeAccents(deal.lead?.name || deal.title || "");
@@ -425,7 +431,7 @@ export function PipelineBoardContent() {
         total_value: filteredDeals.reduce((sum, d) => sum + (Number(d.negotiated_price) || 0), 0),
       };
     });
-  }, [pipeline, searchQuery, portalFilter, modalidadeFilter, modalidadeMap, urgencyFilter, activityFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
+  }, [pipeline, searchQuery, portalFilter, modalidadeFilter, modalidadeMap, urgencyFilter, activityFilter, attentionOnly, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter, periodFilter, dateField, customDateFrom, customDateTo]);
 
   // Aba "Todas" (superadmin): junta as MESMAS etapas de todas as lojas numa
   // coluna só (ex.: um "Novo Lead" em vez de 4), e marca cada card com a loja.
@@ -543,7 +549,7 @@ export function PipelineBoardContent() {
     };
   }, [pipeline]);
 
-  const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || modalidadeFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
+  const hasActiveFilters = searchQuery.trim() !== "" || portalFilter !== "all" || modalidadeFilter !== "all" || urgencyFilter !== "all" || activityFilter !== "all" || attentionOnly || revenueFilter !== "all" || utmSourceFilter !== "all" || utmCampaignFilter !== "all" || utmContentFilter !== "all" || periodFilter !== "all";
 
   const PORTAL_LABELS: Record<string, string> = { credere: "Credere", marketplace: "Marketplace Digital", stand: "IA de Qualificação", _sem_portal: "Sem portal" };
   const MODALIDADE_FILTER_LABELS: Record<string, string> = { troca: "Troca", compra: "Compra", intermediacao: "Intermediação", consignacao: "Consignação", anuncio_trafego: "Anúncio c/ tráfego", express: "Venda Express", vitrine: "Venda Vitrine", _com_veiculo: "Com veículo" };
@@ -555,13 +561,14 @@ export function PipelineBoardContent() {
     if (modalidadeFilter !== "all") filters.push({ key: "modalidade", label: `Veículo: ${MODALIDADE_FILTER_LABELS[modalidadeFilter] || modalidadeFilter}`, onRemove: () => setModalidadeFilter("all") });
     if (urgencyFilter !== "all") filters.push({ key: "urgency", label: urgencyFilter === "critical" ? "Críticos" : urgencyFilter === "warning" ? "Alertas" : "OK", onRemove: () => setUrgencyFilter("all") });
     if (activityFilter !== "all") filters.push({ key: "activity", label: { call_today: "Calls hoje", meeting_today: "Reuniões hoje", task_today: "Tarefas hoje", no_task_today: "Sem tarefa", any_task: "Com tarefa", overdue: "Atrasadas" }[activityFilter] || activityFilter, onRemove: () => setActivityFilter("all") });
+    if (attentionOnly) filters.push({ key: "attention", label: "Precisam atenção", onRemove: () => setAttentionOnly(false) });
     if (periodFilter !== "all") filters.push({ key: "period", label: { today: "Hoje", this_week: "Semana", this_month: "Este mês", last_month: "Mês passado", last_3_months: "3 meses", custom: "Customizado" }[periodFilter] || "Período", onRemove: () => { setPeriodFilter("all"); setDateField("created_at"); setCustomDateFrom(""); setCustomDateTo(""); } });
     if (revenueFilter !== "all") filters.push({ key: "revenue", label: { "100k+": "+R$100k", "50k-100k": "R$50k-100k", "10k-50k": "R$10k-50k", "ate10k": "Até R$10k", "sem_faturamento": "Sem info" }[revenueFilter] || revenueFilter, onRemove: () => setRevenueFilter("all") });
     if (utmSourceFilter !== "all") filters.push({ key: "utm_source", label: `Origem: ${utmSourceFilter === "_sem_utm" ? "Sem" : utmSourceFilter}`, onRemove: () => setUtmSourceFilter("all") });
     if (utmCampaignFilter !== "all") filters.push({ key: "utm_campaign", label: `Campanha: ${utmCampaignFilter === "_sem_utm" ? "Sem" : utmCampaignFilter}`, onRemove: () => setUtmCampaignFilter("all") });
     if (utmContentFilter !== "all") filters.push({ key: "utm_content", label: `Conteúdo: ${utmContentFilter === "_sem_utm" ? "Sem" : utmContentFilter}`, onRemove: () => setUtmContentFilter("all") });
     return filters;
-  }, [portalFilter, modalidadeFilter, urgencyFilter, activityFilter, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
+  }, [portalFilter, modalidadeFilter, urgencyFilter, activityFilter, attentionOnly, periodFilter, revenueFilter, utmSourceFilter, utmCampaignFilter, utmContentFilter]);
 
   const handleDealClick = (deal: Deal, e?: React.MouseEvent) => {
     if (deal.lead_id) {
@@ -1186,6 +1193,7 @@ export function PipelineBoardContent() {
                         setPortalFilter("all");
                         setUrgencyFilter("all");
                         setActivityFilter("all");
+                        setAttentionOnly(false);
                         setPeriodFilter("all");
                         setDateField("created_at");
                         setCustomDateFrom("");
@@ -1226,6 +1234,7 @@ export function PipelineBoardContent() {
                     setSearchQuery("");
                     setUrgencyFilter("all");
                     setActivityFilter("all");
+                    setAttentionOnly(false);
                     setPeriodFilter("all");
                     setDateField("created_at");
                     setCustomDateFrom("");
@@ -1245,7 +1254,11 @@ export function PipelineBoardContent() {
 
           {/* Row 3: Stats Header */}
           {displayPipeline && displayPipeline.length > 0 && (
-            <PipelineKanbanHeader columns={displayPipeline} />
+            <PipelineKanbanHeader
+              columns={displayPipeline}
+              attentionActive={attentionOnly}
+              onAttentionClick={() => setAttentionOnly((v) => !v)}
+            />
           )}
         </div>
 
