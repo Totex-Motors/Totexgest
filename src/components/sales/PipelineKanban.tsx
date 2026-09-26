@@ -1318,9 +1318,14 @@ function DealCard({
 export function PipelineKanbanHeader({
   columns,
   className,
+  onAttentionClick,
+  attentionActive,
 }: {
   columns: PipelineColumn[];
   className?: string;
+  /** Torna o tile "Precisam atenção" clicável (filtra os parados 7+ dias). */
+  onAttentionClick?: () => void;
+  attentionActive?: boolean;
 }) {
   const { dv } = useDemoMode();
   const totalDeals = columns.reduce((sum, c) => sum + c.count, 0);
@@ -1374,15 +1379,36 @@ export function PipelineKanbanHeader({
       {staleDeals > 0 && (
         <>
           <div className="w-px h-12 bg-slate-200" />
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
+          {onAttentionClick ? (
+            <button
+              type="button"
+              onClick={onAttentionClick}
+              aria-pressed={attentionActive}
+              title={attentionActive ? "Mostrando só os que precisam de atenção — clique para ver todos" : "Ver só os que precisam de atenção"}
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-2 py-1 -mx-2 transition-colors hover:bg-amber-50 cursor-pointer",
+                attentionActive && "bg-amber-50 ring-2 ring-amber-300",
+              )}
+            >
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="text-left">
+                <p className="text-2xl font-bold text-amber-600">{staleDeals}</p>
+                <p className="text-xs text-slate-500">{attentionActive ? "Filtrando · toque p/ limpar" : "Precisam atenção"}</p>
+              </div>
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-amber-600">{staleDeals}</p>
+                <p className="text-xs text-slate-500">Precisam atenção</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-amber-600">{staleDeals}</p>
-              <p className="text-xs text-slate-500">Precisam atenção</p>
-            </div>
-          </div>
+          )}
         </>
       )}
     </div>
