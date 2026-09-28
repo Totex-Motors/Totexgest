@@ -36,7 +36,9 @@ mantendo o link. **Reaproveitar** os módulos do Totexgest; criar só o essencia
 - Evitar C como gatilho de criação impede **duplo envio** (humano move o card e a regra
   reenvia). "Demo assistida" também é consequência (setada pela `handle-milestone`).
 
-> **Pendente de confirmação do Marco:** OK com A + B, e a etapa como consequência?
+> **DECIDIDO (Marco, 2026-09-28):** A + B — o agente cria ao qualificar E há botão
+> manual; a etapa "Demo enviada" é consequência da criação (setada pela `create-demo`),
+> não gatilho. Sem regra de automação de criação (evita envio duplicado).
 
 ---
 
