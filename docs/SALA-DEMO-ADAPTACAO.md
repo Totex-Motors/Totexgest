@@ -96,25 +96,32 @@ autorizam nada; validar sempre no servidor pelo token + `tenant_id`.
 
 ---
 
-## 6. Funil
+## 6. Funil — REVISADO (achado da Fase 1)
 
-Hoje (pipeline Closer): `Novo → Em contato → Qualificado → Call agendada → No-show →
-Call realizada → Em fechamento`. Não existe "Demo enviada"/"Demo assistida".
+**Correção importante ao plano.** A leitura do banco (2026-09-28) mostrou que os
+pipelines das lojas são **funis de venda de CARRO** (por tenant): `Novo Lead → Em
+Qualificação → Agendamento → Avaliação / Proposta → Financiamento (Credere) →
+Ganho / Perdido`. Não existe "Qualificado → Call agendada".
 
-Inserir entre *Qualificado* e *Call agendada*:
+E o ponto-chave: a sala de demo é pra **recrutar LOJISTA/FRANQUEADO** — público
+diferente do comprador de carro. **Não faz sentido** colocar "Demo enviada/assistida"
+no funil de venda de carro das lojas (um comprador de Onix não está "Demo enviada").
 
-```
-Qualificado → Demo enviada → Demo assistida → Call agendada
-```
+**Duas opções (decisão do Marco):**
 
-Padrão de migration (igual `supabase/migrations/20260823120000_totex_noshow_stage_and_rules.sql`):
+- **A. Pipeline dedicado "Recrutamento de Franqueados"** (no tenant HQ Totex Motors):
+  `Novo → Contato → Demo enviada → Demo assistida → Call agendada → Call realizada →
+  Proposta → Fechado / Perdido`. Dá visão real do funil de recrutamento. Migration nova,
+  isolada — **não toca** nos funis de carro das lojas.
+- **B. Sem pipeline** — rastrear só pelo `demo_rooms.status` (created/sent/opened/
+  watching/completed) + os eventos. Mais leve; sem visão de kanban.
 
-1. `UPDATE sales_pipeline_stages SET position = position + 2 WHERE position >= <pos de Call agendada>` (abrir espaço, do maior pro menor).
-2. `INSERT INTO sales_pipeline_stages (id, name, position, color, pipeline_id, tenant_id) VALUES (...) ON CONFLICT (id) DO NOTHING;` para as 2 etapas, por tenant.
-3. Revisar regras `sales_automation_rules` com `only_if_position_less_than` (gate lido em `process-automation-rules`, case `move_deal_stage`).
+**Recomendação: A** — um funil próprio de recrutamento dá a visão de "onde cada
+lojista está" (mesma lógica da análise de enxugamento: informação que vira ação).
 
-O `STAGE_IDS` do front (`src/pages/SalesPipeline.tsx`) **não precisa mudar**: o cálculo
-de urgência tem `default: 'ok'`, então etapas novas não quebram. Ajustar cor/regra depois se quiser.
+Pipelines reais (para referência da migration, quando decidido): cada loja tem seu
+`Pipeline Padrão`; o HQ (`Totex Motors`, tenant `c13681e3…`) tem `Pipeline Padrão`
++ `Intermediação Tamboré`. Um pipeline de recrutamento seria **novo**, no HQ.
 
 ---
 
