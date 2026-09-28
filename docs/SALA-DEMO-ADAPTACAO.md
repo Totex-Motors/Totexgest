@@ -98,6 +98,11 @@ autorizam nada; validar sempre no servidor pelo token + `tenant_id`.
 
 ## 6. Funil — REVISADO (achado da Fase 1)
 
+> **DECIDIDO (Marco, 2026-09-28): opção A.** Pipeline dedicado "Recrutamento de
+> Franqueados" no HQ — migration `20260928130000_pipeline_recrutamento_franqueados.sql`
+> (etapas Novo → Contato → Demo enviada → Demo assistida → Call agendada → Call
+> realizada → Proposta → Fechado/Perdido). Não toca no funil de carro das lojas.
+
 **Correção importante ao plano.** A leitura do banco (2026-09-28) mostrou que os
 pipelines das lojas são **funis de venda de CARRO** (por tenant): `Novo Lead → Em
 Qualificação → Agendamento → Avaliação / Proposta → Financiamento (Credere) →
