@@ -103,6 +103,11 @@ autorizam nada; validar sempre no servidor pelo token + `tenant_id`.
 > (etapas Novo → Contato → Demo enviada → Demo assistida → Call agendada → Call
 > realizada → Proposta → Fechado/Perdido). Não toca no funil de carro das lojas.
 
+> **DECIDIDO (Marco, 2026-09-28): separação TOTAL.** O prospect de recrutamento
+> reaproveita a tabela `leads` mas com marcador `lead_kind='franchise'` (migration
+> `20260928140000_leads_lead_kind.sql`) e fica **escondido** das telas de venda de
+> carro (Leads, Cockpit, Dashboards) — filtro no frontend na Fase 3. Nada se mistura.
+
 **Correção importante ao plano.** A leitura do banco (2026-09-28) mostrou que os
 pipelines das lojas são **funis de venda de CARRO** (por tenant): `Novo Lead → Em
 Qualificação → Agendamento → Avaliação / Proposta → Financiamento (Credere) →
