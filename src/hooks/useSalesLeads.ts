@@ -497,17 +497,10 @@ export const useDeleteLead = () => {
 
   return useMutation({
     mutationFn: async (leadId: string) => {
-      // Delete related records first (deal_contacts, whatsapp_messages handled by cascade or ignored)
-      await (supabase.from('deal_contacts' as any).delete().eq('lead_id', leadId) as any);
-      await supabase.from('company_activities').delete().eq('lead_id', leadId);
-      await supabase.from('whatsapp_messages').delete().eq('lead_id', leadId);
-      await (supabase.from('ai_agent_conversations' as any).delete().eq('lead_id', leadId) as any);
-
-      const { error } = await supabase
-        .from('leads')
-        .delete()
-        .eq('id', leadId);
-
+      // Exclusão completa via RPC: limpa TODAS as dependências (do lead e das
+      // negociações dele) na ordem certa e apaga o lead. Substitui a limpeza
+      // manual incompleta que dava "Erro ao excluir lead" em quem tinha venda/ligação.
+      const { error } = await supabase.rpc('delete_lead_cascade', { p_lead_id: leadId });
       if (error) throw error;
       return leadId;
     },
