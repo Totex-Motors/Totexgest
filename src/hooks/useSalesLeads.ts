@@ -507,6 +507,7 @@ export const useDeleteLead = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-leads'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['leads-count-by-stage'] });
     },
   });
 };
@@ -585,6 +586,11 @@ export const useLeadsCountByStage = () => {
   return useQuery({
     queryKey: ['leads-count-by-stage'],
     queryFn: async () => {
+      // Total de TODOS os leads (inclui os sem etapa / novos) — para a pill "Todos".
+      const { count: allCount } = await (supabase as any)
+        .from('leads')
+        .select('id', { count: 'exact', head: true });
+
       const { data, error } = await supabase
         .from('leads')
         .select('sales_stage')
@@ -593,6 +599,8 @@ export const useLeadsCountByStage = () => {
       if (error) throw error;
 
       const counts: Record<string, number> = {
+        all: allCount || 0,
+        new: 0,
         captura: 0,
         qualificacao: 0,
         agendamento: 0,

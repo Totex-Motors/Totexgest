@@ -152,7 +152,7 @@ const SalesLeads = () => {
               Leads Comerciais
             </h1>
             <p className="text-sm text-muted-foreground">
-              {leads?.length || 0} leads encontrados
+              {totalLeads} leads encontrados
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -245,7 +245,7 @@ const SalesLeads = () => {
         <div className="flex flex-wrap gap-2">
           {STAGES.map((stage) => {
             const count = stage.value === "all"
-              ? leads?.length || 0
+              ? (countByStage?.all ?? totalLeads)
               : countByStage?.[stage.value] || 0;
 
             return (
