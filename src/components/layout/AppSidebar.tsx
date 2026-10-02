@@ -110,6 +110,7 @@ const sections: NavSection[] = [
       { title: "Cockpit", url: "/comercial/cockpit", icon: Headphones },
       { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
+      { title: "Leads", url: "/comercial/leads", icon: User2 },
       { title: "Treinamento", url: "/comercial/treinamento", icon: GraduationCap, commercialOnly: true },
       { title: "Vendedores", url: "/comercial/vendedores", icon: Users, adminOnly: true },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
