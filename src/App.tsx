@@ -159,6 +159,7 @@ const CaptureMyLeads = React.lazy(() => import("./pages/capture/CaptureMyLeads")
 const CaptureMyVehicles = React.lazy(() => import("./pages/capture/CaptureMyVehicles"));
 const CapturePrizes = React.lazy(() => import("./pages/capture/CapturePrizes"));
 const CaptureRepasse = React.lazy(() => import("./pages/capture/CaptureRepasse"));
+const CaptureLinkAttendance = React.lazy(() => import("./pages/capture/CaptureLinkAttendance"));
 const CommercialTraining = React.lazy(() => import("./pages/CommercialTraining"));
 
 // Public booking
@@ -281,6 +282,7 @@ const AppRoutes = () => {
       >
         <Route index element={<React.Suspense fallback={<div />}><CaptureHome /></React.Suspense>} />
         <Route path="novo" element={<React.Suspense fallback={<div />}><CaptureNewLead /></React.Suspense>} />
+        <Route path="vincular" element={<React.Suspense fallback={<div />}><CaptureLinkAttendance /></React.Suspense>} />
         <Route path="leads" element={<React.Suspense fallback={<div />}><CaptureMyLeads /></React.Suspense>} />
         <Route path="carros" element={<React.Suspense fallback={<div />}><CaptureMyVehicles /></React.Suspense>} />
         <Route path="premios" element={<React.Suspense fallback={<div />}><CapturePrizes /></React.Suspense>} />
