@@ -120,6 +120,9 @@ export default function CaptureNewLead() {
 
   // ── Fluxo "Comprar": promotora capta um comprador olhando um carro do totem ──
   const isComprar = d.intent === "comprar";
+  // ── "Trocar": capta o carro que a pessoa TEM (fluxo normal) e, opcionalmente,
+  //    registra o carro do estoque que ela QUER em troca (mesmo StockPicker). ──
+  const isTrocar = d.intent === "trocar";
   const stores = useMarketplaceStores();
   const captar = useCaptarComprador();
   const [buyStoreId, setBuyStoreId] = useState("");
@@ -206,6 +209,22 @@ export default function CaptureNewLead() {
 
   const submit = async () => {
     if (!step1Ok || !d.intent || !d.prazo) return;
+    // "Trocar": se a promotora escolheu o carro do estoque que a pessoa quer em
+    // troca, anexa como registro informativo no lead (não cria lead de compra).
+    const interesse =
+      isTrocar && buyVehicle
+        ? (() => {
+            const store = stores.data?.find((s) => s.tenant_id === buyStoreId);
+            return {
+              vehicle_id: buyVehicle.id,
+              titulo: [buyVehicle.title, buyVehicle.year].filter(Boolean).join(" ") || null,
+              loja: store?.name ?? buyVehicle.dealership ?? null,
+              tenant_id: buyStoreId || null,
+              preco: buyVehicle.price ?? null,
+              url: buyVehicle.url ?? null,
+            };
+          })()
+        : undefined;
     try {
       const res = await create.mutateAsync({
         name: d.name.trim(),
@@ -227,6 +246,7 @@ export default function CaptureNewLead() {
           aceita_avaliacao: d.aceita_avaliacao,
           autoriza_contato: d.autoriza_contato,
           observacao: d.observacao.trim() || undefined,
+          veiculo_interesse: interesse,
         },
         channel: "presencial",
       });
@@ -460,7 +480,7 @@ export default function CaptureNewLead() {
               </div>
               <div className="grid grid-cols-[1fr_110px] gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="vehicle">Qual o carro?</Label>
+                  <Label htmlFor="vehicle">{isTrocar ? "Qual carro ela tem hoje?" : "Qual o carro?"}</Label>
                   <Input id="vehicle" className="h-12 text-base" placeholder="Ex.: Civic EXL" value={d.vehicle}
                     onChange={(e) => setD({ ...d, vehicle: e.target.value })} autoComplete="off" />
                 </div>
@@ -501,6 +521,24 @@ export default function CaptureNewLead() {
                     : "Consentimento pra contato (LGPD). Sem ele o lead não conta na meta."}
                 </p>
               </div>
+
+              {/* "Trocar": carro do estoque que a pessoa quer em troca (opcional) */}
+              {isTrocar && (
+                <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                  <div>
+                    <p className="text-sm font-medium">Tem um carro em vista pra troca? <span className="text-muted-foreground font-normal">(opcional)</span></p>
+                    <p className="text-[11px] text-muted-foreground">Escolha a loja e o carro do estoque que a pessoa quer. O especialista já vê o que ela tem e o que quer.</p>
+                  </div>
+                  <StockPicker
+                    stores={stores.data ?? []}
+                    storesLoading={stores.isLoading}
+                    storeId={buyStoreId}
+                    onStoreChange={setBuyStoreId}
+                    selected={buyVehicle}
+                    onSelect={setBuyVehicle}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
