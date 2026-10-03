@@ -48,6 +48,19 @@ export interface SellerQualification {
   autoriza_contato?: boolean;
   expectativa_valor?: number | string | null;
   observacao?: string;
+  /**
+   * "Trocar": o carro do estoque de uma loja que o cliente quer em troca.
+   * Registro informativo no lead de captação (não cria lead de compra nem
+   * distribui) — o especialista vê exatamente qual carro/loja a pessoa quer.
+   */
+  veiculo_interesse?: {
+    vehicle_id?: string;
+    titulo?: string | null;
+    loja?: string | null;
+    tenant_id?: string | null;
+    preco?: number | null;
+    url?: string | null;
+  };
   temperatura?: CaptureTemperatura;
   score?: number;
   qualificado_em?: string;

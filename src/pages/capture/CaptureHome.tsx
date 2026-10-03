@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles, Gift,
+  AlertCircle, MessageSquareQuote, GraduationCap, ChevronRight, Bell, CheckCheck, Car, ShieldQuestion, ArrowRight, Sparkles, Gift, Link2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -175,6 +175,22 @@ export default function CaptureHome() {
       </Card>
 
       {/* (sem CTA retangular: o botão central "Captar" do bottom-nav já é a ação principal) */}
+
+      {/* Vincular atendimento — cliente que escaneou o QR da loja vira seu, sem recadastrar */}
+      <Link to="/captacao/vincular" className="block">
+        <Card className="hover:bg-muted/40 transition-colors">
+          <CardContent className="pt-3.5 pb-3.5 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-sky-600/15 text-sky-700 dark:text-sky-400 flex items-center justify-center shrink-0">
+              <Link2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Vincular atendimento</p>
+              <p className="text-xs text-muted-foreground">Atendeu no stand e o cliente escaneou o QR? Ponha no seu nome pelo telefone, sem duplicar.</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
 
       {/* Repasse por indicação — novo ganho (R$ 150 por indicado que comprar) */}
       <Link to="/captacao/repasse" className="block">
