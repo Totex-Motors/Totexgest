@@ -30,11 +30,19 @@ type McpRpc =
   | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup';
 
 async function verifyToken(token: string) {
+  // O servidor OAuth do Supabase não amarra o token ao recurso (sem RFC 8707),
+  // então o access token sai com aud padrão "authenticated". Aceitamos tanto o
+  // recurso (caso um dia passe a amarrar) quanto "authenticated". A segurança
+  // continua garantida por: issuer (só esse Supabase) + role authenticated +
+  // client_id (só tokens emitidos via OAuth, não sessão normal do app).
   const { payload } = await jwtVerify(token, jwks, {
-    issuer, audience: publicUrl.href, algorithms: ['ES256', 'RS256'],
-    requiredClaims: ['sub', 'exp', 'iat', 'client_id', 'session_id'],
+    issuer, audience: [publicUrl.href, 'authenticated'], algorithms: ['ES256', 'RS256'],
+    requiredClaims: ['sub', 'exp', 'iat', 'client_id'],
   });
-  const ok = z.string().uuid().safeParse(payload.sub).success && z.string().uuid().safeParse(payload.session_id).success
+  // session_id é opcional (o token do servidor OAuth pode não trazer esse claim);
+  // quando vier, precisa ser um uuid válido.
+  const sidOk = payload.session_id === undefined || z.string().uuid().safeParse(payload.session_id).success;
+  const ok = z.string().uuid().safeParse(payload.sub).success && sidOk
     && payload.role === 'authenticated' && typeof payload.client_id === 'string'
     && (clientIds.includes(payload.client_id) || (allowDynamicClients && z.string().uuid().safeParse(payload.client_id).success));
   if (!ok) throw new Error('Cliente OAuth ou usuário inválido.');
@@ -169,7 +177,30 @@ export default async function handler(req: IncomingMessage & { method?: string; 
     rpc = rpcClient(match[1]);
     context = contextSchema.parse(await rpc('mcp_context'));
     if (context.user_id !== claims.sub) throw new Error('Contexto inconsistente.');
-  } catch {
+  } catch (e) {
+    // DIAGNÓSTICO (temporário): registra o motivo real da recusa + o formato do
+    // token recebido (só claims não sensíveis), pra achar o descasamento. Nunca
+    // loga a assinatura. Remover depois que o conector estiver estável.
+    try {
+      const reason = e instanceof Error ? e.message : String(e);
+      let claimInfo: Record<string, unknown> = {};
+      if (match) {
+        const parts = match[1].split('.');
+        if (parts.length === 3) {
+          const p = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+          claimInfo = {
+            iss: p.iss, aud: p.aud, role: p.role,
+            has_client_id: 'client_id' in p, client_id: p.client_id,
+            has_session_id: 'session_id' in p,
+            has_sub: 'sub' in p, alg_hint: parts[0] ? JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8')).alg : null,
+            keys: Object.keys(p),
+          };
+        }
+      }
+      console.error('[mcp][auth-fail]', JSON.stringify({ reason, expected_aud: publicUrl.href, expected_iss: issuer, dynamic_clients: allowDynamicClients, fixed_clients: clientIds, token: claimInfo }));
+    } catch (logErr) {
+      console.error('[mcp][auth-fail] (sem detalhe)', logErr instanceof Error ? logErr.message : String(logErr));
+    }
     return sendJson(res, 401, { error: 'Conecte sua conta do CRM (admin/gestor) com uma empresa ativa.' }, { 'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl}"` });
   }
 
