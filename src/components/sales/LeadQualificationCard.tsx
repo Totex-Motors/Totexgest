@@ -16,6 +16,12 @@ import { Pencil, Save, X, Gauge, Flame, CalendarClock, Sparkles } from "lucide-r
 import { useUpdateLeadMetadata } from "@/hooks/useSalesLeads";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  INTENT_LABEL,
+  PRAZO_LABEL as CAPTURE_PRAZO_LABEL,
+  TEMP_META as CAPTURE_TEMP_META,
+  type SellerQualification,
+} from "@/types/capture";
 
 /**
  * Qualificação por INTENÇÃO DE COMPRA (contexto automotivo Totex).
@@ -78,12 +84,24 @@ function isEmptyQual(q?: LeadQualificacao | null): boolean {
     !q.interesse_test_drive && !q.interesse_visita;
 }
 
+/** Qualificação da CAPTAÇÃO (promotora) — vive em leads.seller_qualification. */
+function hasSellerQual(sq?: SellerQualification | null): boolean {
+  if (!sq) return false;
+  return sq.score != null || !!sq.temperatura || !!sq.prazo_venda || !!sq.intent ||
+    sq.autoriza_contato != null || !!sq.aceita_avaliacao;
+}
+
+const AVALIACAO_LABEL: Record<string, string> = { sim: "sim", talvez: "talvez", nao: "não" };
+
 export function LeadQualificationCard({
   leadId,
   qualificacao,
+  sellerQualification,
 }: {
   leadId: string;
   qualificacao?: LeadQualificacao | null;
+  /** Qualificação feita pela promotora na captação (leads.seller_qualification). */
+  sellerQualification?: SellerQualification | null;
 }) {
   const [editing, setEditing] = useState(false);
   const updateMeta = useUpdateLeadMetadata();
@@ -124,6 +142,70 @@ export function LeadQualificationCard({
   }
 
   const temp = q?.temperatura ? TEMP_META[q.temperatura] : null;
+
+  // ---- View: qualificação da CAPTAÇÃO (promotora) ----
+  // O lead de captação está VENDENDO o carro. A qualificação dele vem de
+  // leads.seller_qualification (score, prazo, avaliação, autorização, proprietário),
+  // não do metadata.qualificacao (intenção de COMPRA). Antes o card ignorava isso
+  // e mostrava "Lead ainda não qualificado" pra um lead que a promotora qualificou.
+  if (!editing && isEmptyQual(q) && hasSellerQual(sellerQualification)) {
+    const sq = sellerQualification!;
+    const ctemp = sq.temperatura ? CAPTURE_TEMP_META[sq.temperatura] : null;
+    const simNao = (v?: boolean | null) => (v === true ? "sim" : v === false ? "não" : null);
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2"><Flame className="h-4 w-4 text-primary" /> Qualificação</span>
+            <Badge variant="outline" className="text-[10px] font-normal">captação</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2.5 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            {ctemp && <Badge variant="outline" className={cn("text-[11px] font-semibold", ctemp.cls)}>{ctemp.label}</Badge>}
+            {sq.score != null && (
+              <span className="text-muted-foreground">Score <span className="font-medium text-foreground">{sq.score}/100</span></span>
+            )}
+            {sq.intent && <span className="font-medium">{INTENT_LABEL[sq.intent] ?? sq.intent}</span>}
+          </div>
+
+          {sq.prazo_venda && (
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Prazo pra vender:</span>
+              <span className="font-medium">{CAPTURE_PRAZO_LABEL[sq.prazo_venda] ?? sq.prazo_venda}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1.5">
+            {sq.aceita_avaliacao && (
+              <Badge variant="secondary" className="text-[10px] h-5">Avaliação: {AVALIACAO_LABEL[sq.aceita_avaliacao] ?? sq.aceita_avaliacao}</Badge>
+            )}
+            {simNao(sq.autoriza_contato) && (
+              <Badge variant="secondary" className="text-[10px] h-5">Autorizou contato: {simNao(sq.autoriza_contato)}</Badge>
+            )}
+            {sq.is_owner === true && <Badge variant="secondary" className="text-[10px] h-5">Proprietário</Badge>}
+          </div>
+
+          {sq.veiculo_interesse?.titulo && (
+            <p className="text-muted-foreground">
+              Quer em troca: <span className="font-medium text-foreground">{sq.veiculo_interesse.titulo}</span>
+              {sq.veiculo_interesse.loja ? ` · ${sq.veiculo_interesse.loja}` : ""}
+            </p>
+          )}
+
+          {sq.observacao && (
+            <p className="text-muted-foreground leading-snug border-l-2 border-muted pl-2">{sq.observacao}</p>
+          )}
+
+          <p className="text-[10px] text-muted-foreground flex items-center gap-1 pt-0.5">
+            <Sparkles className="h-3 w-3" />
+            Qualificado pela promotora{sq.qualificado_em ? ` em ${new Date(sq.qualificado_em).toLocaleDateString("pt-BR")}` : ""}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // ---- View (vazio) ----
   if (!editing && isEmptyQual(q)) {

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Deal } from '@/types/sales.types';
+import { TEMP_META as CAPTURE_TEMP_META } from '@/types/capture';
 
 interface SidebarDealsProps {
   deals: Deal[];
@@ -68,13 +69,16 @@ export function SidebarDeals({
 }: SidebarDealsProps) {
   const [reopenDealId, setReopenDealId] = useState<string | null>(null);
   const reopenDeal = reopenDealId ? deals.find((d: any) => d.id === reopenDealId) : null;
+  // Lead de captação: a "oportunidade" é a intermediação do carro (deal com metadata.captacao).
+  // Vocabulário da casa: captação/intermediação, não "oportunidade de venda".
+  const allCaptacao = deals.length > 0 && deals.every((d: any) => !!d?.metadata?.captacao);
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
             <Briefcase className="h-4 w-4 text-blue-500" />
-            Oportunidades ({deals.length})
+            {allCaptacao ? 'Intermediação' : 'Oportunidades'} ({deals.length})
           </CardTitle>
           <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={onCreateDeal}>
             <Plus className="h-3 w-3 mr-1" />
@@ -104,6 +108,11 @@ export function SidebarDeals({
             const utmSource = deal.lead?.utm_source;
             const productName = deal.product?.name;
             const salesRepName = deal.sales_rep?.name;
+            // Deal de captação: sem preço/produto (não é venda de produto). Mostra o carro + temperatura.
+            // A etapa avança por EVENTO (contrato → vitrine → venda) — o gate do banco bloqueia mover na mão.
+            const isCaptacao = !!deal.metadata?.captacao;
+            const captacaoLabel = String(deal.title || '').replace(/^Captação\s*—\s*/i, '') || 'Carro em captação';
+            const captacaoTemp = isCaptacao ? CAPTURE_TEMP_META[deal.metadata?.temperatura as string] ?? null : null;
 
             const isWebinar = pipelineName.toLowerCase().includes('webinár') || pipelineName.toLowerCase().includes('webinar');
             const PipelineIcon = isWebinar ? Sparkles : Briefcase;
@@ -157,7 +166,7 @@ export function SidebarDeals({
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddContact(deal.id); }}><UserPlus className="h-3.5 w-3.5 mr-2" />Decisor</DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onTransferPipeline(deal); }}><ArrowRightCircle className="h-3.5 w-3.5 mr-2" />Transferir</DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      {!isWon && !isLost && (
+                      {!isCaptacao && !isWon && !isLost && (
                         <>
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onWinDeal(deal); }} className="text-green-600"><Trophy className="h-3.5 w-3.5 mr-2" />Ganho</DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onLoseDeal(deal); }} className="text-red-600"><XCircle className="h-3.5 w-3.5 mr-2" />Perdido</DropdownMenuItem>
@@ -172,18 +181,29 @@ export function SidebarDeals({
                   </DropdownMenu>
                 </div>
 
-                {/* Row 2: Valor + Produto */}
-                <div className="flex items-baseline gap-2">
-                  <span className={cn(
-                    'text-sm font-bold',
-                    isWon ? 'text-green-700 dark:text-green-400' : 'text-foreground'
-                  )}>
-                    {formatCurrency(value)}
-                  </span>
-                  {productName && (
-                    <span className="text-[10px] text-muted-foreground truncate">{productName}</span>
-                  )}
-                </div>
+                {/* Row 2: Valor + Produto — na captação não tem preço/produto: mostra o carro + temperatura */}
+                {isCaptacao ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold truncate">{captacaoLabel}</span>
+                    {captacaoTemp && (
+                      <span className={cn('px-1.5 py-0 rounded border text-[9px] font-semibold', captacaoTemp.cls)}>
+                        {captacaoTemp.label}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className={cn(
+                      'text-sm font-bold',
+                      isWon ? 'text-green-700 dark:text-green-400' : 'text-foreground'
+                    )}>
+                      {formatCurrency(value)}
+                    </span>
+                    {productName && (
+                      <span className="text-[10px] text-muted-foreground truncate">{productName}</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Row 3: Badges compactos (responsavel · origem · webinar) */}
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px] text-muted-foreground">
@@ -205,7 +225,13 @@ export function SidebarDeals({
 
                 {/* Botões de ação — Ganho/Perdido quando aberto, Reabrir quando fechado */}
                 <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/30">
-                  {!isWon && !isLost ? (
+                  {isCaptacao ? (
+                    /* Captação: sem Ganho/Perdido na mão — a etapa é consequência dos eventos
+                       (contrato assinado → em vitrine → venda) e o gate do banco bloqueia mover direto. */
+                    <p className="text-[10px] text-muted-foreground">
+                      Avança sozinha: contrato assinado → em vitrine → venda registrada.
+                    </p>
+                  ) : !isWon && !isLost ? (
                     <>
                       <button
                         onClick={(e) => { e.stopPropagation(); onWinDeal(deal); }}

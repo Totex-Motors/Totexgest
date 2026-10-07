@@ -690,6 +690,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
     challenges: pick(lead.challenges, pl?.challenges) ?? lead.challenges,
   } : lead;
 
+  // Lead de CAPTAÇÃO (captado por promotora): a pessoa está VENDENDO o carro, não comprando.
+  // Esconde os cards de comprador (que ficariam vazios) e lê a qualificação da captação.
+  const isCaptacao = !!(effectiveLead as any)?.captured_by_member_id;
+
   // Filter timeline events
   const filteredTimeline = (timeline || []).filter((event: any) => {
     if (timelineFilter === "all") return true;
@@ -1174,7 +1178,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                 <p className="text-[10px] text-muted-foreground">Score</p>
               </div>
               <div className="text-center p-2 rounded-lg bg-muted/50">
-                <p className="text-lg font-bold">{contactDeals?.length || 0}</p>
+                {/* Só conta venda GANHA. Antes contava qualquer oportunidade — a captação cria uma
+                    automática no 1º estágio, o que virava "1 Vendas" num lead que nunca vendeu. */}
+                <p className="text-lg font-bold">
+                  {(contactDeals ?? []).filter((d: any) => d.status === 'won' || d.pipeline_stage?.is_won).length}
+                </p>
                 <p className="text-[10px] text-muted-foreground">Vendas</p>
               </div>
               <div className="text-center p-2 rounded-lg bg-muted/50">
@@ -1183,8 +1191,8 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               </div>
             </div>
 
-            {/* Veículo de interesse (marketplace ou vinculado manualmente) */}
-            {effectiveLead && id && (
+            {/* Veículo de interesse (marketplace ou vinculado manualmente) — não se aplica a quem está VENDENDO (captação) */}
+            {!isCaptacao && effectiveLead && id && (
               <VehicleOfInterestCard
                 vehicle={(effectiveLead as any).metadata?.vehicle}
                 vehicles={(effectiveLead as any).metadata?.vehicles}
@@ -1197,16 +1205,17 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               />
             )}
 
-            {/* Perfil de compra (orçamento, financiamento, troca, pagamento) */}
-            {id && (
+            {/* Perfil de compra (orçamento, financiamento, troca, pagamento) — só faz sentido pra COMPRADOR */}
+            {!isCaptacao && id && (
               <BuyerProfileCard
                 leadId={id}
                 profile={(effectiveLead as any)?.metadata}
               />
             )}
 
-            {/* Veículo na troca */}
-            {id && (
+            {/* Veículo na troca — na captação o carro já aparece no card "Captação" (seller_vehicles);
+                este lê trade_in_vehicles e ficaria "Nenhum veículo registrado" ao lado, contradizendo. */}
+            {!isCaptacao && id && (
               <TradeInVehicleCard
                 leadId={id}
                 dealId={contactDeals?.[0]?.id ?? null}
@@ -1219,6 +1228,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               <LeadQualificationCard
                 leadId={id}
                 qualificacao={(effectiveLead as any)?.metadata?.qualificacao}
+                sellerQualification={(effectiveLead as any)?.seller_qualification}
               />
             )}
 
