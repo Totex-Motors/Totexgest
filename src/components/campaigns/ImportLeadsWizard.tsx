@@ -122,16 +122,11 @@ export default function ImportLeadsWizard({ onImportComplete, onComplete, open, 
     setImporting(true);
     let created = 0, skipped = 0, failed = 0;
     try {
-      // Dedup por telefone contra a base existente
-      const phoneIdx = mapping.indexOf("phone");
-      const phones = phoneIdx >= 0
-        ? rows.map((r) => normPhone(r[phoneIdx] || "")).filter((p) => p.length >= 8)
-        : [];
-      const existing = new Set<string>();
-      for (let i = 0; i < phones.length; i += 200) {
-        const chunk = phones.slice(i, i + 200);
-        const { data } = await supabase.from("leads").select("phone").in("phone", chunk);
-        (data || []).forEach((l: any) => l.phone && existing.add(normPhone(l.phone)));
+      const tenantId = (teamMember as { tenant_id?: string | null } | null)?.tenant_id || null;
+      if (!tenantId) {
+        toast.error("Não achei a loja (tenant) do seu usuário pra importar.");
+        setImporting(false);
+        return;
       }
 
       const get = (r: string[], field: string) => {
@@ -139,33 +134,67 @@ export default function ImportLeadsWizard({ onImportComplete, onComplete, open, 
         return idx >= 0 ? (r[idx] || "").trim() : "";
       };
 
-      const inserts: Record<string, unknown>[] = [];
+      // Porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md §3.3): cada linha passa pelo
+      // find_or_create_lead (telefone normalizado, últimos 8 dígitos DENTRO da loja).
+      // Antes a dedupe era por igualdade EXATA do texto do telefone: "11 99999-0000",
+      // "11999990000" e "5511999990000" eram tratados como três pessoas diferentes.
+      type Row = { name: string; phone: string; email: string; extras: Record<string, unknown>; meta: Record<string, unknown> };
+      const prepared: Row[] = [];
       for (const r of rows) {
         const phone = normPhone(get(r, "phone"));
         const name = get(r, "name");
         if (!name && !phone) { skipped++; continue; }
-        if (phone && existing.has(phone)) { skipped++; continue; }
-        if (phone) existing.add(phone);
         const veiculo = get(r, "veiculo");
-        inserts.push({
-          name: name || `Lead ${phone}`,
-          phone: phone || null,
-          email: get(r, "email") || null,
-          city_name: get(r, "city_name") || null,
-          state: get(r, "state") || null,
-          source: "import_csv",
-          status: "new",
-          sales_stage: "new",
-          context: get(r, "notes") || null,
-          metadata: veiculo ? { veiculo_interesse_texto: veiculo } : {},
+        prepared.push({
+          name,
+          phone,
+          email: get(r, "email") || "",
+          extras: {
+            city_name: get(r, "city_name") || null,
+            state: get(r, "state") || null,
+            status: "new",
+            sales_stage: "new",
+            context: get(r, "notes") || null,
+          },
+          meta: veiculo ? { veiculo_interesse_texto: veiculo } : {},
         });
       }
 
-      for (let i = 0; i < inserts.length; i += 100) {
-        const chunk = inserts.slice(i, i + 100);
-        const { error } = await supabase.from("leads").insert(chunk);
-        if (error) failed += chunk.length;
-        else created += chunk.length;
+      const seenInFile = new Set<string>();
+      const importOne = async (row: Row) => {
+        if (row.phone.length >= 10) {
+          const last8 = row.phone.slice(-8);
+          if (seenInFile.has(last8)) { skipped++; return; } // repetido dentro do próprio arquivo
+          seenInFile.add(last8);
+          const { data, error } = await supabase.rpc("find_or_create_lead", {
+            p_tenant: tenantId,
+            p_phone: row.phone,
+            p_name: row.name || null,
+            p_source: "import_csv",
+            p_email: row.email || null,
+            p_metadata: row.meta,
+          });
+          if (error) { failed++; return; }
+          const res = data as { lead_id: string; created: boolean };
+          if (!res.created) { skipped++; return; } // já existia na loja
+          await supabase.from("leads").update(row.extras).eq("id", res.lead_id);
+          created++;
+          return;
+        }
+        // sem telefone válido não dá pra deduplicar — cria como antes
+        const { error } = await supabase.from("leads").insert({
+          name: row.name || `Lead ${row.phone}`,
+          phone: row.phone || null,
+          email: row.email || null,
+          ...row.extras,
+          source: "import_csv",
+          metadata: row.meta,
+        });
+        if (error) failed++;
+        else created++;
+      };
+      for (let i = 0; i < prepared.length; i += 10) {
+        await Promise.all(prepared.slice(i, i + 10).map(importOne));
       }
 
       await supabase.from("import_jobs").insert({

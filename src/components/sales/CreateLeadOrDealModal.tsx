@@ -760,11 +760,6 @@ export function CreateLeadOrDealModal({
     );
   };
 
-  const handleForceCreate = async () => {
-    setFoundDuplicates([]);
-    await executeCreateLeadAndDeal();
-  };
-
   // Handler: Criar lead e opcionalmente deal
   const handleCreateLeadAndDeal = async () => {
     if (!newLeadForm.name) {
@@ -1400,9 +1395,12 @@ export function CreateLeadOrDealModal({
                         </div>
                       ))}
                     </div>
-                    <Button size="sm" variant="ghost" className="text-xs text-amber-700" onClick={handleForceCreate}>
-                      Criar mesmo assim (duplicata)
-                    </Button>
+                    {/* Passo 2b (docs/ENTRADAS-DE-LEADS.md): sem "criar mesmo assim" — duplicado
+                        consentido era uma das portas de lead repetido. Abra o existente ou
+                        registre nele uma nova conversão. */}
+                    <p className="text-xs text-amber-800">
+                      Pra não duplicar, use o lead que já existe: <strong>Abrir</strong> pra ver/editar, ou <strong>Nova Conversão</strong> pra registrar este novo contato nele.
+                    </p>
                   </AlertDescription>
                 </Alert>
               )}

@@ -141,7 +141,9 @@ export function useLeadDuplicates(leadId: string | undefined) {
         // Match on last 8 digits
         const last8 = currentLead.phone.replace(/\D/g, "").slice(-8);
         if (last8.length >= 8) {
-          conditions.push(`phone.like.%${last8}%`);
+          // Regra única (passo 2 — docs/ENTRADAS-DE-LEADS.md): SUFIXO dos últimos 8 dígitos.
+          // Antes era "contém" (%x%), que casava número errado. RLS já limita à loja.
+          conditions.push(`phone.like.%${last8}`);
         }
       }
       if (currentLead.email) {
@@ -262,7 +264,9 @@ export function useCheckLeadDuplicate() {
         const cleanPhone = phone.replace(/\D/g, "");
         const last8 = cleanPhone.slice(-8);
         if (last8.length >= 8) {
-          conditions.push(`phone.like.%${last8}%`);
+          // Regra única (passo 2 — docs/ENTRADAS-DE-LEADS.md): SUFIXO dos últimos 8 dígitos.
+          // Antes era "contém" (%x%), que casava número errado. RLS já limita à loja.
+          conditions.push(`phone.like.%${last8}`);
         }
       }
 

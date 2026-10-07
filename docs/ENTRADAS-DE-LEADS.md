@@ -10,7 +10,8 @@
 > - 🔄 **Passo 2 (uma dedupe só)** — backend: função `find_or_create_lead` (migration
 >   `20261008120000`) plugada em stand-intake, stand-handoff, marketplace (2 eventos), Credere,
 >   receive-lead (lookup), WhatsApp oficial, distribuir-lead e totem (captar-comprador).
->   Pendente: parte frontend (modal manual bloquear duplicado + CSV normalizar telefone).
+>   Frontend (2b): modal manual sem "criar mesmo assim"; checagem de duplicado por sufixo
+>   dos 8 dígitos; importação CSV linha a linha pela porta única. (PR #117)
 > - ⏳ **Passo 3 (separar por `lead_kind`)** — não iniciado.
 
 ---
