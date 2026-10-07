@@ -52,22 +52,11 @@ Cria tarefa em company_activities.
   "message": "Sua resposta conversacional"
 }
 
-### 2. create_lead - Criar Lead
-Cria novo lead na base.
-{
-  "action": "create_lead",
-  "lead": {
-    "name": "string (obrigatório)",
-    "phone": "string (obrigatório, formato: 5535997461323)",
-    "email": "string",
-    "instagram": "string (@usuario)",
-    "region": "string (cidade/estado)",
-    "sales_stage": "captura|qualificacao|agendamento|negociacao",
-    "utm_source": "origem do lead",
-    "context": "observações e contexto sobre o lead"
-  },
-  "message": "Sua resposta conversacional"
-}
+### 2. (DESATIVADO) create_lead - Criar Lead
+Criar lead por aqui foi DESATIVADO: lead novo entra pelo CRM ou pela captação
+(promotora), que têm checagem de duplicidade e loja (tenant) definida. Se pedirem
+pra criar lead, responda só com "message" orientando a cadastrar no CRM.
+NUNCA devolva action "create_lead" nem "create_lead_and_deal".
 
 ### 3. create_deal - Criar Oportunidade
 Cria deal/oportunidade para um lead.
@@ -88,14 +77,8 @@ Cria deal/oportunidade para um lead.
   "message": "Sua resposta conversacional"
 }
 
-### 4. create_lead_and_deal - Criar Lead + Oportunidade
-Cria lead novo E já cria oportunidade.
-{
-  "action": "create_lead_and_deal",
-  "lead": { ...dados do lead },
-  "deal": { ...dados do deal (sem lead_id, sem negotiated_price se não souber) },
-  "message": "Sua resposta conversacional"
-}
+### 4. (DESATIVADO) create_lead_and_deal - Criar Lead + Oportunidade
+Desativado — ver item 2. Pra oportunidade de lead que JÁ existe, use create_deal.
 
 ### 5. update_lead - Atualizar Lead
 Atualiza dados de um lead.
@@ -1240,14 +1223,10 @@ Deno.serve(async (req: Request) => {
         }
 
       } else if (aiResponse.action === "create_lead") {
-        const result = await handleCreateLead(supabase, aiResponse.lead);
-        if (result.success) {
-          actionTaken = "lead_created";
-          resultData = result.data;
-          responseMessage = aiResponse.message || `✅ Lead criado: *${result.data.name}*`;
-        } else {
-          throw new Error(result.error);
-        }
+        // DESATIVADO (passo 1 — docs/ENTRADAS-DE-LEADS.md): criava lead sem tenant
+        // (caía no tenant fantasma) e com telefone placeholder "0000000000".
+        actionTaken = "lead_creation_disabled";
+        responseMessage = "🚫 Criar lead por aqui foi desativado. Cadastre no CRM ou pela captação — lá tem checagem de duplicidade e a loja certa.";
 
       } else if (aiResponse.action === "create_deal") {
         const result = await handleCreateDeal(supabase, aiResponse.deal);
@@ -1260,22 +1239,9 @@ Deno.serve(async (req: Request) => {
         }
 
       } else if (aiResponse.action === "create_lead_and_deal") {
-        // Criar lead primeiro
-        const leadResult = await handleCreateLead(supabase, aiResponse.lead);
-        if (!leadResult.success) {
-          throw new Error(`Erro ao criar lead: ${leadResult.error}`);
-        }
-
-        // Criar deal com o lead_id
-        const dealData = { ...aiResponse.deal, lead_id: leadResult.data.id };
-        const dealResult = await handleCreateDeal(supabase, dealData);
-        if (!dealResult.success) {
-          throw new Error(`Erro ao criar deal: ${dealResult.error}`);
-        }
-
-        actionTaken = "lead_and_deal_created";
-        resultData = { lead: leadResult.data, deal: dealResult.data };
-        responseMessage = aiResponse.message || `✅ Lead *${leadResult.data.name}* + Oportunidade R$ ${Number(dealResult.data.negotiated_price).toLocaleString("pt-BR")} criados!`;
+        // DESATIVADO (passo 1 — docs/ENTRADAS-DE-LEADS.md): ver create_lead acima.
+        actionTaken = "lead_creation_disabled";
+        responseMessage = "🚫 Criar lead por aqui foi desativado. Cadastre o lead no CRM ou pela captação; depois eu crio a oportunidade com create_deal.";
 
       } else if (aiResponse.action === "update_lead") {
         const result = await handleUpdateLead(supabase, aiResponse.lead_identifier, aiResponse.updates);

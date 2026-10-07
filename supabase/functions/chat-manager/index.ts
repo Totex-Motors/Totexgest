@@ -86,18 +86,12 @@ INSTRUÇÕES:
 - AÇÕES DISPONÍVEIS:
   * create_deal: criar uma oportunidade para um lead
   * create_deals_batch: criar múltiplas oportunidades de uma vez (passe array de lead_ids)
-  * create_leads_from_pain: criar leads a partir de registros da pain_registrations que ainda não têm lead_id
   * update_lead: atualizar dados de um lead
   * create_activity: criar tarefa/follow-up
 - Formatação: moeda "R$ 1.234,56"; percentuais com 1 casa; cite período.
 - Estilo: resumo executivo + bullets; comparativos quando fizer sentido. Não exiba SQL.
-- Para buscar leads do PAIN: SELECT * FROM pain_registrations WHERE created_at >= '...'
 - Use query_supabase para buscar dados REAIS antes de responder.
-
-FLUXO PARA CRIAR DEALS DO PAIN:
-1. Buscar registros: SELECT id, lead_id, name FROM pain_registrations WHERE created_at >= '...'
-2. Se lead_id é NULL: use create_leads_from_pain primeiro
-3. Se lead_id existe: use create_deals_batch com os lead_ids e pipeline_stage_id='20087f0a-83c8-4e1e-b442-dd4ba09cf648' (Qualificação)
+- NÃO crie leads por aqui (ferramenta removida): lead novo entra pelo CRM ou pela captação, que têm checagem de duplicidade e loja definida.
 
 IMPORTANTE: Quando o usuário pedir para CRIAR oportunidades/deals, USE AS FERRAMENTAS. Não recuse!
 
@@ -569,18 +563,9 @@ Timezone: Brasil (UTC-3). Responda em PT-BR.`;
           required: ["criteria"]
         }
       },
-      {
-        name: "create_leads_from_pain",
-        description: "Cria leads na tabela leads a partir de registros da pain_registrations que ainda não têm lead_id. Use quando precisar criar oportunidades para leads do PAIN.",
-        input_schema: {
-          type: "object",
-          properties: {
-            pain_registration_ids: { type: "array", items: { type: "string" }, description: "Lista de UUIDs da pain_registrations para criar leads" },
-            sales_stage: { type: ["string","null"], enum: ["captura","qualificacao","agendamento","negociacao"], description: "Estágio inicial (default: qualificacao)" }
-          },
-          required: ["pain_registration_ids"]
-        }
-      },
+      // (create_leads_from_pain REMOVIDA — passo 1 de docs/ENTRADAS-DE-LEADS.md:
+      //  criava lead no tenant fantasma a partir do legado PAIN. Lead novo entra
+      //  pelo CRM ou pela captação.)
       {
         name: "create_deals_batch",
         description: "Cria múltiplos deals de uma vez a partir de uma lista de lead_ids. Use para criar oportunidades em lote.",

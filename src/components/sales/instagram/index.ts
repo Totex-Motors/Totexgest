@@ -3,7 +3,6 @@ export { InstagramConversationRow } from "./InstagramConversationRow";
 export { InstagramChat } from "./InstagramChat";
 export { SocialSellerFunnelBar } from "./SocialSellerFunnelBar";
 export { SocialSellerAlerts } from "./SocialSellerAlerts";
-export { InstagramClientInfoPanel } from "./InstagramClientInfoPanel";
 export { LeadInstagramChat } from "./LeadInstagramChat";
 export { InstagramStoriesCarousel } from "./InstagramStoriesCarousel";
 export { StoryViewerModal } from "./StoryViewerModal";

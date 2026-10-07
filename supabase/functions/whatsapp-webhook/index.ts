@@ -487,9 +487,19 @@ async function handleIncomingMessage(
     shouldCreateTicket = false;
   }
 
-  // Buscar ou criar lead (usa tabela leads, não contacts)
+  // Buscar ou criar lead (usa tabela leads, não contacts).
+  // GRUPO (passo 1 — docs/ENTRADAS-DE-LEADS.md §3.5): grupo NÃO é porta de entrada de lead.
+  //  - fromMe em grupo: o "telefone" seria o ID do grupo → lead falso (e os últimos 8
+  //    dígitos de um ID de grupo podem colidir com um telefone real). Pula tudo.
+  //  - participante de grupo: só VINCULA lead que já existe; não cria novo
+  //    (a mensagem fica guardada pelo group_id; lead_id pode ser null).
   let leadId: string | null = null;
-  leadId = await getOrCreateContactWithProfilePic(supabase, actualContactPhone, pushName, instanceApiKey, instanceApiUrl, tenantId);
+  if (!(isGroup && fromMe)) {
+    leadId = await getOrCreateContactWithProfilePic(
+      supabase, actualContactPhone, pushName, instanceApiKey, instanceApiUrl, tenantId,
+      /* createIfMissing */ !isGroup,
+    );
+  }
 
   // Dedup: skip if a message with the same message_id already exists (catches edit echoes and duplicate events)
   if (messageId) {
