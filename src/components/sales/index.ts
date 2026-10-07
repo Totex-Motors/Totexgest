@@ -18,7 +18,6 @@ export { CreateDealModal } from './CreateDealModal';
 export { EditDealModal } from './EditDealModal';
 export { CloseDealModal, RegisterNegotiationModal } from './CloseDealModal';
 export { WinDealModal } from './WinDealModal';
-export { CreateSalesLeadModal } from './CreateSalesLeadModal';
 export { CreateLeadOrDealModal } from './CreateLeadOrDealModal';
 
 // Alerts

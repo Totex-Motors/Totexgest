@@ -212,19 +212,38 @@ export const useClientTimeline = (leadId: string | undefined, organizationId: st
 
         // Deal criado — pula se for pipeline Webinario (ja tem evento de inscricao)
         if (!isWebinarPipeline) {
-          events.push({
-            id: `deal-created-${deal.id}`,
-            date: deal.created_at,
-            time: new Date(deal.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            type: 'checkout',
-            team: 'sales',
-            title: `🚗 Nova Oportunidade: ${deal.product?.name || deal.title || 'Atendimento'}`,
-            description: `Atendimento iniciado no valor de R$ ${dealValue.toLocaleString('pt-BR')}.`,
-            details: `Estágio: ${stageName} • Produto: ${deal.product?.name || 'N/A'}`,
-            amount: dealValue,
-            tags: ['Oportunidade'],
-            metadata: { deal_id: deal.id }
-          });
+          // Deal de CAPTAÇÃO (metadata.captacao): não é venda de produto — não tem preço nem produto.
+          // Antes virava "Nova Oportunidade … R$ 0 • Produto: N/A", confuso pra um carro em captação.
+          const isCaptacaoDeal = !!deal.metadata?.captacao;
+          if (isCaptacaoDeal) {
+            const carro = String(deal.title || '').replace(/^Captação\s*—\s*/i, '') || 'carro';
+            events.push({
+              id: `deal-created-${deal.id}`,
+              date: deal.created_at,
+              time: new Date(deal.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              type: 'checkout',
+              team: 'sales',
+              title: `🚗 Carro em captação: ${carro}`,
+              description: 'Entrou no funil de intermediação pra avaliação e contrato.',
+              details: `Etapa: ${stageName}`,
+              tags: ['Captação'],
+              metadata: { deal_id: deal.id }
+            });
+          } else {
+            events.push({
+              id: `deal-created-${deal.id}`,
+              date: deal.created_at,
+              time: new Date(deal.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              type: 'checkout',
+              team: 'sales',
+              title: `🚗 Nova Oportunidade: ${deal.product?.name || deal.title || 'Atendimento'}`,
+              description: `Atendimento iniciado no valor de R$ ${dealValue.toLocaleString('pt-BR')}.`,
+              details: `Estágio: ${stageName} • Produto: ${deal.product?.name || 'N/A'}`,
+              amount: dealValue,
+              tags: ['Oportunidade'],
+              metadata: { deal_id: deal.id }
+            });
+          }
         }
 
         // Deal fechado (won) — mostra mesmo se deal depois virou lost (churn/reembolso)

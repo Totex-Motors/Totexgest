@@ -80,7 +80,10 @@ export async function getOrCreateContactWithProfilePic(
   pushName: string,
   apiKey: string | null,
   apiUrl: string | null,
-  tenantId: string | null = null
+  tenantId: string | null = null,
+  // false = só VINCULA lead existente, nunca cria (usado pra participante de grupo —
+  // passo 1 de docs/ENTRADAS-DE-LEADS.md: grupo não vira porta de entrada de lead)
+  createIfMissing: boolean = true
 ): Promise<string | null> {
   const cleanPhone = phone.replace(/\D/g, '').replace(/@.*/, '');
 
@@ -140,6 +143,11 @@ export async function getOrCreateContactWithProfilePic(
     }
 
     return existingLead.id;
+  }
+
+  if (!createIfMissing) {
+    console.log('[Webhook] Lead não encontrado e criação desabilitada neste contexto (grupo):', cleanPhone);
+    return null;
   }
 
   // Criar novo lead - buscar dados completos primeiro

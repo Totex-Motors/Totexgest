@@ -779,26 +779,16 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
       return;
     }
 
-    // Marca replied + vincula/cria lead
+    // Marca replied + vincula lead JÁ EXISTENTE. NÃO cria lead aqui (passo 1 —
+    // docs/ENTRADAS-DE-LEADS.md): esta porta criava lead SEM telefone (phone="")
+    // só com o @ do Instagram, poluindo a base. Lead novo entra pelo CRM/captação.
     let leadId = rec.lead_id;
     if (!leadId) {
       const { data: existing } = await supabase
         .from("leads").select("id")
         .eq("tenant_id", tenantId)
         .eq("instagram", senderUsername).maybeSingle();
-      if (existing) {
-        leadId = existing.id;
-      } else {
-        const { data: newLead } = await supabase.from("leads").insert({
-          tenant_id: tenantId,
-          name: senderUsername,
-          phone: "",
-          instagram: senderUsername,
-          sales_stage: "new",
-          utm_source: "instagram_comment_campaign",
-        }).select("id").single();
-        leadId = newLead?.id || null;
-      }
+      leadId = existing?.id || null;
     }
     // Pessoa respondeu → marca TODOS os recipients dela (todas as campanhas) como
     // replied. Assim nada fica "pendente" (nudge para) e a conversa é uma só.

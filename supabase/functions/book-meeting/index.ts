@@ -315,16 +315,29 @@ async function handleBook(supabase: any, payload: BookPayload) {
     throw new Error("name and phone are required");
   }
 
-  // 1. Find lead by phone (last 8 digits) or email
+  // 0. Loja (tenant) do agendamento público. Antes não passava tenant_id e o lead
+  //    caía no tenant fantasma (…0001), que agora é REJEITADO pelo banco.
+  //    Config `BOOK_MEETING_TENANT_ID`; fallback = HQ Totex Motors.
+  const HQ_TENANT_ID = "c13681e3-5db9-48d1-9c5c-856e6041d77f";
+  let tenantId = HQ_TENANT_ID;
+  try {
+    const { data: cfg } = await supabase.from("config").select("value").eq("key", "BOOK_MEETING_TENANT_ID").maybeSingle();
+    const v = String(cfg?.value ?? "").trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) tenantId = v;
+  } catch (e) {
+    console.warn(`[book-meeting] config BOOK_MEETING_TENANT_ID indisponível, usando HQ:`, (e as Error).message);
+  }
+
+  // 1. Find lead by phone (last 8 digits) or email — SEMPRE dentro do tenant
   const cleanPhone = phone.replace(/\D/g, "");
   const phoneLast8 = cleanPhone.slice(-8);
   let lead: any = null;
 
-  console.log(`[book-meeting] Looking for lead: phone=${cleanPhone} last8=${phoneLast8} email=${email}`);
+  console.log(`[book-meeting] Looking for lead: phone=${cleanPhone} last8=${phoneLast8} email=${email} tenant=${tenantId}`);
 
   const { data: foundByPhone, error: phoneErr } = await supabase.rpc(
     "find_lead_by_phone_normalized",
-    { p_phone: cleanPhone }
+    { p_phone: cleanPhone, p_tenant: tenantId }
   );
   // RPC returns array (RETURN QUERY), take first element
   if (foundByPhone && Array.isArray(foundByPhone) && foundByPhone.length > 0) {
@@ -336,11 +349,12 @@ async function handleBook(supabase: any, payload: BookPayload) {
   }
   if (phoneErr) console.error(`[book-meeting] Phone RPC error:`, phoneErr.message);
 
-  // Fallback: search by email
+  // Fallback: search by email — no tenant, nunca global
   if (!lead && email) {
     const { data: foundByEmail } = await supabase
       .from("leads")
       .select("*")
+      .eq("tenant_id", tenantId)
       .eq("email", email.toLowerCase().trim())
       .maybeSingle();
     if (foundByEmail) {
@@ -355,6 +369,7 @@ async function handleBook(supabase: any, payload: BookPayload) {
     const { data: newLead, error: createErr } = await supabase
       .from("leads")
       .insert({
+        tenant_id: tenantId,
         name,
         email: email?.toLowerCase().trim() || null,
         phone: cleanPhone,
@@ -416,6 +431,7 @@ async function handleBook(supabase: any, payload: BookPayload) {
     console.log(`[book-meeting] Moved webinar deal to Agendou: ${webinarDeal.id}`);
   } else {
     const { error: dealErr } = await supabase.from("deals").insert({
+      tenant_id: tenantId,
       lead_id: lead.id,
       pipeline_id: WEBINAR_PIPELINE_ID,
       pipeline_stage_id: WEBINAR_AGENDOU_STAGE_ID,
