@@ -339,11 +339,9 @@ Deno.serve(async (req: Request) => {
     //  Flow A: wm.lead_id. Flow B (cliente inicia): acha por telefone no tenant do stand.
     let standLeadId: string | null = wm.lead_id || null;
     if (!standLeadId && customerPhone) {
-      const { data: sl } = await supabase
-        .from("leads").select("id")
-        .eq("tenant_id", session.tenant_id).eq("phone", customerPhone)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      standLeadId = sl?.id || null;
+      // regra única de telefone (passo 2): últimos 8 dígitos dentro do tenant, determinístico
+      const { data: sl } = await supabase.rpc("find_lead_by_phone", { p_tenant: session.tenant_id, p_phone: customerPhone });
+      standLeadId = sl?.[0]?.id || null;
     }
     if (standLeadId) {
       await saveLeadMeta(supabase, standLeadId, metaPatch, score);
@@ -374,31 +372,33 @@ Deno.serve(async (req: Request) => {
         if (sm?.metadata && typeof sm.metadata === "object") standMeta = sm.metadata as Record<string, unknown>;
       }
       const ownerMeta = { ...standMeta, ...metaPatch };
-      // dedup por telefone dentro do tenant da loja
-      const { data: dup } = await supabase
-        .from("leads").select("id, metadata")
-        .eq("tenant_id", ownerTenantId).eq("phone", customerPhone)
-        .limit(1).maybeSingle();
-      if (dup) {
-        ownerLeadId = dup.id;
-        await saveLeadMeta(supabase, ownerLeadId, ownerMeta, score);
-      } else {
-        const { data: newLead, error: leadErr } = await supabase
-          .from("leads")
-          .insert({
-            tenant_id: ownerTenantId,
-            name: customerName,
-            phone: customerPhone,
+      // Porta única (passo 2): dedupe por telefone dentro do tenant da loja (regra única)
+      // e grava a ATRIBUIÇÃO de origem (veio do stand) — antes não ficava registrado.
+      const origin = {
+        origin_tenant_id: session.tenant_id, origin_lead_id: standLeadId,
+        distributed_at: new Date().toISOString(), motivo: "stand-handoff",
+      };
+      const { data: foc, error: leadErr } = await supabase.rpc("find_or_create_lead", {
+        p_tenant: ownerTenantId,
+        p_phone: customerPhone,
+        p_name: customerName,
+        p_source: "stand",
+        p_utm_source: "stand_totex",
+        p_metadata: { ...ownerMeta, origin },
+      });
+      if (leadErr) console.error("[stand-handoff] find_or_create_lead err:", leadErr.message);
+      ownerLeadId = foc?.lead_id || null;
+      if (ownerLeadId) {
+        if (foc.created) {
+          await supabase.from("leads").update({
             sales_stage: "new",
             sales_score: score ?? 0,
-            utm_source: "stand_totex",
             context: `Lead do stand Totex. ${carInterest ? `Interesse: ${carInterest}. ` : ""}${resumo}`,
-            metadata: ownerMeta,
-          })
-          .select("id")
-          .single();
-        if (leadErr) console.error("[stand-handoff] owner lead insert err:", leadErr.message);
-        ownerLeadId = newLead?.id || null;
+          }).eq("id", ownerLeadId);
+        } else {
+          // já existia na loja: atualiza qualificação/perfil (como antes), sem duplicar
+          await saveLeadMeta(supabase, ownerLeadId, ownerMeta, score);
+        }
       }
       result.lead_created = !!ownerLeadId;
       result.owner_lead_id = ownerLeadId;

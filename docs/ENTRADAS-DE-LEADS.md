@@ -5,6 +5,14 @@
 > pessoa** e **simplificar as portas** antes de abrir o Totexgest pras franquias.
 > Nada aqui altera código — é o mapa com evidência (arquivo:linha).
 
+> **Status da execução**
+> - ✅ **Passo 1 (estancar)** — concluído em 2026-10-07 (PR #116 + migration `20261007120000` aplicada).
+> - 🔄 **Passo 2 (uma dedupe só)** — backend: função `find_or_create_lead` (migration
+>   `20261008120000`) plugada em stand-intake, stand-handoff, marketplace (2 eventos), Credere,
+>   receive-lead (lookup), WhatsApp oficial, distribuir-lead e totem (captar-comprador).
+>   Pendente: parte frontend (modal manual bloquear duplicado + CSV normalizar telefone).
+> - ⏳ **Passo 3 (separar por `lead_kind`)** — não iniciado.
+
 ---
 
 ## 0. Duas regras que valem pra TODAS as portas

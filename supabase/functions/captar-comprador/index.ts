@@ -67,26 +67,42 @@ Deno.serve(async (req) => {
     };
     const observacao = String(body.observacao ?? "").trim().slice(0, 500) || null;
 
-    // 1. Cria o lead do comprador no tenant da promotora (master), com o carro de interesse.
+    // 1. Acha/cria o lead MASTER do comprador no tenant da promotora pela porta única
+    //    (passo 2 — docs/ENTRADAS-DE-LEADS.md): dedupe por telefone — repetir a captação do
+    //    mesmo cliente NÃO duplica o master (e não paga 2× o R$150).
     //    NÃO seta captured_by_member_id (isso é pra captação de consignação) — este é um
     //    comprador; a atribuição da promotora vai via metadata + repasse_track.
-    const { data: lead, error: lErr } = await sb.from("leads").insert({
-      tenant_id: member.tenant_id,
-      name,
-      phone,
-      source: "totem-compra",
-      utm_source: "totem-compra",
-      metadata: {
-        comprador: true,
-        veiculo_interesse: veiculo,
-        owner_tenant_id: targetTenantId,
-        promoter_id: member.id,
-        promoter_code: member.repasse_code ?? null,
-        promoter_name: member.name ?? null,
-        observacao,
-      },
-    }).select("id").single();
-    if (lErr) return json({ error: `Falha ao criar o lead: ${lErr.message}` }, 500);
+    //    "Primeira promotora vence": promoter_* já existentes são preservados.
+    const masterMeta = {
+      comprador: true,
+      veiculo_interesse: veiculo,
+      owner_tenant_id: targetTenantId,
+      promoter_id: member.id,
+      promoter_code: member.repasse_code ?? null,
+      promoter_name: member.name ?? null,
+      observacao,
+    };
+    const { data: foc, error: lErr } = await sb.rpc("find_or_create_lead", {
+      p_tenant: member.tenant_id,
+      p_phone: phone,
+      p_name: name,
+      p_source: "totem-compra",
+      p_utm_source: "totem-compra",
+      p_metadata: masterMeta,
+    });
+    if (lErr || !foc?.lead_id) return json({ error: `Falha ao criar o lead: ${lErr?.message ?? "sem id"}` }, 500);
+    const lead = { id: foc.lead_id as string };
+    const reused = foc.created === false;
+    if (reused) {
+      // mesmo cliente captado de novo: atualiza o que é NOVO (carro/loja de interesse e
+      // observação), mantendo a promotora original.
+      const { data: cur } = await sb.from("leads").select("metadata").eq("id", lead.id).maybeSingle();
+      const md = (cur?.metadata && typeof cur.metadata === "object") ? cur.metadata as Record<string, unknown> : {};
+      await sb.from("leads").update({
+        metadata: { ...md, comprador: true, veiculo_interesse: veiculo, owner_tenant_id: targetTenantId, observacao },
+      }).eq("id", lead.id);
+      console.log(LOG, `comprador já existia → master ${lead.id} reaproveitado`);
+    }
 
     // 2. Distribui pro tenant da loja (cria o lead lá + avisa o grupo/agente).
     let distribuido = false, notified = false;
@@ -114,7 +130,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(LOG, `comprador captado lead=${lead.id} loja=${targetTenantId} distribuido=${distribuido}`);
-    return json({ ok: true, lead_id: lead.id, distribuido, notified });
+    return json({ ok: true, lead_id: lead.id, distribuido, notified, reused });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(LOG, "erro:", message);

@@ -578,9 +578,11 @@ Deno.serve(async (req: Request) => {
     // Lead é único por pessoa: phone ou email já existente = reconversão (não duplica)
     let existingLead: any = null;
     if (phone) {
-      const last8 = phone.replace(/[^0-9]/g, "").slice(-8);
+      // Regra única de telefone (passo 2 — docs/ENTRADAS-DE-LEADS.md): últimos 8 dígitos
+      // dentro do tenant, determinístico. (Antes: find_lead_by_phone_suffix com LIMIT 1
+      // sem ORDER BY → devolvia um lead arbitrário quando havia mais de um.)
       const { data: byPhone } = await supabase
-        .rpc("find_lead_by_phone_suffix", { p_suffix: last8, p_tenant_id: tenantId });
+        .rpc("find_lead_by_phone", { p_tenant: tenantId, p_phone: phone });
       existingLead = byPhone?.[0] || null;
     }
     if (!existingLead && parsed.email) {
