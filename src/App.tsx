@@ -85,6 +85,7 @@ const McpConsent = React.lazy(() => import("./pages/McpConsent"));
 import SettingsUnified from "./pages/SettingsUnified";
 const MyWhatsApp = React.lazy(() => import("./pages/MyWhatsApp"));
 const GestaoMelhorias = React.lazy(() => import("./pages/GestaoMelhorias"));
+const Franqueados = React.lazy(() => import("./pages/Franqueados"));
 
 // Plataforma de Agentes IA
 const AgentList = React.lazy(() => import("./agents-platform/pages/AgentList"));
@@ -326,6 +327,8 @@ const AppRoutes = () => {
       <Route path="/comercial/operacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><OperationTower /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/rastreamento" element={<ProtectedRoute><React.Suspense fallback={<div />}><RastreamentoLeads /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/intermediacao" element={<ProtectedRoute><React.Suspense fallback={<div />}><IntermediationDashboard /></React.Suspense></ProtectedRoute>} />
+      {/* Franqueados — recrutamento de lojista (lead_kind='franchise'), funil separado do de carro */}
+      <Route path="/comercial/franqueados" element={<ProtectedRoute><React.Suspense fallback={<div />}><Franqueados /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/rede" element={<ProtectedRoute><React.Suspense fallback={<div />}><NetworkDashboard /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/aprovacoes" element={<ProtectedRoute><React.Suspense fallback={<div />}><ApprovalsInbox /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/cockpit" element={<ProtectedRoute><CockpitShell /></ProtectedRoute>} />

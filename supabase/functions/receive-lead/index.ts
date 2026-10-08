@@ -1138,6 +1138,10 @@ Deno.serve(async (req: Request) => {
         email: parsed.email || null,
         sales_stage: "new",
         sales_rep_id: nextMemberId,
+        // Tipo de pessoa (docs/ENTRADAS-DE-LEADS.md §3.1): campanha de franquia = lojista/
+        // franqueado → cai no funil "Recrutamento de Franqueados" (trigger no banco), nunca
+        // no funil de carro. Demais chaves = comprador.
+        lead_kind: franchiseCampaign ? "franchise" : "buyer",
         source: parsed.source || parsed.utm_source || "api",
         utm_source: parsed.utm_source || null,
         utm_campaign: parsed.utm_campaign || null,
@@ -1213,7 +1217,19 @@ Deno.serve(async (req: Request) => {
     // Declarado FORA do if pra que linhas 1118-1119 (notification context) consigam usar
     // mesmo quando auto_create_deal=false. Bug fix: ReferenceError silenciava notification.
     const effectivePipelineId = hasSdrSplit ? salesConfig!.sdr_pipeline_id : config.pipeline_id;
-    if (config.auto_create_deal && config.pipeline_id) {
+    // Franqueado: o deal nasce no funil de recrutamento pelo trigger do banco
+    // (_auto_create_deal_for_lead → _franchise_ensure_deal). Não criar no funil de carro.
+    if (franchiseCampaign) {
+      const { data: frDeal } = await supabase
+        .from("deals")
+        .select("id")
+        .eq("lead_id", newLead.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      dealId = frDeal?.id || null;
+      console.log("[receive-lead] Franchise lead → funil de recrutamento, deal:", dealId);
+    } else if (config.auto_create_deal && config.pipeline_id) {
       // If SDR split is active, use SDR pipeline
       let effectiveFirstStageId = config.first_stage_id;
       if (hasSdrSplit && salesConfig!.sdr_pipeline_id !== config.pipeline_id) {

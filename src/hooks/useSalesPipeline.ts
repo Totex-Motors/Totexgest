@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { PipelineStage, Deal, PipelineColumn } from '@/types/sales.types';
+import { isFranchisePipeline } from '@/lib/franchise';
 
 // Fetch all pipeline stages (optionally filtered by pipelineId)
 export const usePipelineStages = (pipelineId?: string) => {
@@ -62,9 +63,20 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         stagesQuery = stagesQuery.eq('pipeline_id', pipelineId);
       }
 
-      const { data: stages, error: stagesError } = await stagesQuery;
+      const { data: stagesRaw, error: stagesError } = await stagesQuery;
 
       if (stagesError) throw stagesError;
+
+      // Sem pipeline escolhido ("Todas"): tira o funil "Recrutamento de Franqueados" —
+      // recrutamento de lojista não se mistura com o kanban de carro (tela própria).
+      let excludedPipelineIds = new Set<string>();
+      if (!pipelineId) {
+        const { data: allPipes } = await supabase.from('sales_pipelines').select('id, name');
+        excludedPipelineIds = new Set(
+          (allPipes || []).filter((p) => isFranchisePipeline(p)).map((p) => p.id as string)
+        );
+      }
+      const stages = (stagesRaw || []).filter((s) => !excludedPipelineIds.has(s.pipeline_id as string));
 
       // Get all deals (para o vendedor mover para etapa correta)
       let dealsQuery = supabase
@@ -108,8 +120,11 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
         dealsQuery = dealsQuery.in('id', dealIdsFiltered);
       }
 
-      const { data: deals, error: dealsError } = await dealsQuery.limit(5000);
+      const { data: dealsRaw, error: dealsError } = await dealsQuery.limit(5000);
       if (dealsError) throw dealsError;
+      const deals = excludedPipelineIds.size > 0
+        ? (dealsRaw || []).filter((d: any) => !excludedPipelineIds.has(d.pipeline_id))
+        : dealsRaw;
 
       const leadIds = [...new Set((deals || []).map((d: any) => d.lead_id).filter(Boolean))] as string[];
 

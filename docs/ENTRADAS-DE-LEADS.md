@@ -23,6 +23,14 @@
 >   madrugada); "Chamei/Liguei/Falei" no grupo de handoff (`capture-contact-confirm`, via
 >   webhook), ligação atendida (trigger em `call_history`) e botão "Marquei o 1º contato" no
 >   card de Captação marcam o 1º contato e param a escalada. Migration `20261008140000`.
+> - 🔄 **Franqueados (tela + funil)** — `lead_kind='franchise'` ganhou funil próprio
+>   "Recrutamento de Franqueados" (pipeline no HQ, migration `20261009120000`): os triggers
+>   que criam deal automaticamente (`_auto_create_deal_for_lead`, `auto_create_deal_for_channel_lead`)
+>   desviam franqueado pra esse funil (nunca pro de carro); RPC `franchise_ensure_deal`
+>   ("Colocar no funil"); `receive-lead` grava `lead_kind='franchise'` na campanha de franquia
+>   e não cria deal no funil de carro. Tela `/comercial/franqueados` (kanban + "Novo franqueado"
+>   pela porta única + fora-do-funil); o funil some das abas do Pipeline de carro e da aba
+>   "Todas"; detalhe do lead mostra "Perfil do franqueado" no lugar dos cards de comprador.
 
 ---
 
@@ -96,6 +104,10 @@ Legenda dedupe: **L8** = últimos 8 dígitos · **EX** = telefone exato · **—
 ### E) Franqueado / lojista — 0 portas próprias
 `lead_kind='franchise'` **nunca é gravado** por nenhuma entrada (tudo nasce `car`). A única
 ponta é a campanha de franquia dentro do `receive-lead` (#1, `:1470-1620`).
+
+> **Resolvido (2026-10-09):** 3 portas gravam `franchise` — `receive-lead` (chave de
+> campanha de franquia), marketplace (`papel = LOJISTA`) e o cadastro manual em
+> `/comercial/franqueados`. Todas caem no funil "Recrutamento de Franqueados" (ver status).
 
 ### F) Não criam lead (roteiam/mesclam)
 `merge_leads` (mesmo tenant), `repasse_track` (só `repasse_referrals`, UNIQUE tenant+telefone),
