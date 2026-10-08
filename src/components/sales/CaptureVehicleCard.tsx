@@ -52,6 +52,9 @@ interface CaptureRow {
   captured_at: string | null;
   capture_valid: boolean | null;
   capture_invalid_reason: string | null;
+  /** Fase 2 (SLA humano): 1º contato do especialista */
+  first_contact_at: string | null;
+  handoff_status: string | null;
   promotora: { name: string } | { name: string }[] | null;
 }
 
@@ -85,6 +88,8 @@ interface CardData {
   captured_at: string | null;
   capture_valid: boolean;
   capture_invalid_reason: string | null;
+  first_contact_at: string | null;
+  handoff_status: string | null;
   promotora_name: string | null;
   vehicle: VehicleRow | null;
   /** Título do negócio do comprador (quando vendido com deal vinculado) */
@@ -137,7 +142,7 @@ async function fetchCardData(leadId: string): Promise<CardData | null> {
   let row: CaptureRow | null = null;
   const embed = await supabase
     .from("leads")
-    .select("captured_by_member_id, captured_at, capture_valid, capture_invalid_reason, promotora:team_members!leads_captured_by_member_id_fkey(name)")
+    .select("captured_by_member_id, captured_at, capture_valid, capture_invalid_reason, first_contact_at, handoff_status, promotora:team_members!leads_captured_by_member_id_fkey(name)")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -146,7 +151,7 @@ async function fetchCardData(leadId: string): Promise<CardData | null> {
   } else {
     const plain = await supabase
       .from("leads")
-      .select("captured_by_member_id, captured_at, capture_valid, capture_invalid_reason")
+      .select("captured_by_member_id, captured_at, capture_valid, capture_invalid_reason, first_contact_at, handoff_status")
       .eq("id", leadId)
       .maybeSingle();
     if (plain.error) throw plain.error;
@@ -188,6 +193,8 @@ async function fetchCardData(leadId: string): Promise<CardData | null> {
     captured_at: row.captured_at,
     capture_valid: !!row.capture_valid,
     capture_invalid_reason: row.capture_invalid_reason,
+    first_contact_at: row.first_contact_at ?? null,
+    handoff_status: row.handoff_status ?? null,
     promotora_name: promo?.name ?? null,
     vehicle,
     sold_deal_title,
@@ -229,6 +236,24 @@ export function CaptureVehicleCard({ leadId }: Props) {
   const [dealSearch, setDealSearch] = useState("");
   const [invalidateOpen, setInvalidateOpen] = useState(false);
   const [invalidateReason, setInvalidateReason] = useState("");
+
+  // Fase 2 (SLA humano): o especialista marca o 1º contato na mão quando falou com o
+  // cliente por fora (telefone pessoal, presencial). Fecha o SLA e para a escalada.
+  const [markingContact, setMarkingContact] = useState(false);
+  const markContact = async () => {
+    setMarkingContact(true);
+    try {
+      const { data: ok, error } = await supabase.rpc("capture_mark_contact_manual", { p_lead_id: leadId });
+      if (error) throw error;
+      toast.success(ok ? "1º contato registrado — SLA encerrado." : "Esse lead já estava marcado como contatado.");
+      qc.invalidateQueries({ queryKey: captureVehicleCardKey(leadId) });
+      qc.invalidateQueries({ queryKey: ["sales-lead", leadId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui marcar o contato.");
+    } finally {
+      setMarkingContact(false);
+    }
+  };
 
   const q = useQuery({
     queryKey: captureVehicleCardKey(leadId),
@@ -363,6 +388,27 @@ export function CaptureVehicleCard({ leadId }: Props) {
             </Badge>
           )}
         </div>
+        {/* Fase 2 (SLA humano): estado do 1º contato + botão pra marcar na mão (time, não promotora) */}
+        {!isPromotora && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            {data.first_contact_at ? (
+              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
+                <Check className="h-3.5 w-3.5" /> 1º contato feito em{" "}
+                {new Date(data.first_contact_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : (
+              <>
+                <span className="text-amber-700 dark:text-amber-300">
+                  Ainda sem 1º contato{data.handoff_status === "sla_breached" || data.handoff_status === "escalated" ? " — SLA estourado" : ""}.
+                </span>
+                <Button size="sm" variant="outline" className="h-7 text-xs" disabled={markingContact} onClick={markContact}>
+                  {markingContact ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+                  Marquei o 1º contato
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-4">

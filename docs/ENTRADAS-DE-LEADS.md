@@ -17,6 +17,12 @@
 >   Editor ANTES do merge**; o `apply_migration` do MCP dá timeout em `ALTER TABLE`);
 >   3b: todas as portas declaram o tipo; 3c: lista filtra Compradores/Vendedores (franqueado
 >   e contato ficam fora), detalhe por tipo, origem legível (`src/lib/leadKind.ts`).
+> - 🔄 **SLA humano (Fase 2 da auditoria da jornada do lead)** — horário comercial
+>   (`next_business_time`, config `SLA_HORARIO_INICIO/FIM`, `SLA_DIAS_SEMANA`); `capture_handoff`
+>   grava `metadata.handoff.due_at`/`escalate_at` e o runner da SLA usa esses prazos (nunca de
+>   madrugada); "Chamei/Liguei/Falei" no grupo de handoff (`capture-contact-confirm`, via
+>   webhook), ligação atendida (trigger em `call_history`) e botão "Marquei o 1º contato" no
+>   card de Captação marcam o 1º contato e param a escalada. Migration `20261008140000`.
 
 ---
 
