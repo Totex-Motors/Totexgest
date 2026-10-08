@@ -73,7 +73,7 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
       if (!pipelineId) {
         const { data: allPipes } = await supabase.from('sales_pipelines').select('id, name');
         excludedPipelineIds = new Set(
-          ((allPipes || []) as { id: string; name: string | null }[]).filter((p) => isFranchisePipeline(p)).map((p) => p.id)
+          ((allPipes || []) as unknown as { id: string; name: string | null }[]).filter((p) => isFranchisePipeline(p)).map((p) => p.id)
         );
       }
       const stages = ((stagesRaw || []) as any[]).filter((s) => !excludedPipelineIds.has(s.pipeline_id as string));
