@@ -218,6 +218,12 @@ export interface SalesLead {
   utm_campaign?: string;
   utm_term?: string;
   utm_content?: string;
+  /** origem gravada pela porta de entrada (captacao, totem-compra, marketplace, credere, whatsapp…) */
+  source?: string | null;
+  /** tipo de pessoa (passo 3 — docs/ENTRADAS-DE-LEADS.md): seller | buyer | franchise | contact */
+  lead_kind?: 'seller' | 'buyer' | 'franchise' | 'contact' | null;
+  /** promotora que captou (lead de captação = vendedor do carro) */
+  captured_by_member_id?: string | null;
 
   // Webinar tracking (carimbado pela quiz-api no momento do cadastro)
   webinar_config_id?: string | null;
@@ -640,6 +646,8 @@ export interface SalesLeadFilters {
   min_score?: number;
   has_deal?: boolean;
   search?: string;
+  /** tipo de pessoa; vazio = vendedor + comprador (franqueado/contato ficam fora); 'all' = tudo */
+  lead_kind?: 'seller' | 'buyer' | 'franchise' | 'contact' | 'all';
 }
 
 export interface DealFilters {

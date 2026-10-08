@@ -62,6 +62,10 @@ const SalesLeads = () => {
   const [period, setPeriod] = useState<"all" | "today" | "7d">(
     (searchParams.get("period") as "all" | "today" | "7d") || "all"
   );
+  // Tipo de pessoa: comprador / vendedor (captação). Vazio = os dois.
+  const [kind, setKind] = useState<"buyer" | "seller" | undefined>(
+    (searchParams.get("kind") as "buyer" | "seller" | null) || undefined
+  );
   const [page, setPage] = useState(0);
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
 
@@ -83,14 +87,23 @@ const SalesLeads = () => {
     setSearchParams(searchParams);
   };
 
+  const toggleKind = (k: "buyer" | "seller") => {
+    const next = kind === k ? undefined : k;
+    setKind(next);
+    setPage(0);
+    if (!next) searchParams.delete("kind"); else searchParams.set("kind", next);
+    setSearchParams(searchParams);
+  };
+
   const filters = useMemo(() => ({
     sales_stage: selectedStage !== "all" ? selectedStage : undefined,
     search: search || undefined,
     min_score: showHotOnly ? 70 : undefined,
     created_after: createdAfter,
+    lead_kind: kind,
     page,
     pageSize: 50,
-  }), [selectedStage, search, showHotOnly, createdAfter, page]);
+  }), [selectedStage, search, showHotOnly, createdAfter, kind, page]);
 
   const { data: leadsData, isLoading, refetch } = useSalesLeads(filters);
   const leads = leadsData?.leads || [];
@@ -189,6 +202,23 @@ const SalesLeads = () => {
               className={cn(period === "7d" && "bg-primary hover:bg-primary/90")}
             >
               7 dias
+            </Button>
+            {/* Tipo de pessoa (passo 3): comprador x vendedor (captação). Nenhum marcado = os dois. */}
+            <Button
+              variant={kind === "buyer" ? "default" : "outline"}
+              size="sm"
+              onClick={() => toggleKind("buyer")}
+              className={cn(kind === "buyer" && "bg-sky-600 hover:bg-sky-700")}
+            >
+              Compradores
+            </Button>
+            <Button
+              variant={kind === "seller" ? "default" : "outline"}
+              size="sm"
+              onClick={() => toggleKind("seller")}
+              className={cn(kind === "seller" && "bg-emerald-600 hover:bg-emerald-700")}
+            >
+              Vendedores
             </Button>
             <Button
               variant="outline"

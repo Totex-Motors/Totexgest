@@ -23,6 +23,12 @@ export const useSalesLeads = (filters?: SalesLeadFilters & { page?: number; page
         .order('created_at', { ascending: false })
         .range(from, to);
 
+      // Tipo de pessoa (passo 3 — docs/ENTRADAS-DE-LEADS.md §3.1): a lista de leads de
+      // CARRO mostra vendedor (captação) e comprador; franqueado e contato (decisor/
+      // sócio) ficam fora. 'all' libera tudo (uso administrativo).
+      const kind = filters?.lead_kind;
+      if (kind && kind !== 'all') query = query.eq('lead_kind', kind);
+      else if (kind !== 'all') query = query.in('lead_kind', ['seller', 'buyer']);
       if (filters?.sales_stage) {
         query = query.eq('sales_stage', filters.sales_stage);
       }
@@ -587,13 +593,16 @@ export const useLeadsCountByStage = () => {
     queryKey: ['leads-count-by-stage'],
     queryFn: async () => {
       // Total de TODOS os leads (inclui os sem etapa / novos) — para a pill "Todos".
+      // Só vendedor + comprador (mesmo recorte da lista): franqueado e contato ficam fora.
       const { count: allCount } = await (supabase as any)
         .from('leads')
-        .select('id', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true })
+        .in('lead_kind', ['seller', 'buyer']);
 
       const { data, error } = await supabase
         .from('leads')
         .select('sales_stage')
+        .in('lead_kind', ['seller', 'buyer'])
         .not('sales_stage', 'is', null);
 
       if (error) throw error;

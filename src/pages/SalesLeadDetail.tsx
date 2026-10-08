@@ -61,6 +61,7 @@ import { VehicleOfInterestCard } from "@/components/sales/VehicleOfInterestCard"
 import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
 import { CaptureVehicleCard } from "@/components/sales/CaptureVehicleCard";
+import { isSellerLead, leadSourceLabel } from "@/lib/leadKind";
 import { IntermediationCard } from "@/components/sales/IntermediationCard";
 import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
@@ -692,7 +693,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
 
   // Lead de CAPTAÇÃO (captado por promotora): a pessoa está VENDENDO o carro, não comprando.
   // Esconde os cards de comprador (que ficariam vazios) e lê a qualificação da captação.
-  const isCaptacao = !!(effectiveLead as any)?.captured_by_member_id;
+  const isCaptacao = isSellerLead(effectiveLead as any);
 
   // Filter timeline events
   const filteredTimeline = (timeline || []).filter((event: any) => {
@@ -1095,12 +1096,19 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  {(lead.utm_source || lead.utm_campaign || lead.utm_content) && (
+                  {(lead.source || lead.utm_source || lead.utm_campaign || lead.utm_content) && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                       <Globe className="h-3.5 w-3.5 text-blue-600" />
+                      {/* Origem em palavra de gente (passo 3): "Promotora", "Totem", "Site"… — o
+                          código técnico (utm) fica como detalhe pequeno. */}
                       <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
-                        {[lead.utm_source, lead.utm_campaign, lead.utm_content].filter(Boolean).join(' / ')}
+                        {leadSourceLabel(lead.source, lead.utm_source)}
                       </span>
+                      {(lead.utm_campaign || lead.utm_content) && (
+                        <span className="text-[10px] text-blue-600/70 dark:text-blue-400/70">
+                          {[lead.utm_campaign, lead.utm_content].filter(Boolean).join(' / ')}
+                        </span>
+                      )}
                     </div>
                   )}
                   {lead.landing_page && (
