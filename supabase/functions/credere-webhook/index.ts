@@ -113,78 +113,119 @@ serve(async (req: Request) => {
       ? lead.phone_number.replace(/\D/g, "")
       : null;
 
-    const { data: newLead, error: insertError } = await supabase
-      .from("leads")
-      .insert({
-        tenant_id: mapping.tenant_id,
-        name: lead.name || "Lead Credere",
-        email: lead.email || null,
-        phone: phone || null,
-        cpf_cnpj: lead.cpf_cnpj || null,
-        document: lead.cpf_cnpj || null,
-        city_name: lead.address?.city || null,
-        state: lead.address?.state || null,
-        postal_code: lead.address?.zip_code || null,
-        address: lead.address?.street || null,
-        source: "credere",
-        status: "new",
-        sales_stage: "new",
-        context: vehicleDesc ? `Interesse em financiamento: ${vehicleDesc}` : null,
-        metadata: {
-          credere_simulation_uuid: simUuid,
-          credere_store_id: credereStoreId,
-          credere_store_name: store.name || mapping.store_name,
-          vehicle: {
-            description: vehicleDesc || null,
-            // Credere envia valores monetários em centavos — converter para reais
-            assets_value: simulation.assets_value != null ? simulation.assets_value / 100 : null,
-            manufacture_year: vehicle.manufacture_year ?? null,
-            model_year: vehicle.model_year ?? null,
-            brand: vehicleModel.brand ?? null,
-            model: vehicleModel.model_name ?? null,
-            category: vehicleModel.category?.label ?? null,
-            fuel: vehicleModel.fuel_type?.label ?? null,
-            licensing_uf: vehicle.licensing_uf ?? null,
-          },
-          financing: bestCondition
-            ? {
-                bank: bestCondition.bank?.name ?? null,
-                installments: bestCondition.installments ?? null,
-                interest_monthly: bestCondition.interest_monthly ?? null,
-                // Credere envia em centavos — converter para reais
-                down_payment: bestCondition.down_payment != null ? bestCondition.down_payment / 100 : null,
-                financed_amount: bestCondition.financed_amount != null ? bestCondition.financed_amount / 100 : null,
-              }
-            : null,
-          seller: simulation.seller
-            ? { name: simulation.seller.name, id: simulation.seller.id }
-            : null,
-          simulation_created_at: simulation.created_at ?? null,
-          // Qualificação automática: lead do Credere já demonstrou intenção forte de compra
-          qualificacao: {
-            origem: "credere",
-            interesse_financiamento: true,
-            interesse_veiculo: !!vehicleDesc,
-            veiculo_interesse: vehicleDesc || null,
-            temperatura: "quente",
-            probabilidade: 70,
-            observacoes: bestCondition
-              ? `Simulou financiamento em ${bestCondition.bank?.name ?? "banco"} — ${bestCondition.installments ?? "?"} parcelas`
-              : "Realizou simulação de financiamento no Credere",
-            qualificado_em: new Date().toISOString(),
-          },
-        },
-      })
-      .select("id")
-      .single();
+    const credereMeta = {
+      credere_simulation_uuid: simUuid,
+      credere_store_id: credereStoreId,
+      credere_store_name: store.name || mapping.store_name,
+      vehicle: {
+        description: vehicleDesc || null,
+        // Credere envia valores monetários em centavos — converter para reais
+        assets_value: simulation.assets_value != null ? simulation.assets_value / 100 : null,
+        manufacture_year: vehicle.manufacture_year ?? null,
+        model_year: vehicle.model_year ?? null,
+        brand: vehicleModel.brand ?? null,
+        model: vehicleModel.model_name ?? null,
+        category: vehicleModel.category?.label ?? null,
+        fuel: vehicleModel.fuel_type?.label ?? null,
+        licensing_uf: vehicle.licensing_uf ?? null,
+      },
+      financing: bestCondition
+        ? {
+            bank: bestCondition.bank?.name ?? null,
+            installments: bestCondition.installments ?? null,
+            interest_monthly: bestCondition.interest_monthly ?? null,
+            // Credere envia em centavos — converter para reais
+            down_payment: bestCondition.down_payment != null ? bestCondition.down_payment / 100 : null,
+            financed_amount: bestCondition.financed_amount != null ? bestCondition.financed_amount / 100 : null,
+          }
+        : null,
+      seller: simulation.seller
+        ? { name: simulation.seller.name, id: simulation.seller.id }
+        : null,
+      simulation_created_at: simulation.created_at ?? null,
+      // Qualificação automática: lead do Credere já demonstrou intenção forte de compra
+      qualificacao: {
+        origem: "credere",
+        interesse_financiamento: true,
+        interesse_veiculo: !!vehicleDesc,
+        veiculo_interesse: vehicleDesc || null,
+        temperatura: "quente",
+        probabilidade: 70,
+        observacoes: bestCondition
+          ? `Simulou financiamento em ${bestCondition.bank?.name ?? "banco"} — ${bestCondition.installments ?? "?"} parcelas`
+          : "Realizou simulação de financiamento no Credere",
+        qualificado_em: new Date().toISOString(),
+      },
+    };
+    // colunas que só fazem sentido gravar no lead NOVO
+    const extrasCreate = {
+      cpf_cnpj: lead.cpf_cnpj || null,
+      document: lead.cpf_cnpj || null,
+      city_name: lead.address?.city || null,
+      state: lead.address?.state || null,
+      postal_code: lead.address?.zip_code || null,
+      address: lead.address?.street || null,
+      status: "new",
+      sales_stage: "new",
+      context: vehicleDesc ? `Interesse em financiamento: ${vehicleDesc}` : null,
+    };
 
-    if (insertError) {
-      console.error("[credere-webhook] Erro ao inserir lead:", insertError);
-      throw insertError;
+    let leadIdOut: string;
+    if (phone && phone.length >= 10) {
+      // Porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md §3.3): cada simulação NÃO vira
+      // lead novo — dedupe por telefone dentro da loja, com trava anti-corrida.
+      const { data: r, error: rErr } = await supabase.rpc("find_or_create_lead", {
+        p_tenant: mapping.tenant_id,
+        p_phone: phone,
+        p_name: lead.name || "Lead Credere",
+        p_source: "credere",
+        p_email: lead.email || null,
+        p_metadata: credereMeta,
+      });
+      if (rErr) {
+        console.error("[credere-webhook] find_or_create_lead err:", rErr);
+        throw rErr;
+      }
+      leadIdOut = r.lead_id;
+      if (r.created) {
+        await supabase.from("leads").update(extrasCreate).eq("id", leadIdOut);
+      } else {
+        // simulação NOVA do mesmo cliente: atualiza financiamento/qualificação (intenção
+        // fresca) e guarda o histórico de simulações — sem criar outro lead.
+        const { data: cur } = await supabase.from("leads").select("metadata").eq("id", leadIdOut).maybeSingle();
+        const md = (cur?.metadata && typeof cur.metadata === "object") ? cur.metadata as Record<string, unknown> : {};
+        const sims = Array.isArray(md.credere_simulations) ? (md.credere_simulations as unknown[]) : [];
+        if (simUuid) sims.push({ uuid: simUuid, at: simulation.created_at ?? new Date().toISOString(), bank: bestCondition?.bank?.name ?? null });
+        await supabase.from("leads").update({
+          metadata: { ...md, ...credereMeta, credere_simulations: sims },
+          context: extrasCreate.context,
+        }).eq("id", leadIdOut);
+        console.log(`[credere-webhook] simulação ${simUuid} anexada ao lead existente ${leadIdOut}`);
+      }
+    } else {
+      // sem telefone válido não dá pra deduplicar — cria como antes
+      const { data: newLead, error: insertError } = await supabase
+        .from("leads")
+        .insert({
+          tenant_id: mapping.tenant_id,
+          name: lead.name || "Lead Credere",
+          email: lead.email || null,
+          phone: phone || null,
+          ...extrasCreate,
+          source: "credere",
+          metadata: credereMeta,
+        })
+        .select("id")
+        .single();
+      if (insertError) {
+        console.error("[credere-webhook] Erro ao inserir lead:", insertError);
+        throw insertError;
+      }
+      leadIdOut = newLead.id;
     }
 
-    console.log(`[credere-webhook] Lead criado: ${newLead.id} (loja: ${mapping.store_name})`);
-    return json({ ok: true, lead_id: newLead.id });
+    console.log(`[credere-webhook] Lead ${leadIdOut} (loja: ${mapping.store_name})`);
+    return json({ ok: true, lead_id: leadIdOut });
   } catch (err) {
     console.error("[credere-webhook] Erro interno:", err);
     return json({ ok: false, error: String(err) }, 500);

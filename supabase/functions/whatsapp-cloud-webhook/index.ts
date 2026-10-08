@@ -225,19 +225,24 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   let finalLeadId = lead?.id || null;
   if (lead?.tenant_id) routedTenantId = lead.tenant_id;
 
-  // Se não encontrou lead em nenhum tenant, cria no tenant da instância (master).
+  // Se não encontrou lead em nenhum tenant, cria no tenant da instância (master) pela
+  // porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md): dedupe por telefone dentro do
+  // tenant + trava anti-corrida (duas mensagens seguidas do mesmo número = 1 lead).
   if (!finalLeadId) {
-    const { data: newLead } = await supabase
-      .from("leads")
-      .insert({
-        name: contactName !== cleanPhone ? contactName : cleanPhone,
-        phone: cleanPhone,
-        ...(routedTenantId ? { tenant_id: routedTenantId } : {}),
-      })
-      .select("id")
-      .single();
-    finalLeadId = newLead?.id || null;
-    console.log(`[Cloud Webhook] Created new lead: ${finalLeadId} (tenant ${routedTenantId})`);
+    if (!routedTenantId) {
+      console.error(`[Cloud Webhook] Sem tenant pra criar o lead de ${cleanPhone} (instância sem tenant) — mensagem salva sem lead`);
+    } else {
+      const { data: foc, error: focErr } = await supabase.rpc("find_or_create_lead", {
+        p_tenant: routedTenantId,
+        p_phone: cleanPhone,
+        p_name: contactName !== cleanPhone ? contactName : null,
+        p_source: "whatsapp",
+        p_metadata: {},
+      });
+      if (focErr) console.error(`[Cloud Webhook] find_or_create_lead err:`, focErr.message);
+      finalLeadId = foc?.lead_id || null;
+      console.log(`[Cloud Webhook] ${foc?.created ? "Created new" : "Reused"} lead: ${finalLeadId} (tenant ${routedTenantId})`);
+    }
   }
 
   // Daqui pra frente o tenant é o do lead ROTEADO (não o da instância oficial),

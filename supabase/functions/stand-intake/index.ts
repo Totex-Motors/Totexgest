@@ -227,20 +227,28 @@ Regras: só preencha matched_tenant_id se houver correspondência clara com uma 
       ownerDest ? `Loja dona: ${ownerDest.name}.` : (extracted.store_mentioned ? `Loja citada: ${extracted.store_mentioned} (sem destino cadastrado).` : null),
     ].filter(Boolean).join(" ");
 
-    const { data: lead, error: leadErr } = await supabase
-      .from("leads")
-      .insert({
-        tenant_id: cfg.stand_tenant_id,
-        name: customerName,
-        phone: customerPhone,
-        sales_stage: "new",
-        utm_source: "stand",
-        context: contextNote,
-      })
-      .select("id")
-      .single();
-    if (leadErr) console.error("[stand-intake] lead insert err:", leadErr.message);
-    const leadId = lead?.id || null;
+    // Porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md §3.3): dedupe por telefone
+    // dentro do tenant do stand. Antes cada menção repetida no grupo criava lead novo.
+    const { data: foc, error: leadErr } = await supabase.rpc("find_or_create_lead", {
+      p_tenant: cfg.stand_tenant_id,
+      p_phone: customerPhone,
+      p_name: customerName,
+      p_source: "stand",
+      p_utm_source: "stand",
+      p_metadata: {},
+    });
+    if (leadErr) console.error("[stand-intake] find_or_create_lead err:", leadErr.message);
+    const leadId: string | null = foc?.lead_id || null;
+    if (leadId) {
+      if (foc.created) {
+        await supabase.from("leads").update({ sales_stage: "new", context: contextNote }).eq("id", leadId);
+      } else {
+        // cliente já existia no stand: acrescenta o contexto (não apaga o histórico)
+        const { data: cur } = await supabase.from("leads").select("context").eq("id", leadId).maybeSingle();
+        await supabase.from("leads").update({ context: [cur?.context, contextNote].filter(Boolean).join("\n") }).eq("id", leadId);
+        console.log(`[stand-intake] cliente já existia no stand → lead ${leadId} reaproveitado`);
+      }
+    }
 
     // 8. Resolve agente do stand
     const { data: agent } = await supabase

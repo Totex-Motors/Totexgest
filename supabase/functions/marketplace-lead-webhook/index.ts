@@ -85,55 +85,104 @@ serve(async (req: Request) => {
       .filter(Boolean)
       .join(" ");
 
-    const { data: newLead, error: insertError } = await supabase
-      .from("leads")
-      .insert({
-        tenant_id: mapping.tenant_id,
-        name: cliente.nome || "Lead Marketplace",
-        email: cliente.email || null,
-        phone: phone || null,
-        city_name: loja.cidade || null,
+    const metaInteresse = {
+      marketplace_lead_id: leadId,
+      marketplace_store_id: String(loja.id),
+      marketplace_store_name: loja.nome || mapping.store_name,
+      marketplace_origin: origem || "FORM_INTERESSE",
+      vehicle: {
+        id: veiculo.id || null,
+        description: vehicleDesc || null,
+        brand: veiculo.marca || null,
+        model: veiculo.modelo || null,
+        version: veiculo.versao || null,
+        year: veiculo.ano || null,
+        mileage: veiculo.quilometragem || null,
+        price: veiculo.preco || null,
+        price_formatted: veiculo.precoFormatado || null,
+      },
+      store: {
+        name: loja.nome || null,
+        email: loja.email || null,
+        phone: loja.telefone || null,
+        city: loja.cidade || null,
         state: loja.estado || null,
-        source: "marketplace",
-        status: "new",
-        sales_stage: "new",
-        context: cliente.mensagem || null,
-        metadata: {
-          marketplace_lead_id: leadId,
-          marketplace_store_id: String(loja.id),
-          marketplace_store_name: loja.nome || mapping.store_name,
-          marketplace_origin: origem || "FORM_INTERESSE",
-          vehicle: {
-            id: veiculo.id || null,
-            description: vehicleDesc || null,
-            brand: veiculo.marca || null,
-            model: veiculo.modelo || null,
-            version: veiculo.versao || null,
-            year: veiculo.ano || null,
-            mileage: veiculo.quilometragem || null,
-            price: veiculo.preco || null,
-            price_formatted: veiculo.precoFormatado || null,
-          },
-          store: {
-            name: loja.nome || null,
-            email: loja.email || null,
-            phone: loja.telefone || null,
-            city: loja.cidade || null,
-            state: loja.estado || null,
-            address: loja.endereco || null,
-          },
-        },
-      })
-      .select("id")
-      .single();
+        address: loja.endereco || null,
+      },
+    };
+    // colunas que só fazem sentido gravar no lead NOVO
+    const extrasCreate = {
+      city_name: loja.cidade || null,
+      state: loja.estado || null,
+      status: "new",
+      sales_stage: "new",
+      context: cliente.mensagem || null,
+    };
 
-    if (insertError) {
-      console.error("[marketplace-lead-webhook] Erro ao inserir lead:", insertError);
-      throw insertError;
+    let newLeadId: string;
+    if (phone && phone.length >= 10) {
+      // Porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md §3.3): o mesmo cliente vindo de
+      // outro anúncio NÃO vira lead novo — dedupe por telefone dentro da loja.
+      const { data: r, error: rErr } = await supabase.rpc("find_or_create_lead", {
+        p_tenant: mapping.tenant_id,
+        p_phone: phone,
+        p_name: cliente.nome || "Lead Marketplace",
+        p_source: "marketplace",
+        p_email: cliente.email || null,
+        p_metadata: metaInteresse,
+      });
+      if (rErr) {
+        console.error("[marketplace-lead-webhook] find_or_create_lead err:", rErr);
+        throw rErr;
+      }
+      newLeadId = r.lead_id;
+      if (r.created) {
+        await supabase.from("leads").update(extrasCreate).eq("id", newLeadId);
+        console.log(`[marketplace-lead-webhook] Lead criado: ${newLeadId} (loja: ${mapping.store_name})`);
+      } else {
+        // cliente já existia na loja: registra o NOVO interesse (carro mais recente na
+        // frente, histórico em marketplace_interests) sem perder o que já havia.
+        const { data: cur } = await supabase.from("leads").select("metadata, context").eq("id", newLeadId).maybeSingle();
+        const md = (cur?.metadata && typeof cur.metadata === "object") ? cur.metadata as Record<string, unknown> : {};
+        const interests = Array.isArray(md.marketplace_interests) ? (md.marketplace_interests as unknown[]) : [];
+        interests.push({ marketplace_lead_id: leadId, vehicle: metaInteresse.vehicle, at: new Date().toISOString() });
+        await supabase.from("leads").update({
+          metadata: {
+            ...md,
+            marketplace_lead_id: leadId,
+            marketplace_origin: metaInteresse.marketplace_origin,
+            vehicle: metaInteresse.vehicle,
+            store: metaInteresse.store,
+            marketplace_interests: interests,
+          },
+          context: [cur?.context, cliente.mensagem].filter(Boolean).join("\n") || null,
+        }).eq("id", newLeadId);
+        console.log(`[marketplace-lead-webhook] interesse ${leadId} anexado ao lead existente ${newLeadId} (loja: ${mapping.store_name})`);
+      }
+    } else {
+      // sem telefone válido não dá pra deduplicar — cria como antes
+      const { data: newLead, error: insertError } = await supabase
+        .from("leads")
+        .insert({
+          tenant_id: mapping.tenant_id,
+          name: cliente.nome || "Lead Marketplace",
+          email: cliente.email || null,
+          phone: phone || null,
+          ...extrasCreate,
+          source: "marketplace",
+          metadata: metaInteresse,
+        })
+        .select("id")
+        .single();
+      if (insertError) {
+        console.error("[marketplace-lead-webhook] Erro ao inserir lead:", insertError);
+        throw insertError;
+      }
+      newLeadId = newLead.id;
+      console.log(`[marketplace-lead-webhook] Lead criado (sem telefone): ${newLeadId} (loja: ${mapping.store_name})`);
     }
 
-    console.log(`[marketplace-lead-webhook] Lead criado: ${newLead.id} (loja: ${mapping.store_name})`);
-    return json({ ok: true, lead_id: newLead.id });
+    return json({ ok: true, lead_id: newLeadId });
   } catch (err) {
     console.error("[marketplace-lead-webhook] Erro interno:", err);
     return json({ ok: false, error: String(err) }, 500);
@@ -279,16 +328,39 @@ async function handleNegocioCaptado(supabase: any, body: any): Promise<Response>
     store: loja ? { name: ownerStoreName } : null,
   };
 
-  // 4. Dedup por telefone no tenant do Stand (janela recente) → mescla
-  if (phone) {
-    const since = new Date(Date.now() - DEDUP_WINDOW_DAYS * 86400000).toISOString();
-    const { data: existingByPhone } = await supabase
-      .from("leads").select("id, metadata")
-      .eq("tenant_id", standTenantId).eq("phone", phone).gte("created_at", since)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (existingByPhone) {
-      const md = (existingByPhone.metadata && typeof existingByPhone.metadata === "object") ? existingByPhone.metadata : {};
-      const deals: string[] = Array.isArray(md.totex_deals) ? md.totex_deals : (md.totex_deal_id ? [md.totex_deal_id] : []);
+  // 4+5. Acha/cria o lead no tenant do STAND pela porta única (passo 2 —
+  //      docs/ENTRADAS-DE-LEADS.md §3.3): dedupe por telefone (regra única, sem janela de
+  //      90 dias) → mescla o negócio no lead existente; senão cria. Sem telefone válido
+  //      não dá pra deduplicar → cria como antes.
+  const papel = cliente.papel === "COMPRADOR" ? "quer comprar" : cliente.papel === "LOJISTA" ? "lojista" : "quer vender";
+  const contextNote = [
+    `Negócio captado pela Totex (${CANAL_LABEL[canal] ?? (canal || "canal não informado")}) — cliente ${papel}.`,
+    negocio.origem ? `Origem: ${ORIGEM_LABEL[negocio.origem] ?? negocio.origem}.` : null,
+    vehicleDesc ? `Veículo: ${vehicleDesc}${veiculo?.precoFormatado ? ` (${veiculo.precoFormatado})` : ""}.` : null,
+    ownerStoreName ? `Loja dona: ${ownerStoreName}.` : null,
+    negocio.observacoes ? `Obs.: ${negocio.observacoes}` : null,
+  ].filter(Boolean).join(" ");
+
+  let newLead: { id: string };
+  if (phone && phone.length >= 10) {
+    const { data: r, error: rErr } = await supabase.rpc("find_or_create_lead", {
+      p_tenant: standTenantId,
+      p_phone: phone,
+      p_name: cliente.nome,
+      p_source: "marketplace",
+      p_email: cliente.email || null,
+      p_utm_source: canal ? canal.toLowerCase() : "marketplace",
+      p_metadata: totexMeta,
+    });
+    if (rErr) {
+      console.error("[marketplace-lead-webhook] NEGOCIO_CAPTADO find_or_create_lead err:", rErr);
+      throw rErr;
+    }
+    if (!r.created) {
+      // já existia: mescla o negócio (histórico em totex_deals), sem auto-abertura — como antes
+      const { data: cur } = await supabase.from("leads").select("metadata").eq("id", r.lead_id).maybeSingle();
+      const md = (cur?.metadata && typeof cur.metadata === "object") ? cur.metadata as Record<string, unknown> : {};
+      const deals: string[] = Array.isArray(md.totex_deals) ? (md.totex_deals as string[]) : (md.totex_deal_id ? [String(md.totex_deal_id)] : []);
       if (!deals.includes(String(dealId))) deals.push(String(dealId));
       const merged = {
         ...md,
@@ -300,44 +372,41 @@ async function handleNegocioCaptado(supabase: any, body: any): Promise<Response>
       const { error: upErr } = await supabase
         .from("leads")
         .update({ metadata: merged, last_interaction_at: new Date().toISOString() })
-        .eq("id", existingByPhone.id);
+        .eq("id", r.lead_id);
       if (upErr) console.error("[marketplace-lead-webhook] merge err:", upErr.message);
-      console.log(`[marketplace-lead-webhook] NEGOCIO_CAPTADO ${dealId} mesclado no lead ${existingByPhone.id} (mesmo telefone)`);
-      return json({ ok: true, duplicate: true, merged: true, lead_id: existingByPhone.id, tenant_id: standTenantId });
+      console.log(`[marketplace-lead-webhook] NEGOCIO_CAPTADO ${dealId} mesclado no lead ${r.lead_id} (mesmo telefone)`);
+      return json({ ok: true, duplicate: true, merged: true, lead_id: r.lead_id, tenant_id: standTenantId });
     }
-  }
-
-  // 5. Cria o lead no tenant do STAND (porta única)
-  const papel = cliente.papel === "COMPRADOR" ? "quer comprar" : cliente.papel === "LOJISTA" ? "lojista" : "quer vender";
-  const contextNote = [
-    `Negócio captado pela Totex (${CANAL_LABEL[canal] ?? (canal || "canal não informado")}) — cliente ${papel}.`,
-    negocio.origem ? `Origem: ${ORIGEM_LABEL[negocio.origem] ?? negocio.origem}.` : null,
-    vehicleDesc ? `Veículo: ${vehicleDesc}${veiculo?.precoFormatado ? ` (${veiculo.precoFormatado})` : ""}.` : null,
-    ownerStoreName ? `Loja dona: ${ownerStoreName}.` : null,
-    negocio.observacoes ? `Obs.: ${negocio.observacoes}` : null,
-  ].filter(Boolean).join(" ");
-
-  const { data: newLead, error: insertError } = await supabase
-    .from("leads")
-    .insert({
-      tenant_id: standTenantId,
-      name: cliente.nome,
-      email: cliente.email || null,
-      phone: phone || null,
-      source: "marketplace",
-      utm_source: canal ? canal.toLowerCase() : "marketplace",
+    newLead = { id: r.lead_id };
+    await supabase.from("leads").update({
       utm_campaign: negocio.campanha ?? null,
       status: "new",
       sales_stage: "new",
       context: contextNote,
-      metadata: totexMeta,
-    })
-    .select("id")
-    .single();
-
-  if (insertError) {
-    console.error("[marketplace-lead-webhook] NEGOCIO_CAPTADO insert err:", insertError);
-    throw insertError;
+    }).eq("id", newLead.id);
+  } else {
+    const { data: created, error: insertError } = await supabase
+      .from("leads")
+      .insert({
+        tenant_id: standTenantId,
+        name: cliente.nome,
+        email: cliente.email || null,
+        phone: phone || null,
+        source: "marketplace",
+        utm_source: canal ? canal.toLowerCase() : "marketplace",
+        utm_campaign: negocio.campanha ?? null,
+        status: "new",
+        sales_stage: "new",
+        context: contextNote,
+        metadata: totexMeta,
+      })
+      .select("id")
+      .single();
+    if (insertError) {
+      console.error("[marketplace-lead-webhook] NEGOCIO_CAPTADO insert err:", insertError);
+      throw insertError;
+    }
+    newLead = created;
   }
 
   // 6. Abertura automática no WhatsApp oficial (opt-in explícito na config do stand)

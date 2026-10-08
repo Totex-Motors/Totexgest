@@ -49,33 +49,30 @@ Deno.serve(async (req) => {
     const phone = digits(src.phone);
     const last8 = phone.slice(-8);
 
-    // 2. Acha/cria o lead na loja (por telefone)
-    let targetLeadId: string | null = null;
-    if (last8) {
-      const { data: hit } = await sb.from("leads")
-        .select("id").eq("tenant_id", targetTenantId).ilike("phone", `%${last8}`)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      targetLeadId = hit?.id || null;
-    }
+    // 2. Acha/cria o lead na loja pela porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md):
+    //    dedupe por telefone DENTRO da loja, determinístico, com trava anti-corrida.
+    //    "Primeira porta vence": se o lead já existe na loja, o metadata DELE é preservado
+    //    (antes era SOBRESCRITO pelo do master) e `origin` só entra se ainda não havia
+    //    atribuição.
     const origin = {
       origin_tenant_id: src.tenant_id, origin_lead_id: src.id,
       distributed_at: new Date().toISOString(), motivo,
     };
-    if (!targetLeadId) {
-      const { data: created, error: cErr } = await sb.from("leads").insert({
-        tenant_id: targetTenantId,
-        name: src.name || phone,
-        phone: phone,
-        email: src.email || null,
-        source: "distribuicao",
-        metadata: { ...(meta || {}), origin },
-      }).select("id").single();
-      if (cErr) return json({ success: false, error: `falha ao criar lead na loja: ${cErr.message}` }, 500);
-      targetLeadId = created.id;
-    } else {
-      // garante o vínculo de origem no lead existente
-      await sb.from("leads").update({ metadata: { ...(meta || {}), origin } }).eq("id", targetLeadId);
+    if (!last8 || phone.length < 10) {
+      return json({ success: false, error: "lead sem telefone válido pra distribuir" }, 400);
     }
+    const { data: foc, error: cErr } = await sb.rpc("find_or_create_lead", {
+      p_tenant: targetTenantId,
+      p_phone: phone,
+      p_name: src.name || null,
+      p_source: "distribuicao",
+      p_email: src.email || null,
+      p_metadata: { ...(meta || {}), origin },
+    });
+    if (cErr || !foc?.lead_id) {
+      return json({ success: false, error: `falha ao achar/criar lead na loja: ${cErr?.message ?? "sem id"}` }, 500);
+    }
+    const targetLeadId: string = foc.lead_id;
 
     // grava no lead de origem pra onde foi (atribuição)
     await sb.from("leads").update({
