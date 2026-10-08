@@ -80,7 +80,8 @@ export const useCreateFranchiseLead = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateFranchiseLeadInput): Promise<CreateFranchiseLeadResult> => {
-      const { data, error } = await supabase.rpc("find_or_create_lead", {
+      // (supabase as any): os tipos gerados do Database não conhecem as RPCs novas (padrão do repo)
+      const { data, error } = await (supabase as any).rpc("find_or_create_lead", {
         p_tenant: input.tenantId,
         p_phone: input.phone,
         p_name: input.name,
@@ -112,7 +113,7 @@ export const useCreateFranchiseLead = () => {
 
       let dealId: string | null = null;
       if (r.lead_kind === "franchise") {
-        const { data: d, error: dErr } = await supabase.rpc("franchise_ensure_deal", { p_lead_id: r.lead_id } as any);
+        const { data: d, error: dErr } = await (supabase as any).rpc("franchise_ensure_deal", { p_lead_id: r.lead_id });
         if (dErr) throw dErr;
         dealId = (d as string) || null;
       }
@@ -131,7 +132,7 @@ export const useFranchiseEnsureDeal = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (leadId: string) => {
-      const { data, error } = await supabase.rpc("franchise_ensure_deal", { p_lead_id: leadId } as any);
+      const { data, error } = await (supabase as any).rpc("franchise_ensure_deal", { p_lead_id: leadId });
       if (error) throw error;
       return data as string;
     },

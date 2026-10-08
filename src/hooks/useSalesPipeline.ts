@@ -73,10 +73,10 @@ export const usePipelineDeals = (salesRepId?: string, pipelineId?: string, webin
       if (!pipelineId) {
         const { data: allPipes } = await supabase.from('sales_pipelines').select('id, name');
         excludedPipelineIds = new Set(
-          (allPipes || []).filter((p) => isFranchisePipeline(p)).map((p) => p.id as string)
+          ((allPipes || []) as { id: string; name: string | null }[]).filter((p) => isFranchisePipeline(p)).map((p) => p.id)
         );
       }
-      const stages = (stagesRaw || []).filter((s) => !excludedPipelineIds.has(s.pipeline_id as string));
+      const stages = ((stagesRaw || []) as any[]).filter((s) => !excludedPipelineIds.has(s.pipeline_id as string));
 
       // Get all deals (para o vendedor mover para etapa correta)
       let dealsQuery = supabase
