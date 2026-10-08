@@ -301,6 +301,29 @@ async function handleIncomingMessage(
     if (captured) return;
   }
 
+  // ── Captação: "Chamei / Liguei / Falei" no grupo de handoff fecha o SLA (Fase 2) ──
+  // O especialista responde (de preferência CITANDO o card do lead) e o 1º contato é
+  // marcado — para a cobrança e a escalada. Fire-and-forget; a mensagem segue o fluxo
+  // normal (fica guardada no grupo). A função só age se o grupo for o de handoff.
+  if (!fromMe && isGroup && tenantId) {
+    const txt = String(payload.content?.text || payload.text || '');
+    if (/^\s*(?:j[aá]\s+)?(?:chamei|liguei|falei|contatei|atendi|respondi|fiz\s+contato|entrei\s+em\s+contato|mandei\s+(?:msg|mensagem|whats))\b/i.test(txt)) {
+      fetch(`${SUPABASE_URL}/functions/v1/capture-contact-confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          instance_id: instanceId,
+          group_jid: remoteJid,
+          sender_phone: senderPhone,
+          sender_name: pushName,
+          text: txt,
+          quoted_message_id: payload.content?.contextInfo?.stanzaId || null,
+        }),
+      }).catch((err) => console.error('[capture-contact-confirm] erro:', err));
+    }
+  }
+
   const contentObj = payload.content || {};
   let content = contentObj.text || payload.text || '';
   let messageType = payload.messageType || contentObj.type || 'text';

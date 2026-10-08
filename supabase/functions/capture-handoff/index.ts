@@ -238,7 +238,9 @@ async function notify(sb: any, leadId: string, force = false) {
     const m = mentionOf(spec);
     // Grupo com @menção do especialista (canal principal — não tem risco de ban)
     if (ch.notifyGroup && ch.groupJid) {
-      const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} → ${m.text}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*. A tarefa já está no seu CRM.`;
+      // Fase 2: mostra QUANDO é o prazo (já em horário comercial) e ensina o "Chamei".
+      const dueTxt = handoff.due_at ? ` — até *${fmtPrazo(new Date(String(handoff.due_at)))}*` : "";
+      const txt = `${temp === "quente" ? "🔥 *LEAD QUENTE DA CAPTAÇÃO*" : "🌤️ *Lead da captação*"} → ${m.text}, é seu!\n\n${summary}\n\n⏱️ Contato em até *${sla} min*${dueTxt}. A tarefa já está no seu CRM.\n👉 Quando falar com o cliente, responde *"Chamei"* citando esta mensagem que eu registro o contato.`;
       sentGroup = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
     }
   }
@@ -272,6 +274,13 @@ async function notify(sb: any, leadId: string, force = false) {
   return { ok: true, sentSpecialist, specialistReason, sentGroup, channel: !!(ch.apiUrl && ch.apiKey) };
 }
 
+/** "07/10, 09:00" no horário de Brasília — pra dizer QUANDO era o prazo, não "243 min". */
+function fmtPrazo(d: Date): string {
+  try {
+    return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+  } catch { return d.toISOString(); }
+}
+
 // ─── sla ─────────────────────────────────────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 async function runSla(sb: any) {
@@ -294,14 +303,23 @@ async function runSla(sb: any) {
     const sla = temp === "quente" ? ch.slaQuente : ch.slaMorno;
     const waiting = Math.floor((Date.now() - new Date(lead.handoff_at).getTime()) / 60_000);
     const handoff = (lead.metadata?.handoff || {}) as Row;
+    // Fase 2 (SLA humano): prazo e escalada respeitam HORÁRIO COMERCIAL — vêm prontos
+    // do capture_handoff (metadata.handoff.due_at / escalate_at, via next_business_time).
+    // Antes era "minutos corridos desde o repasse": lead captado 20:56 estourava 01:00.
+    // Lead antigo sem esses campos cai no cálculo antigo (handoff_at + SLA).
+    const handoffMs = new Date(lead.handoff_at).getTime();
+    const dueAt = handoff.due_at ? new Date(String(handoff.due_at)) : new Date(handoffMs + sla * 60_000);
+    const escalateAt = handoff.escalate_at ? new Date(String(handoff.escalate_at)) : new Date(dueAt.getTime() + sla * 60_000);
+    const now = Date.now();
+    const prazoTxt = fmtPrazo(dueAt);
 
-    if (waiting >= sla && (lead.handoff_status === "pending" || lead.handoff_status === "notified")) {
+    if (now >= dueAt.getTime() && (lead.handoff_status === "pending" || lead.handoff_status === "notified")) {
       // 1ª quebra: re-avisa o especialista (@menção no grupo)
       let sent = false;
       if (ch.apiUrl && ch.apiKey) {
         const { data: spec } = await sb.from("team_members").select("name, phone").eq("id", lead.handoff_member_id).maybeSingle();
         const m = mentionOf(spec);
-        const txt = `⏰ *SLA estourado* — ${m.text}, o lead *${lead.name}* (${fmtPhone(lead.phone)}) da captação está há *${waiting} min* sem 1º contato. Chama ele agora?`;
+        const txt = `⏰ *SLA estourado* — ${m.text}, o lead *${lead.name}* (${fmtPhone(lead.phone)}) da captação ainda está *sem 1º contato* — o prazo era ${prazoTxt}. Chama ele agora? (Depois responde *"Chamei"* citando o card do lead, que eu registro.)`;
         if (ch.notifyGroup && ch.groupJid) sent = await sendUazapi(sb, ch,ch.groupJid, txt, m.number ? [m.number] : []);
         // (privado só por template oficial — o SLA fica no grupo com @menção)
       }
@@ -310,7 +328,7 @@ async function runSla(sb: any) {
         metadata: { ...(lead.metadata || {}), handoff: { ...handoff, sla_alert_at: new Date().toISOString(), sla_alert_sent: sent } },
       }).eq("id", lead.id);
       out.push({ lead: lead.id, action: "sla_breached", waiting });
-    } else if (waiting >= 2 * sla && lead.handoff_status === "sla_breached") {
+    } else if (now >= escalateAt.getTime() && lead.handoff_status === "sla_breached") {
       // 2ª quebra: escala pro gestor (ou admins) — @menções no grupo
       let gestores: Row[] = [];
       if (ch.escalateTo) {
@@ -324,7 +342,7 @@ async function runSla(sb: any) {
       const { data: spec } = await sb.from("team_members").select("name, phone").eq("id", lead.handoff_member_id).maybeSingle();
       const gm = gestores.map(mentionOf);
       const sm = mentionOf(spec);
-      const txt = `🚨 *ESCALADO* ${gm.map((g) => g.text).join(" ")} — lead da captação *${lead.name}* (${fmtPhone(lead.phone)}) está há *${waiting} min* sem contato. Responsável: ${sm.text}. Alguém precisa assumir.`;
+      const txt = `🚨 *ESCALADO* ${gm.map((g) => g.text).join(" ")} — lead da captação *${lead.name}* (${fmtPhone(lead.phone)}) segue *sem contato* (prazo era ${prazoTxt}; ${waiting} min desde o repasse). Responsável: ${sm.text}. Alguém precisa assumir.`;
       let sent = 0;
       if (ch.apiUrl && ch.apiKey && ch.groupJid) {
         const nums = [...gm, sm].map((x) => x.number).filter(Boolean) as string[];
