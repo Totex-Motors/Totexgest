@@ -384,6 +384,7 @@ Deno.serve(async (req: Request) => {
         p_name: customerName,
         p_source: "stand",
         p_utm_source: "stand_totex",
+        p_lead_kind: "buyer",
         p_metadata: { ...ownerMeta, origin },
       });
       if (leadErr) console.error("[stand-handoff] find_or_create_lead err:", leadErr.message);

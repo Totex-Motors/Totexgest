@@ -88,6 +88,7 @@ Deno.serve(async (req) => {
       p_name: name,
       p_source: "totem-compra",
       p_utm_source: "totem-compra",
+      p_lead_kind: "buyer",
       p_metadata: masterMeta,
     });
     if (lErr || !foc?.lead_id) return json({ error: `Falha ao criar o lead: ${lErr?.message ?? "sem id"}` }, 500);

@@ -237,6 +237,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
         p_phone: cleanPhone,
         p_name: contactName !== cleanPhone ? contactName : null,
         p_source: "whatsapp",
+        p_lead_kind: "buyer",
         p_metadata: {},
       });
       if (focErr) console.error(`[Cloud Webhook] find_or_create_lead err:`, focErr.message);

@@ -12,7 +12,11 @@
 >   receive-lead (lookup), WhatsApp oficial, distribuir-lead e totem (captar-comprador).
 >   Frontend (2b): modal manual sem "criar mesmo assim"; checagem de duplicado por sufixo
 >   dos 8 dígitos; importação CSV linha a linha pela porta única. (PR #117)
-> - ⏳ **Passo 3 (separar por `lead_kind`)** — não iniciado.
+> - 🔄 **Passo 3 (separar por tipo)** — 3a banco: coluna `lead_kind` real (seller/buyer/
+>   franchise/contact) + backfill + trigger (migration `20261008130000` — **aplicar via SQL
+>   Editor ANTES do merge**; o `apply_migration` do MCP dá timeout em `ALTER TABLE`);
+>   3b: todas as portas declaram o tipo; 3c: lista filtra Compradores/Vendedores (franqueado
+>   e contato ficam fora), detalhe por tipo, origem legível (`src/lib/leadKind.ts`).
 
 ---
 

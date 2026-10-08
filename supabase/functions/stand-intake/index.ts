@@ -235,6 +235,7 @@ Regras: só preencha matched_tenant_id se houver correspondência clara com uma 
       p_name: customerName,
       p_source: "stand",
       p_utm_source: "stand",
+      p_lead_kind: "buyer",
       p_metadata: {},
     });
     if (leadErr) console.error("[stand-intake] find_or_create_lead err:", leadErr.message);

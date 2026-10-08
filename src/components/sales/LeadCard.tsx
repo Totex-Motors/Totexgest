@@ -27,6 +27,7 @@ import {
   Star,
 } from "lucide-react";
 import { useUpdateLeadSales } from "@/hooks/useSalesLeads";
+import { LEAD_KIND_CLASS, LEAD_KIND_LABEL, leadSourceLabel } from "@/lib/leadKind";
 
 interface LeadCardProps {
   lead: SalesLead;
@@ -212,6 +213,15 @@ export function LeadCard({
             </div>
             <div className="min-w-0">
               <p className="font-medium truncate">{lead.name}</p>
+              {/* Tipo de pessoa + origem em palavra de gente (passo 3 — docs/ENTRADAS-DE-LEADS.md) */}
+              <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+                {lead.lead_kind && LEAD_KIND_LABEL[lead.lead_kind] && (
+                  <span className={cn("px-1.5 py-0 rounded border text-[10px] font-medium shrink-0", LEAD_KIND_CLASS[lead.lead_kind])}>
+                    {LEAD_KIND_LABEL[lead.lead_kind]}
+                  </span>
+                )}
+                <span className="truncate">{leadSourceLabel(lead.source, lead.utm_source)}</span>
+              </p>
               {lead.company_name && (
                 <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
                   <Building className="h-3 w-3" />

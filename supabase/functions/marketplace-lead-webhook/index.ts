@@ -129,6 +129,7 @@ serve(async (req: Request) => {
         p_name: cliente.nome || "Lead Marketplace",
         p_source: "marketplace",
         p_email: cliente.email || null,
+        p_lead_kind: "buyer",
         p_metadata: metaInteresse,
       });
       if (rErr) {
@@ -350,6 +351,8 @@ async function handleNegocioCaptado(supabase: any, body: any): Promise<Response>
       p_source: "marketplace",
       p_email: cliente.email || null,
       p_utm_source: canal ? canal.toLowerCase() : "marketplace",
+      // tipo pela própria natureza do negócio: quem VENDE o carro é seller, lojista é franchise
+      p_lead_kind: cliente.papel === "VENDEDOR" ? "seller" : cliente.papel === "LOJISTA" ? "franchise" : "buyer",
       p_metadata: totexMeta,
     });
     if (rErr) {
