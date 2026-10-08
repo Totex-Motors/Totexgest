@@ -172,6 +172,7 @@ export default function ImportLeadsWizard({ onImportComplete, onComplete, open, 
             p_name: row.name || null,
             p_source: "import_csv",
             p_email: row.email || null,
+            p_lead_kind: "buyer",
             p_metadata: row.meta,
           });
           if (error) { failed++; return; }

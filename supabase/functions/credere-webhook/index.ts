@@ -180,6 +180,7 @@ serve(async (req: Request) => {
         p_name: lead.name || "Lead Credere",
         p_source: "credere",
         p_email: lead.email || null,
+        p_lead_kind: "buyer",
         p_metadata: credereMeta,
       });
       if (rErr) {

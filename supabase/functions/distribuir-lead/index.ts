@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
       p_name: src.name || null,
       p_source: "distribuicao",
       p_email: src.email || null,
+      p_lead_kind: "buyer",
       p_metadata: { ...(meta || {}), origin },
     });
     if (cErr || !foc?.lead_id) {
