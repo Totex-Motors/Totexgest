@@ -80,9 +80,49 @@ export function shouldReplyWithVoice(cfg: VoiceReplyConfig | null, inboundType: 
   if (!t || t.length > cfg.max_chars) return false;
   if (/https?:\/\/|www\./i.test(t)) return false;                       // link
   if (/(^|\n)\s*(\d+[.)]|[-*•])\s+\S/.test(t)) return false;             // lista
-  if (/\|.*\|/.test(t) || /```/.test(t)) return false;                   // tabela / código
+  if (/\|/.test(t) || /```/.test(t)) return false;                       // ficha "a | b" / código
   if (/\d{2}[\s.-]?\d{4,5}[\s.-]?\d{4}/.test(t)) return false;           // telefone (o lead precisa copiar)
+  // Ficha com 2+ linhas começando por emoji (🚗 modelo / 📅 ano / 💰 preço) → texto
+  const emojiLines = t.split("\n").filter((l) => /^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(l.trim())).length;
+  if (emojiLines >= 2) return false;
   return true;
+}
+
+export interface ReplySegment {
+  kind: "voice" | "text";
+  text: string;
+}
+
+/**
+ * Divide a resposta em trechos: o que é conversa vira ÁUDIO, o que é "ficha"
+ * (lista, tabela com |, link, telefone, código) continua em TEXTO.
+ * Ex.: "Achei um Q3 que parece o que você viu" (áudio) + ficha do carro (texto) +
+ * "Quer que eu agende uma visita?" (áudio). Parágrafos falados consecutivos viram um
+ * áudio só, até max_chars. Devolve null quando não há nada pra falar (tudo em texto).
+ */
+export function planReplySegments(cfg: VoiceReplyConfig | null, inboundType: string | null | undefined, text: string): ReplySegment[] | null {
+  if (!cfg || !cfg.enabled) return null;
+  if (cfg.mode === "mirror" && inboundType !== "audio") return null;
+  const paras = String(text || "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  if (!paras.length) return null;
+
+  const segs: ReplySegment[] = [];
+  for (const para of paras) {
+    const spoken = shouldReplyWithVoice(cfg, "audio", para) && prepareTextForSpeech(para).length >= 2;
+    const last = segs[segs.length - 1];
+    if (spoken) {
+      if (last && last.kind === "voice" && (last.text + "\n\n" + para).length <= cfg.max_chars) {
+        last.text += "\n\n" + para;
+      } else {
+        segs.push({ kind: "voice", text: para });
+      }
+    } else if (last && last.kind === "text") {
+      last.text += "\n\n" + para;
+    } else {
+      segs.push({ kind: "text", text: para });
+    }
+  }
+  return segs.some((s) => s.kind === "voice") ? segs : null;
 }
 
 /** Texto limpo pra fala: sem markdown, sem emoji, sem "[Áudio]" de sistema. */
