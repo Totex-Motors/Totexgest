@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { tryHandleViaAgentPlatformCloud } from "./agent-platform.ts";
+import { getIntegrationKey } from "../_shared/config.ts";
 
 /**
  * WhatsApp Cloud API Webhook
@@ -180,12 +181,17 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // Se tem mídia, baixar e armazenar no Storage
   let storedMediaUrl: string | null = null;
   if (mediaUrl) {
-    storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, msgType);
+    storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, msgType, instanceTenantId);
   }
 
-  // Transcrever áudio com Whisper pra o agente poder ler
-  if (msgType === "audio" && storedMediaUrl && OPENAI_API_KEY) {
-    const transcription = await transcribeAudio(storedMediaUrl);
+  // Transcrever áudio com Whisper pra o agente poder ler.
+  // Chave via getIntegrationKey (Integrações da loja → config → env) — o env puro estava
+  // vazio em produção e o agente recebia só "[Áudio]" ("não consegui ouvir").
+  const openaiKey = msgType === "audio" && storedMediaUrl
+    ? (await getIntegrationKey(supabase, "OPENAI_API_KEY", instanceTenantId)) || OPENAI_API_KEY
+    : null;
+  if (msgType === "audio" && storedMediaUrl && openaiKey) {
+    const transcription = await transcribeAudio(supabase, storedMediaUrl, openaiKey);
     if (transcription) {
       content = transcription;
       console.log(`[Cloud Webhook] Audio transcribed: "${transcription.substring(0, 80)}"`);
@@ -397,16 +403,25 @@ async function handleStatusUpdate(supabase: any, status: any, instanceId: string
 // ==================== HELPERS ====================
 
 // Transcrever áudio com OpenAI Whisper
-async function transcribeAudio(audioUrl: string): Promise<string | null> {
+async function transcribeAudio(supabase: any, audioUrl: string, openaiKey: string): Promise<string | null> {
   try {
-    // Baixar áudio do Storage
-    const audioRes = await fetch(audioUrl);
-    if (!audioRes.ok) return null;
-    const audioBlob = await audioRes.blob();
+    // Baixar áudio do Storage. O bucket `whatsapp-media` é PRIVADO: a URL "pública" não
+    // baixa por fetch — usa o service role quando é do nosso storage.
+    let audioBlob: Blob;
+    const st = String(audioUrl).match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
+    if (st) {
+      const { data, error } = await supabase.storage.from(st[1]).download(decodeURIComponent(st[2].split("?")[0]));
+      if (error || !data) { console.error("[Cloud Webhook] transcribe: download storage falhou:", error?.message); return null; }
+      audioBlob = data;
+    } else {
+      const audioRes = await fetch(audioUrl);
+      if (!audioRes.ok) return null;
+      audioBlob = await audioRes.blob();
+    }
 
     // Montar multipart form pra Whisper API
     const boundary = `----WhisperBoundary${Date.now()}`;
-    const mimeType = audioRes.headers.get("content-type") || "audio/ogg";
+    const mimeType = audioBlob.type || "audio/ogg";
     const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
 
     // Header parts
@@ -436,7 +451,7 @@ async function transcribeAudio(audioUrl: string): Promise<string | null> {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${openaiKey}`,
         "Content-Type": `multipart/form-data; boundary=${boundary}`,
       },
       body,
@@ -457,11 +472,17 @@ async function transcribeAudio(audioUrl: string): Promise<string | null> {
 }
 
 // Baixar mídia do Meta Cloud API e salvar no Supabase Storage
-async function downloadAndStoreMedia(supabase: any, mediaId: string, msgType: string): Promise<string | null> {
+async function downloadAndStoreMedia(supabase: any, mediaId: string, msgType: string, tenantId: string | null = null): Promise<string | null> {
   try {
+    // Token da Cloud API via getIntegrationKey (Integrações da loja → config → env).
+    // O env WHATSAPP_CLOUD_API_TOKEN estava vazio em produção → "No URL for media" em
+    // todo áudio/imagem recebido (nunca baixava nem transcrevia).
+    const token = (await getIntegrationKey(supabase, "WHATSAPP_CLOUD_TOKEN", tenantId)) || WHATSAPP_TOKEN;
+    if (!token) { console.error("[Cloud Webhook] Sem WHATSAPP_CLOUD_TOKEN pra baixar mídia"); return null; }
+
     // 1. Obter URL de download do media
     const metaRes = await fetch(`https://graph.facebook.com/v22.0/${mediaId}`, {
-      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     const metaData = await metaRes.json();
     if (!metaData.url) {
@@ -471,7 +492,7 @@ async function downloadAndStoreMedia(supabase: any, mediaId: string, msgType: st
 
     // 2. Baixar o arquivo
     const fileRes = await fetch(metaData.url, {
-      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!fileRes.ok) {
       console.error(`[Cloud Webhook] Failed to download media: ${fileRes.status}`);
