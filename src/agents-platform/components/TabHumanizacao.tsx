@@ -21,7 +21,7 @@
  * }
  */
 
-import { Brain, MessageSquare, Send, Instagram, Layers, Sidebar, Mail, Clock, MessageCircle } from 'lucide-react';
+import { Brain, MessageSquare, Send, Instagram, Layers, Sidebar, Mail, Clock, MessageCircle, Mic } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -58,6 +58,21 @@ const DEFAULT_HUMANIZATION = {
   },
 };
 
+/**
+ * Resposta em ÁUDIO (nota de voz) — settings.voice_reply. Lido pela edge fn
+ * whatsapp-cloud-webhook/agent-platform.ts via _shared/tts.ts. Só WhatsApp oficial (Cloud API).
+ */
+const DEFAULT_VOICE_REPLY = {
+  enabled: false,
+  mode: 'mirror' as 'mirror' | 'always',
+  provider: 'auto' as 'auto' | 'openai' | 'elevenlabs',
+  voice: '',
+  max_chars: 600,
+  instructions: '',
+};
+
+const OPENAI_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
+
 interface Props {
   draft: Partial<AgentConfig>;
   setDraft: (fn: (prev: Partial<AgentConfig>) => Partial<AgentConfig>) => void;
@@ -67,6 +82,17 @@ export function TabHumanizacao({ draft, setDraft }: Props) {
   const settings = (draft.settings || {}) as Record<string, any>;
   const h = { ...DEFAULT_HUMANIZATION, ...(settings.humanization || {}) };
   h.message_split = { ...DEFAULT_HUMANIZATION.message_split, ...(h.message_split || {}) };
+  const v = { ...DEFAULT_VOICE_REPLY, ...(settings.voice_reply || {}) };
+
+  const updateVoice = (patch: Record<string, any>) => {
+    setDraft((prev) => ({
+      ...prev,
+      settings: {
+        ...((prev.settings as Record<string, any>) || {}),
+        voice_reply: { ...v, ...patch },
+      },
+    }));
+  };
 
   const update = (patch: Record<string, any>) => {
     setDraft((prev) => ({
@@ -303,6 +329,121 @@ export function TabHumanizacao({ draft, setDraft }: Props) {
           </section>
         </>
       )}
+
+      {/* ───────── Resposta em áudio (independente da humanização) ───────── */}
+      <section className="rounded-xl border border-border p-4 space-y-3 bg-card">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
+              <Mic className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-medium">Responder por áudio (nota de voz)</h4>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                O agente manda a resposta falada no WhatsApp oficial. Respostas com link, lista,
+                telefone ou muito longas continuam em texto. Se a voz falhar, vai em texto.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch checked={v.enabled} onCheckedChange={(val) => updateVoice({ enabled: val })} />
+            <span className="text-xs font-medium">{v.enabled ? 'Ativado' : 'Desativado'}</span>
+          </div>
+        </div>
+
+        {v.enabled && (
+          <div className="space-y-3 pt-1">
+            <div className="grid sm:grid-cols-2 gap-2">
+              {[
+                { id: 'mirror', label: 'Só quando o lead manda áudio', hint: 'Recomendado: espelha o cliente.' },
+                { id: 'always', label: 'Sempre em áudio', hint: 'Toda resposta curta vira nota de voz.' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => updateVoice({ mode: opt.id })}
+                  className={cn(
+                    'p-3 border rounded-lg text-left transition-all',
+                    v.mode === opt.id ? 'border-violet-500/50 bg-violet-500/5' : 'border-border hover:border-primary/30 hover:bg-muted/30',
+                  )}
+                >
+                  <p className="text-sm font-medium">{opt.label}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{opt.hint}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <Label className="text-[11px]">Provedor de voz</Label>
+                <select
+                  value={v.provider}
+                  onChange={(e) => updateVoice({ provider: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="auto">Automático (ElevenLabs se tiver chave, senão OpenAI)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="elevenlabs">ElevenLabs</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-[11px]">
+                  {v.provider === 'elevenlabs' ? 'Voice ID (ElevenLabs)' : 'Voz'}
+                </Label>
+                {v.provider === 'elevenlabs' ? (
+                  <Input
+                    value={v.voice}
+                    onChange={(e) => updateVoice({ voice: e.target.value })}
+                    placeholder="ex.: 21m00Tcm4TlvDq8ikWAM"
+                    className="mt-1 h-9 text-sm"
+                  />
+                ) : (
+                  <select
+                    value={OPENAI_VOICES.includes(v.voice) ? v.voice : ''}
+                    onChange={(e) => updateVoice({ voice: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Padrão (nova)</option>
+                    {OPENAI_VOICES.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                )}
+                {v.provider === 'auto' && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Com ElevenLabs no automático, informe o Voice ID aqui no lugar da voz da OpenAI.
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-[11px]">Máx. caracteres em áudio</Label>
+                <Input
+                  type="number" min={80} max={2000}
+                  value={v.max_chars}
+                  onChange={(e) => updateVoice({ max_chars: Number(e.target.value) || 600 })}
+                  className="mt-1 h-9 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Acima disso vai em texto. ~600 = 40s de fala.</p>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[11px]">Jeito de falar (só OpenAI, opcional)</Label>
+              <Input
+                value={v.instructions}
+                onChange={(e) => updateVoice({ instructions: e.target.value })}
+                placeholder="ex.: fale em português do Brasil, simpática, ritmo natural de vendedora"
+                className="mt-1 h-9 text-sm"
+              />
+            </div>
+
+            <p className="text-[10px] text-muted-foreground">
+              Chaves em Configurações › Integrações: <strong>OPENAI_API_KEY</strong> (já usada na transcrição) ou{' '}
+              <strong>ELEVENLABS_API_KEY</strong>. Vale só pro WhatsApp oficial (Cloud API); a UAZAPI só fala em grupo.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

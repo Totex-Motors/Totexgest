@@ -13,6 +13,7 @@
  */
 
 import { loopGuardBlocks, lastOutboundWasFallback } from "../_shared/agent-loop-guard.ts";
+import { resolveVoiceReply, shouldReplyWithVoice, synthesizeToStorage } from "../_shared/tts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -28,8 +29,10 @@ export async function tryHandleViaAgentPlatformCloud(args: {
   leadId?: string | null;
   /** Tenant dono da instância oficial (whatsapp_instances.tenant_id). */
   tenantId?: string | null;
+  /** Tipo da mensagem recebida (text, audio, image…) — decide a resposta em áudio (modo mirror). */
+  inboundType?: string | null;
 }): Promise<boolean> {
-  const { supabase, instanceId, senderPhone, text, messageId, leadId, tenantId } = args;
+  const { supabase, instanceId, senderPhone, text, messageId, leadId, tenantId, inboundType } = args;
   if (!text || !text.trim()) return false;
 
   // Multi-tenant: sem o tenant da instância não roteamos.
@@ -183,6 +186,31 @@ export async function tryHandleViaAgentPlatformCloud(args: {
     return true;
   }
   const finalText = cleaned || FALLBACK_TEXT;
+
+  // 6.1 Resposta em ÁUDIO (nota de voz) — settings.voice_reply do agente (_shared/tts.ts).
+  //     Só pra resposta real do agente (nunca pro fallback). Se a síntese falhar, cai no texto.
+  if (cleaned) {
+    try {
+      const { data: reg } = await supabase
+        .from("agents_registry").select("settings").eq("id", match.agent_id).maybeSingle();
+      const voice = resolveVoiceReply((reg?.settings || null) as Record<string, unknown> | null);
+      if (shouldReplyWithVoice(voice, inboundType, cleaned)) {
+        const audio = await synthesizeToStorage(supabase, cleaned, tenantId, voice!);
+        if (audio) {
+          const ok = await sendCloudAudio(senderDigits, audio.publicUrl, cleaned, tenantId, leadId);
+          if (ok) {
+            console.log(`[cloud-v2] respondeu em áudio (${audio.provider}, ${cleaned.length} chars)`);
+            await markReplied(supabase, sessionId);
+            return true;
+          }
+        }
+        console.warn("[cloud-v2] áudio falhou — enviando em texto");
+      }
+    } catch (e) {
+      console.error("[cloud-v2] voice_reply err (cai pra texto):", (e as Error).message);
+    }
+  }
+
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendCloud(senderDigits, parts[i], tenantId, leadId);
@@ -294,6 +322,35 @@ async function sendCloud(phone: string, text: string, tenantId: string | null, l
       console.error(`[cloud-v2] send-whatsapp-cloud ${res.status}: ${body.slice(0, 200)}`);
     }
   } catch (e) { console.error("[cloud-v2] sendCloud err:", (e as Error).message); }
+}
+
+/**
+ * Envia nota de voz via send-whatsapp-cloud (action send_audio). `caption` vira o `content`
+ * da mensagem no banco (transcrição do que foi falado — o inbox mostra o texto junto do áudio).
+ */
+async function sendCloudAudio(phone: string, mediaUrl: string, caption: string, tenantId: string | null, leadId?: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
+      body: JSON.stringify({
+        action: "send_audio",
+        phone: onlyDigits(phone),
+        media_url: mediaUrl,
+        caption,
+        tenant_id: tenantId,
+        lead_id: leadId || null,
+        sent_by: "ai_agent_v2",
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[cloud-v2] send_audio ${res.status}: ${body.slice(0, 200)}`);
+      return false;
+    }
+    const data = await res.json().catch(() => ({}));
+    return !data?.error;
+  } catch (e) { console.error("[cloud-v2] sendCloudAudio err:", (e as Error).message); return false; }
 }
 
 /**

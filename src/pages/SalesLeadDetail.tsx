@@ -62,6 +62,8 @@ import { BuyerProfileCard } from "@/components/sales/BuyerProfileCard";
 import { TradeInVehicleCard } from "@/components/sales/TradeInVehicleCard";
 import { CaptureVehicleCard } from "@/components/sales/CaptureVehicleCard";
 import { isSellerLead, leadSourceLabel } from "@/lib/leadKind";
+import { isFranchiseLead } from "@/lib/franchise";
+import { FranchiseProfileCard } from "@/components/sales/FranchiseProfileCard";
 import { IntermediationCard } from "@/components/sales/IntermediationCard";
 import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
@@ -694,6 +696,10 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
   // Lead de CAPTAÇÃO (captado por promotora): a pessoa está VENDENDO o carro, não comprando.
   // Esconde os cards de comprador (que ficariam vazios) e lê a qualificação da captação.
   const isCaptacao = isSellerLead(effectiveLead as any);
+  // Lead FRANQUEADO (lojista em recrutamento): não compra nem vende carro — esconde os
+  // cards de comprador (veículo de interesse, perfil de compra, troca) e mostra o perfil dele.
+  const isFranchise = isFranchiseLead(effectiveLead as any);
+  const hideCarCards = isCaptacao || isFranchise;
 
   // Filter timeline events
   const filteredTimeline = (timeline || []).filter((event: any) => {
@@ -1200,7 +1206,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
             </div>
 
             {/* Veículo de interesse (marketplace ou vinculado manualmente) — não se aplica a quem está VENDENDO (captação) */}
-            {!isCaptacao && effectiveLead && id && (
+            {!hideCarCards &&effectiveLead && id && (
               <VehicleOfInterestCard
                 vehicle={(effectiveLead as any).metadata?.vehicle}
                 vehicles={(effectiveLead as any).metadata?.vehicles}
@@ -1214,7 +1220,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
             )}
 
             {/* Perfil de compra (orçamento, financiamento, troca, pagamento) — só faz sentido pra COMPRADOR */}
-            {!isCaptacao && id && (
+            {!hideCarCards &&id && (
               <BuyerProfileCard
                 leadId={id}
                 profile={(effectiveLead as any)?.metadata}
@@ -1223,12 +1229,17 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
 
             {/* Veículo na troca — na captação o carro já aparece no card "Captação" (seller_vehicles);
                 este lê trade_in_vehicles e ficaria "Nenhum veículo registrado" ao lado, contradizendo. */}
-            {!isCaptacao && id && (
+            {!hideCarCards &&id && (
               <TradeInVehicleCard
                 leadId={id}
                 dealId={contactDeals?.[0]?.id ?? null}
                 vehiclePrice={(effectiveLead as any)?.metadata?.vehicle?.price ?? null}
               />
+            )}
+
+            {/* Perfil do franqueado (lojista em recrutamento): cidade, capital, campanha */}
+            {isFranchise && effectiveLead && (
+              <FranchiseProfileCard lead={effectiveLead as any} />
             )}
 
             {/* Qualificação por intenção de compra (preenchida pela IA, editável) */}

@@ -89,6 +89,14 @@ const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://aistudio.google.com/app/apikey",
     category: "ai",
   },
+  {
+    key: "ELEVENLABS_API_KEY",
+    label: "ElevenLabs (voz)",
+    description: "Voz do agente nas respostas em áudio do WhatsApp (opcional — sem ela usa a voz da OpenAI)",
+    placeholder: "sk_...",
+    docsUrl: "https://elevenlabs.io/app/settings/api-keys",
+    category: "ai",
+  },
   // WhatsApp
   {
     key: "UAZAPI_ADMIN_URL",

@@ -19,6 +19,7 @@ import { SalesAIChat } from "@/components/sales/ai";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePipelineDeals } from "@/hooks/useSalesPipeline";
 import { usePipelines } from "@/hooks/usePipelineConfig";
+import { isFranchisePipeline } from "@/lib/franchise";
 // Webinar configs foi removido junto com o m\u00f3dulo de eventos.
 const useWebinarConfigs = () => ({ data: [] as Array<{ id: string; name: string }> });
 import { useMoveDealStage, useTransferDealPipeline, useDeleteDeal } from "@/hooks/useSalesDeals";
@@ -216,7 +217,10 @@ export function PipelineBoardContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const { data: pipelines } = usePipelines();
+  const { data: allPipelines } = usePipelines();
+  // O funil "Recrutamento de Franqueados" tem tela própria (/comercial/franqueados)
+  // e não aparece nas abas do kanban de carro.
+  const pipelines = useMemo(() => allPipelines?.filter((p) => !isFranchisePipeline(p)), [allPipelines]);
   const { data: modalidadeMap } = useTradeInModalidadeMap();
   const { data: webinarConfigs = [] } = useWebinarConfigs();
 
