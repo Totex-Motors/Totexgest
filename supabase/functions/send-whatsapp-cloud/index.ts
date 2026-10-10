@@ -331,8 +331,15 @@ async function sendAudioViaUpload(audioUrl: string, phone: string, cfg: CloudApi
 
   // 2. Upload via Media API (multipart/form-data manual)
   const boundary = `----FormBoundary${Date.now()}`;
-  const mimeType = contentType.includes("ogg") ? "audio/ogg; codecs=opus" : contentType;
-  const filename = contentType.includes("ogg") ? "audio.ogg" : "audio.webm";
+  // Tipos que a Meta aceita: audio/ogg (só OPUS mono), audio/mpeg, audio/mp4, audio/aac, audio/amr
+  const base = contentType.split(";")[0].trim().toLowerCase();
+  const mimeType = base.includes("ogg") ? "audio/ogg; codecs=opus" : base || "audio/mpeg";
+  const filename = base.includes("ogg") ? "audio.ogg"
+    : base === "audio/mpeg" || base === "audio/mp3" ? "audio.mp3"
+    : base === "audio/mp4" || base === "audio/m4a" ? "audio.m4a"
+    : base === "audio/aac" ? "audio.aac"
+    : base === "audio/amr" ? "audio.amr"
+    : "audio.webm";
 
   // Construir body multipart manualmente (Deno edge runtime não suporta FormData com Blob)
   const header = [
