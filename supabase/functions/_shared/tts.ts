@@ -16,8 +16,7 @@
  *
  * Provedores (chave via getIntegrationKey — nunca hardcode):
  *   - ElevenLabs: ELEVENLABS_API_KEY  → Ogg/Opus mono (opus_48000_64) = nota de voz (ícone de microfone)
- *   - OpenAI:     OPENAI_API_KEY      → gpt-4o-mini-tts em MP3 (audio/mpeg) = áudio comum (ícone de música).
- *                 O "opus" da OpenAI era recusado pela Meta na entrega (131053 Media upload error).
+ *   - OpenAI:     OPENAI_API_KEY      → gpt-4o-mini-tts, response_format "opus" (Ogg/Opus 48 kHz mono) = nota de voz
  *   "auto" = ElevenLabs se tiver chave, senão OpenAI.
  * O arquivo vai pro bucket privado `whatsapp-media`; a send-whatsapp-cloud baixa pelo service role.
  *
@@ -206,15 +205,16 @@ async function openAiTts(apiKey: string, text: string, cfg: VoiceReplyConfig): P
       model: "gpt-4o-mini-tts",
       input: text,
       voice: cfg.voice || OPENAI_DEFAULT_VOICE,
-      // MP3 (audio/mpeg): o "opus" da OpenAI subia na Meta mas era recusado na entrega
-      // (131053 Media upload error) — o WhatsApp só aceita Ogg/Opus mono "de verdade"
-      // como nota de voz. MP3 chega como áudio normal (ícone de música), sempre entrega.
-      response_format: "mp3",
+      // Ogg/Opus (48 kHz mono) = nota de voz no WhatsApp (ícone de microfone). O 131053 de
+      // antes não era do formato: era o multipart do upload sem a linha em branco antes do
+      // arquivo (corrigido em send-whatsapp-cloud). Se a Meta voltar a recusar, trocar
+      // para "mp3" (audio/mpeg) — chega como áudio comum, mas sempre entrega.
+      response_format: "opus",
       ...(cfg.instructions ? { instructions: cfg.instructions } : {}),
     }),
   });
   if (!res.ok) throw new Error(`openai tts ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/mpeg", provider: "openai" };
+  return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/ogg", provider: "openai" };
 }
 
 export const TTS_BUCKET = "whatsapp-media";
