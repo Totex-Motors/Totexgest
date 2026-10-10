@@ -13,7 +13,7 @@
  */
 
 import { loopGuardBlocks, lastOutboundWasFallback } from "../_shared/agent-loop-guard.ts";
-import { resolveVoiceReply, shouldReplyWithVoice, synthesizeToStorage } from "../_shared/tts.ts";
+import { resolveVoiceReply, planReplySegments, synthesizeToStorage } from "../_shared/tts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -188,23 +188,36 @@ export async function tryHandleViaAgentPlatformCloud(args: {
   const finalText = cleaned || FALLBACK_TEXT;
 
   // 6.1 Resposta em ÁUDIO (nota de voz) — settings.voice_reply do agente (_shared/tts.ts).
-  //     Só pra resposta real do agente (nunca pro fallback). Se a síntese falhar, cai no texto.
+  //     A conversa vai falada; ficha de carro/lista/link continua em texto, na ordem original.
+  //     Só pra resposta real do agente (nunca pro fallback). Se a síntese falhar, o trecho vai em texto.
   if (cleaned) {
     try {
       const { data: reg } = await supabase
         .from("agents_registry").select("settings").eq("id", match.agent_id).maybeSingle();
       const voice = resolveVoiceReply((reg?.settings || null) as Record<string, unknown> | null);
-      if (shouldReplyWithVoice(voice, inboundType, cleaned)) {
-        const audio = await synthesizeToStorage(supabase, cleaned, tenantId, voice!);
-        if (audio) {
-          const ok = await sendCloudAudio(senderDigits, audio.publicUrl, cleaned, tenantId, leadId);
-          if (ok) {
-            console.log(`[cloud-v2] respondeu em áudio (${audio.provider}, ${cleaned.length} chars)`);
-            await markReplied(supabase, sessionId);
-            return true;
+      const segments = planReplySegments(voice, inboundType, cleaned);
+      if (segments && voice) {
+        let spokeAny = false;
+        for (const seg of segments) {
+          if (seg.kind === "voice") {
+            const audio = await synthesizeToStorage(supabase, seg.text, tenantId, voice);
+            if (audio && await sendCloudAudio(senderDigits, audio.publicUrl, seg.text, tenantId, leadId)) {
+              spokeAny = true;
+              console.log(`[cloud-v2] trecho em áudio (${audio.provider}, ${seg.text.length} chars)`);
+              await sleep(600 + Math.floor(Math.random() * 600));
+              continue;
+            }
+            console.warn("[cloud-v2] áudio falhou nesse trecho — vai em texto");
+          }
+          const parts = splitForWhatsApp(seg.text, 280);
+          for (let i = 0; i < parts.length; i++) {
+            await sendCloud(senderDigits, parts[i], tenantId, leadId);
+            if (i < parts.length - 1) await sleep(700 + Math.floor(Math.random() * 900));
           }
         }
-        console.warn("[cloud-v2] áudio falhou — enviando em texto");
+        if (!spokeAny) console.warn("[cloud-v2] nenhum trecho saiu em áudio (foi tudo em texto)");
+        await markReplied(supabase, sessionId);
+        return true;
       }
     } catch (e) {
       console.error("[cloud-v2] voice_reply err (cai pra texto):", (e as Error).message);
