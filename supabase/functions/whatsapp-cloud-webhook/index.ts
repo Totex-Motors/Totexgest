@@ -308,6 +308,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
         messageId: msgId,
         leadId: finalLeadId,
         tenantId: instanceTenantId, // agente roteia pelo tenant da INSTÂNCIA (central), não do lead/loja
+        inboundType: msgType,       // áudio do lead → agente pode responder em áudio (voice_reply mirror)
       });
       if (handledByV2) return; // agente V2 respondeu — não cai no legado
     } catch (e) {

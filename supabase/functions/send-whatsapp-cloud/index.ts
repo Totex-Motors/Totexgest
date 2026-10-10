@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
         break;
 
       case "send_audio":
-        result = await sendMedia(body, formattedPhone, "audio", cfg);
+        result = await sendMedia(body, formattedPhone, "audio", cfg, supabase);
         break;
 
       case "send_video":
@@ -271,13 +271,13 @@ async function sendText(body: any, phone: string, cfg: CloudApiCfg) {
 
 // ==================== SEND MEDIA ====================
 
-async function sendMedia(body: any, phone: string, type: "image" | "document" | "audio" | "video", cfg: CloudApiCfg) {
+async function sendMedia(body: any, phone: string, type: "image" | "document" | "audio" | "video", cfg: CloudApiCfg, supabase?: any) {
   const { media_url, caption, filename } = body;
   if (!media_url) throw new Error("media_url required");
 
   // Áudio: upload via Media API pra garantir formato nativo WhatsApp
   if (type === "audio") {
-    return await sendAudioViaUpload(media_url, phone, cfg, caption);
+    return await sendAudioViaUpload(media_url, phone, cfg, caption, supabase);
   }
 
   const mediaObj: any = { link: media_url };
@@ -304,12 +304,30 @@ async function sendMedia(body: any, phone: string, type: "image" | "document" | 
 
 // ==================== SEND AUDIO VIA MEDIA UPLOAD ====================
 
-async function sendAudioViaUpload(audioUrl: string, phone: string, cfg: CloudApiCfg, caption?: string) {
-  // 1. Baixar o áudio do Storage
-  const audioRes = await fetch(audioUrl);
-  if (!audioRes.ok) throw new Error("Falha ao baixar áudio do storage");
-  const audioBuffer = await audioRes.arrayBuffer();
-  const contentType = audioRes.headers.get("content-type") || "audio/ogg";
+/** Bucket privado → a URL "pública" não baixa por fetch; extrai bucket/path pra baixar via service role. */
+function parseStorageUrl(url: string): { bucket: string; path: string } | null {
+  const m = String(url).match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
+  if (!m) return null;
+  return { bucket: m[1], path: decodeURIComponent(m[2].split("?")[0]) };
+}
+
+async function sendAudioViaUpload(audioUrl: string, phone: string, cfg: CloudApiCfg, caption?: string, supabase?: any) {
+  // 1. Baixar o áudio do Storage. `whatsapp-media` é PRIVADO (policies: authenticated/service
+  //    role) — o fetch anônimo na URL pública dá 400. Baixa pelo service role quando é do nosso storage.
+  let audioBuffer: ArrayBuffer;
+  let contentType = "audio/ogg";
+  const st = parseStorageUrl(audioUrl);
+  if (st && supabase) {
+    const { data, error } = await supabase.storage.from(st.bucket).download(st.path);
+    if (error || !data) throw new Error(`Falha ao baixar áudio do storage (${st.bucket}/${st.path}): ${error?.message || "vazio"}`);
+    audioBuffer = await data.arrayBuffer();
+    contentType = data.type || "audio/ogg";
+  } else {
+    const audioRes = await fetch(audioUrl);
+    if (!audioRes.ok) throw new Error("Falha ao baixar áudio do storage");
+    audioBuffer = await audioRes.arrayBuffer();
+    contentType = audioRes.headers.get("content-type") || "audio/ogg";
+  }
 
   // 2. Upload via Media API (multipart/form-data manual)
   const boundary = `----FormBoundary${Date.now()}`;

@@ -420,6 +420,7 @@ admin/comercial/closer (promotora vê preço e faixa). Automação sem usuário 
 - **Audio**: UAZAPI transcreve via Whisper se `OPENAI_API_KEY` estiver configurada; fallback pra Gemini multimodal com `GEMINI_API_KEY`
 - **Imagem**: Gemini Vision descreve o conteudo (`describeImageViaGemini`) e popula `content` com texto — o agente "ve" a imagem via descricao
 - **Sem chave de midia**: agente recebe `[Audio]` / `[Imagem]` vazio e pode alucinar ("nao consigo ver") — ensinar o aluno a cadastrar Gemini logo de cara
+- **Resposta em audio (nota de voz)**: agente V2 no WhatsApp oficial pode responder falado — `agents_registry.settings.voice_reply` (aba Humanização do agente), sintese em `_shared/tts.ts` (ElevenLabs `ELEVENLABS_API_KEY` ou OpenAI `OPENAI_API_KEY`, saida Ogg/Opus no bucket `whatsapp-media`, envio via `send-whatsapp-cloud` action `send_audio`). Modo `mirror` (so quando o lead mandou audio) ou `always`; link/lista/telefone/texto longo sempre vao em texto. So Cloud API — UAZAPI nao fala 1:1.
 
 ## Visibilidade de eventos do agente
 
