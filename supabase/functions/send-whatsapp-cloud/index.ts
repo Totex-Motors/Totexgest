@@ -341,18 +341,21 @@ async function sendAudioViaUpload(audioUrl: string, phone: string, cfg: CloudApi
     : base === "audio/amr" ? "audio.amr"
     : "audio.webm";
 
-  // Construir body multipart manualmente (Deno edge runtime não suporta FormData com Blob)
-  const header = [
-    `--${boundary}`,
-    `Content-Disposition: form-data; name="messaging_product"\r\n`,
-    `whatsapp`,
-    `--${boundary}`,
-    `Content-Disposition: form-data; name="type"\r\n`,
-    mimeType,
-    `--${boundary}`,
-    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
-    `Content-Type: ${mimeType}\r\n`,
-  ].join("\r\n");
+  // Construir body multipart manualmente (Deno edge runtime não suporta FormData com Blob).
+  // ATENÇÃO: cada parte precisa de uma LINHA EM BRANCO (\r\n\r\n) entre os cabeçalhos e o
+  // conteúdo. Faltava essa linha antes dos bytes do arquivo → a Meta lia o começo do áudio
+  // como cabeçalho, o arquivo chegava corrompido e a entrega falhava com 131053
+  // ("on processing it is of type application/octet-stream").
+  const header =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="messaging_product"\r\n\r\n` +
+    `whatsapp\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="type"\r\n\r\n` +
+    `${mimeType}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`;
 
   const footer = `\r\n--${boundary}--\r\n`;
   const headerBytes = new TextEncoder().encode(header);
