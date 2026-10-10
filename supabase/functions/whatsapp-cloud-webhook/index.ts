@@ -393,10 +393,20 @@ async function handleStatusUpdate(supabase: any, status: any, instanceId: string
       .eq("message_id", msgId);
   }
 
-  // Se falhou, logar o erro
+  // Se falhou, logar o erro COM o detalhe da Meta (error_data.details diz o motivo real,
+  // ex.: "Unsupported MIME type …") e guardar na mensagem pra aparecer no inbox/diagnóstico.
   if (statusValue === "failed" && status.errors) {
-    const errorMsg = status.errors.map((e: any) => `${e.code}: ${e.title}`).join(", ");
+    const errs = status.errors.map((e: any) => ({
+      code: e.code, title: e.title, details: e.error_data?.details || e.message || null,
+    }));
+    const errorMsg = errs.map((e: any) => `${e.code}: ${e.title}${e.details ? ` — ${e.details}` : ""}`).join(", ");
     console.error(`[Cloud Webhook] Message ${msgId} failed: ${errorMsg}`);
+    try {
+      const { data: row } = await supabase.from("whatsapp_messages").select("metadata").eq("message_id", msgId).maybeSingle();
+      await supabase.from("whatsapp_messages")
+        .update({ metadata: { ...((row?.metadata as Record<string, unknown>) || {}), delivery_errors: errs } })
+        .eq("message_id", msgId);
+    } catch (e) { console.warn("[Cloud Webhook] não gravou delivery_errors:", (e as Error).message); }
   }
 }
 

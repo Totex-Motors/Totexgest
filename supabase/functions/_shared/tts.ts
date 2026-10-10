@@ -15,11 +15,11 @@
  * }
  *
  * Provedores (chave via getIntegrationKey — nunca hardcode):
- *   - ElevenLabs: ELEVENLABS_API_KEY  → output Ogg/Opus (opus_48000_64)
- *   - OpenAI:     OPENAI_API_KEY      → gpt-4o-mini-tts, response_format "opus" (Ogg/Opus)
+ *   - ElevenLabs: ELEVENLABS_API_KEY  → Ogg/Opus mono (opus_48000_64) = nota de voz (ícone de microfone)
+ *   - OpenAI:     OPENAI_API_KEY      → gpt-4o-mini-tts em MP3 (audio/mpeg) = áudio comum (ícone de música).
+ *                 O "opus" da OpenAI era recusado pela Meta na entrega (131053 Media upload error).
  *   "auto" = ElevenLabs se tiver chave, senão OpenAI.
- * O WhatsApp Cloud API aceita nota de voz em audio/ogg com codec opus — por isso os dois
- * provedores saem em Ogg/Opus e o arquivo vai pro bucket privado `whatsapp-media`.
+ * O arquivo vai pro bucket privado `whatsapp-media`; a send-whatsapp-cloud baixa pelo service role.
  *
  * Nunca envia texto com link/lista/tabela em áudio (vira ruído): shouldReplyWithVoice
  * devolve false e o chamador manda texto normal.
@@ -206,12 +206,15 @@ async function openAiTts(apiKey: string, text: string, cfg: VoiceReplyConfig): P
       model: "gpt-4o-mini-tts",
       input: text,
       voice: cfg.voice || OPENAI_DEFAULT_VOICE,
-      response_format: "opus",
+      // MP3 (audio/mpeg): o "opus" da OpenAI subia na Meta mas era recusado na entrega
+      // (131053 Media upload error) — o WhatsApp só aceita Ogg/Opus mono "de verdade"
+      // como nota de voz. MP3 chega como áudio normal (ícone de música), sempre entrega.
+      response_format: "mp3",
       ...(cfg.instructions ? { instructions: cfg.instructions } : {}),
     }),
   });
   if (!res.ok) throw new Error(`openai tts ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/ogg", provider: "openai" };
+  return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/mpeg", provider: "openai" };
 }
 
 export const TTS_BUCKET = "whatsapp-media";
@@ -229,8 +232,9 @@ export async function synthesizeToStorage(
 ): Promise<{ publicUrl: string; path: string; provider: string } | null> {
   const audio = await synthesizeSpeech(supabase, text, tenantId, cfg);
   if (!audio || audio.bytes.byteLength < 200) return null;
-  const path = `tts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.ogg`;
-  const { error } = await supabase.storage.from(TTS_BUCKET).upload(path, audio.bytes, { contentType: "audio/ogg" });
+  const ext = audio.mime === "audio/mpeg" ? "mp3" : "ogg";
+  const path = `tts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from(TTS_BUCKET).upload(path, audio.bytes, { contentType: audio.mime });
   if (error) { console.error("[tts] upload err:", error.message); return null; }
   const { data } = supabase.storage.from(TTS_BUCKET).getPublicUrl(path);
   return { publicUrl: data.publicUrl, path, provider: audio.provider };
