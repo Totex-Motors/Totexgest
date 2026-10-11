@@ -141,6 +141,23 @@ const INTEGRATIONS: IntegrationDef[] = [
   },
   // Telephony
   {
+    key: "VOICE_AGENT_TOKEN",
+    label: "Nina (voz) — token das ferramentas",
+    description: "Senha que VOCÊ inventa. A ElevenLabs manda no header x-voice-token ao chamar as ferramentas do Totexgest durante a ligação. Use o mesmo valor nos dois lados.",
+    placeholder: "ex: nina-voz-2026-xyz",
+    category: "telephony",
+    scope: "global",
+  },
+  {
+    key: "ELEVENLABS_WEBHOOK_SECRET",
+    label: "Nina (voz) — segredo do webhook pós-chamada",
+    description: "Gerado pela ElevenLabs ao criar o webhook de pós-chamada (Agents › Settings › Post-call webhooks). Garante que só a ElevenLabs grava ligações no CRM.",
+    placeholder: "wsec_...",
+    docsUrl: "https://elevenlabs.io/docs/agents-platform/workflows/post-call-webhooks",
+    category: "telephony",
+    scope: "global",
+  },
+  {
     key: "SONIOX_API_KEY",
     label: "Soniox",
     description: "Transcrição de áudio em tempo real para ligações",
