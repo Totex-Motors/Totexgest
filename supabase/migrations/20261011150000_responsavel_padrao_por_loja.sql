@@ -11,7 +11,8 @@
 -- do funil da loja (deal + leads.sales_rep_id).
 --
 -- Decisão do Marco (2026-10-11): Cardoso → Glauter; PG Motors → Julia Gonçalves;
--- Quest → Geovanna Muniz; Julio Multimarcas → Julio; First Line → Denise.
+-- Quest → Geovanna Muniz; Julio Multimarcas → Julio; First Line → Denise;
+-- Totex Motors (HQ, leads originais do totem) → Glauter (66 atribuídos).
 -- Membros criados (Glauter com a conta dele; os demais com e-mail "pendente."
 -- até o cadastro real em Configurações › Equipe). Backfill dos leads parados.
 -- JÁ APLICADO EM PRODUÇÃO via MCP (função + updates); este arquivo registra.
@@ -76,6 +77,7 @@ FROM (VALUES
   ('d5f70e01-45f6-43e7-9c71-aa2f2b832919'::uuid, '1ff18688-7c9d-4d19-8924-4c588e6e7c95'::uuid), -- Cardoso → Glauter
   ('d210f271-b955-4f65-b8aa-678671078637'::uuid, '1c2aa312-0cf9-4923-ab4c-2cadd7b99279'::uuid), -- PG Motors → Julia
   ('6bfbd3d8-4841-4600-ace0-46de23f07f8c'::uuid, '539427bd-2d40-43bf-bdf2-4fe5481d5a16'::uuid), -- Quest → Geovanna Muniz
-  ('bba0f9f4-c037-446d-9df7-8ff028bdda67'::uuid, '6e54d5d7-5921-4020-92de-92aa425be50a'::uuid)  -- Julio Multimarcas → Julio
+  ('bba0f9f4-c037-446d-9df7-8ff028bdda67'::uuid, '6e54d5d7-5921-4020-92de-92aa425be50a'::uuid), -- Julio Multimarcas → Julio
+  ('9d74ad1f-10d2-418d-9309-fb26eff3609a'::uuid, '74109d5c-f9f1-4913-88ce-0b4478c0f8d0'::uuid)  -- Totex Motors (HQ) → Glauter
 ) AS v(pid, rep)
 WHERE p.id = v.pid AND EXISTS (SELECT 1 FROM public.team_members m WHERE m.id = v.rep);
