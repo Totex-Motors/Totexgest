@@ -105,11 +105,41 @@ com dia e hora. Antes de encerrar chama `anotar_conversa`.
 → pergunte o melhor horário"). `call_history.call_outcome` = `agendou | qualificou | conversou |
 nao_atendeu` (base do dashboard da Nina).
 
-**Fase B (a fazer): a Nina LIGA.** Exige permissão de ligação do cliente (Meta, válida 7 dias,
-pedida pelo agente de texto logo no 1º contato), ligação de saída pela WaVoIP/ElevenLabs
-(`POST /v1/convai/sip-trunk/outbound-call`), fila com horário comercial, retry; não atendeu →
-agente de texto manda "tentei te ligar, qual horário?". **Fase C: dashboard** (ligações,
-atendidas, qualificadas, agendadas, % por playbook/loja/promotora, meta e prêmio).
+## 2d. Fase B — a Nina LIGA pro cliente
+
+**Banco** (migration `20261011130000_nina_call_queue.sql` — **aplicar no SQL Editor**): tabela
+`nina_call_queue` (status `queued → awaiting_permission → calling → done | no_answer | failed |
+cancelled | expired`), RPCs `nina_enqueue_call(lead, reason, delay)` / `nina_cancel_call` (UI),
+`_nina_enqueue_call` (interna, dedupe 1 aberta por lead, playbook pela intenção, horário via
+`next_business_time`), trigger `trg_nina_auto_enqueue` (AFTER INSERT em leads — só com
+`NINA_OUTBOUND_ENABLED='true'`; fontes `NINA_AUTO_CALL_SOURCES`; espera `NINA_AUTO_CALL_DELAY_MIN`,
+padrão 10 min; lead de promotora sempre entra) e cron `nina-dialer` (*/2 min, header
+`x-voice-token`).
+
+**Discador** (`nina-dialer`): chave mestra → horário comercial → 1 ligação por vez (WaVoIP = 1
+canal) → **permissão da Meta** (`GET /{phone_number_id}/call_permissions?user_wa_id=`): sem
+permissão manda o pedido (`send-whatsapp-cloud` action `send_call_permission`, interactive
+`call_permission_request`; limites da Meta: 1/24h, 2/7 dias; vale 7 dias; 4 não atendidas
+seguidas revogam) e fica `awaiting_permission`; resposta chega no `whatsapp-cloud-webhook`
+(`interactive.call_permission_reply`) → `leads.metadata.call_permission` + fila volta pra
+`queued`. Com permissão: `POST /v1/convai/sip-trunk/outbound-call` (ElevenLabs → tronco de
+saída WaVoIP `sipv2.wavoip.com` com usuário/senha SIP do dispositivo → Meta) com dynamic
+variables `customer_phone`, `customer_name`, `playbook` e a 1ª frase por playbook
+("você conversou com a Carol no Tamboré sobre vender o seu carro, né?").
+
+**Resultado** (`voice-agent-postcall` → `settleQueue`): atendeu ⇒ `done` + outcome; não atendeu ⇒
+retry em +2h (horário comercial) até `max_attempts` (3) e, na 1ª tentativa, WhatsApp "tentei te
+ligar, qual horário?" (free-form; a janela de 24h costuma estar aberta). O agente de texto vê
+`metadata.nina.last_call` (auto-context) e continua.
+
+**Tela**: Nina — Ligações › passo 4 (tronco de saída com usuário/senha SIP da WaVoIP; interruptor
+mestre; origens e espera; "Nina, liga" de teste; fila). Detalhe do lead › card **Nina (voz)**
+("Pedir pra Nina ligar" / cancelar, última ligação, permissão).
+
+**Custos**: ligação de saída da Meta é cobrada por minuto (pulsos de 6 s; tabela por país e
+volume); pedido de permissão custa como mensagem. Recebida é grátis.
+
+**Fase C: dashboard** (ligações, atendidas, qualificadas, agendadas, % por playbook/loja/promotora, meta e prêmio).
 
 ## 3. Configuração na WaVoIP (Marco + suporte)
 

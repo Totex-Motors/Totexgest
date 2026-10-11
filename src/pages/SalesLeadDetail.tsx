@@ -64,6 +64,7 @@ import { CaptureVehicleCard } from "@/components/sales/CaptureVehicleCard";
 import { isSellerLead, leadSourceLabel } from "@/lib/leadKind";
 import { isFranchiseLead } from "@/lib/franchise";
 import { FranchiseProfileCard } from "@/components/sales/FranchiseProfileCard";
+import { NinaLeadCard } from "@/components/sales/NinaLeadCard";
 import { IntermediationCard } from "@/components/sales/IntermediationCard";
 import { LeadQualificationCard } from "@/components/sales/LeadQualificationCard";
 import { TimelineView } from "@/components/timeline/TimelineView";
@@ -1240,6 +1241,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
             {/* Perfil do franqueado (lojista em recrutamento): cidade, capital, campanha */}
             {isFranchise && effectiveLead && (
               <FranchiseProfileCard lead={effectiveLead as any} />
+            )}
+
+            {/* Nina (voz): última ligação, permissão e "Pedir pra Nina ligar" (Fase B) */}
+            {!isFranchise && id && effectiveLead && (
+              <NinaLeadCard leadId={id} metadata={(effectiveLead as any)?.metadata} />
             )}
 
             {/* Qualificação por intenção de compra (preenchida pela IA, editável) */}

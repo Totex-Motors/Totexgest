@@ -24,6 +24,10 @@ interface Status {
   voz: { voice_id: string | null; provider: string | null; agente: string | null };
   eleven: { agent_id: string | null; phone_number_id: string | null; tool_ids: Record<string, string>; provisioned_at: string | null };
   wavoip: { device_id: string | null; linked_at: string | null; sip_at: string | null; webhook_at: string | null };
+  outbound: {
+    enabled: boolean; sources: string; delay_min: number; trunk_configured_at: string | null; sip_user: string | null;
+    queue: { counts: Record<string, number>; recent: { id: string; lead_id: string; lead_name: string | null; phone: string; playbook: string | null; reason: string | null; status: string; scheduled_for: string; attempts: number; outcome: string | null; last_error: string | null; created_at: string }[] };
+  };
   prompt: string;
   first_message: string;
   urls: { tools: string; postcall: string; wavoip_webhook: string };
@@ -62,6 +66,27 @@ export function NinaVozSection() {
   const [wavoipEmail, setWavoipEmail] = useState("");
   const [wavoipPass, setWavoipPass] = useState("");
   const [log, setLog] = useState<string[]>([]);
+  const [sipUser, setSipUser] = useState("");
+  const [sipPass, setSipPass] = useState("");
+  const [sources, setSources] = useState<string | null>(null);
+  const [delayMin, setDelayMin] = useState<number | null>(null);
+  const [testLead, setTestLead] = useState("");
+
+  const outboundTrunk = useMutation({
+    mutationFn: () => callSetup({ action: "eleven_outbound", sip_user: sipUser, sip_password: sipPass }),
+    onSuccess: () => { setSipPass(""); toast.success("Tronco de saída configurado na ElevenLabs."); qc.invalidateQueries({ queryKey: ["nina-voz-status"] }); },
+    onError: (e: Error) => toast.error("Tronco de saída", { description: e.message }),
+  });
+  const setOutbound = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => callSetup({ action: "set_outbound", ...patch }),
+    onSuccess: () => { toast.success("Salvo."); qc.invalidateQueries({ queryKey: ["nina-voz-status"] }); },
+    onError: (e: Error) => toast.error("Não salvou", { description: e.message }),
+  });
+  const enqueue = useMutation({
+    mutationFn: () => callSetup({ action: "enqueue_test", lead_id: testLead.trim() }),
+    onSuccess: () => { toast.success("Ligação enfileirada. O discador roda a cada 2 min no horário comercial."); qc.invalidateQueries({ queryKey: ["nina-voz-status"] }); },
+    onError: (e: Error) => toast.error("Não enfileirou", { description: e.message }),
+  });
 
   const provision = useMutation({
     mutationFn: () => callSetup({ action: "eleven_provision", prompt: prompt ?? st?.prompt, first_message: firstMsg ?? st?.first_message }),
@@ -191,6 +216,88 @@ export function NinaVozSection() {
             <Row ok={!!st.wavoip.sip_at} label="SIP → ElevenLabs" />
             <Row ok={!!st.wavoip.webhook_at} label="Webhook de chamadas" />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 4. Nina LIGA (saída) */}
+      <Card className={cn(st.outbound?.enabled && "border-emerald-300/60")}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><PhoneCall className="h-4 w-4 text-violet-600" /> 4. A Nina liga para o cliente {st.outbound?.enabled && <Badge variant="outline" className="text-[10px]">ligado</Badge>}</CardTitle>
+          <CardDescription className="text-xs">
+            Quando um lead entra (promotora, QR Code, totem), ele entra na fila e a Nina liga no horário comercial. Antes, ela pede a permissão de ligação no WhatsApp (regra da Meta: vale 7 dias).
+            Se não atender, manda "tentei te ligar, qual horário?" e o agente de WhatsApp continua. Tudo isso precisa que a migration <code className="text-[10px]">20261011130000_nina_call_queue.sql</code> esteja aplicada.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <p className="text-xs font-medium">4a. Tronco de saída: ElevenLabs → WaVoIP {st.outbound?.trunk_configured_at && <Badge variant="outline" className="ml-1 text-[10px]">ok ({st.outbound.sip_user})</Badge>}</p>
+            <p className="text-[11px] text-muted-foreground">No painel da WaVoIP › dispositivo TotexMotors › <b>SIP</b>: copie usuário e senha do tronco. A senha vai só para a ElevenLabs.</p>
+            <div className="grid sm:grid-cols-3 gap-2 items-end">
+              <div><Label className="text-[11px]">Usuário SIP</Label><Input value={sipUser || st.outbound?.sip_user || ""} onChange={(e) => setSipUser(e.target.value)} className="mt-1 h-9 text-sm" autoComplete="off" /></div>
+              <div><Label className="text-[11px]">Senha SIP</Label><Input type="password" value={sipPass} onChange={(e) => setSipPass(e.target.value)} className="mt-1 h-9 text-sm" autoComplete="new-password" /></div>
+              <Button variant="outline" onClick={() => { if (!sipUser && st.outbound?.sip_user) setSipUser(st.outbound.sip_user); outboundTrunk.mutate(); }} disabled={outboundTrunk.isPending || !(sipUser || st.outbound?.sip_user) || !sipPass || !elevenOk}>
+                {outboundTrunk.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />} Configurar saída
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium">4b. Ligação automática quando o lead entra</p>
+                <p className="text-[11px] text-muted-foreground">Interruptor mestre. Desligado = nada liga, nem o botão manual.</p>
+              </div>
+              <Button size="sm" variant={st.outbound?.enabled ? "destructive" : "default"} onClick={() => setOutbound.mutate({ enabled: !st.outbound?.enabled })} disabled={setOutbound.isPending || !st.outbound?.trunk_configured_at}>
+                {st.outbound?.enabled ? "Desligar" : "Ligar"}
+              </Button>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-2 items-end">
+              <div className="sm:col-span-2">
+                <Label className="text-[11px]">Origens que disparam a ligação (separadas por vírgula)</Label>
+                <Input value={sources ?? st.outbound?.sources ?? ""} onChange={(e) => setSources(e.target.value)} className="mt-1 h-9 text-sm" />
+                <p className="text-[10px] text-muted-foreground mt-1">Lead captado por promotora sempre entra. Ex.: captacao,stand,stand_totex,totem-compra,marketplace</p>
+              </div>
+              <div>
+                <Label className="text-[11px]">Esperar (min) após o lead entrar</Label>
+                <Input type="number" min={0} max={1440} value={delayMin ?? st.outbound?.delay_min ?? 10} onChange={(e) => setDelayMin(Number(e.target.value))} className="mt-1 h-9 text-sm" />
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setOutbound.mutate({ sources: sources ?? st.outbound?.sources, delay_min: delayMin ?? st.outbound?.delay_min })} disabled={setOutbound.isPending}>Salvar origens e espera</Button>
+          </div>
+
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <p className="text-xs font-medium">4c. Testar: enfileirar uma ligação agora</p>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1"><Label className="text-[11px]">ID do lead (da URL /comercial/leads/…)</Label><Input value={testLead} onChange={(e) => setTestLead(e.target.value)} placeholder="uuid do lead" className="mt-1 h-9 text-sm font-mono" /></div>
+              <Button variant="outline" onClick={() => enqueue.mutate()} disabled={enqueue.isPending || !testLead.trim() || !st.outbound?.enabled}>
+                {enqueue.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PhoneCall className="h-4 w-4 mr-1" />} Nina, liga
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Ou use o botão "Pedir pra Nina ligar" no detalhe do lead.</p>
+          </div>
+
+          {st.outbound?.queue?.recent?.length > 0 && (
+            <div>
+              <p className="text-xs font-medium mb-1">Fila ({Object.entries(st.outbound.queue.counts).map(([k, v]) => `${k}: ${v}`).join(" · ")})</p>
+              <div className="max-h-56 overflow-auto rounded-md border border-border">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/40 text-muted-foreground"><tr><th className="text-left p-1.5">Lead</th><th className="text-left p-1.5">Playbook</th><th className="text-left p-1.5">Status</th><th className="text-left p-1.5">Quando</th><th className="text-left p-1.5">Tent.</th><th className="text-left p-1.5">Resultado / erro</th></tr></thead>
+                  <tbody>
+                    {st.outbound.queue.recent.map((r) => (
+                      <tr key={r.id} className="border-t border-border/60">
+                        <td className="p-1.5"><a className="underline" href={`/comercial/leads/${r.lead_id}`}>{r.lead_name || r.phone}</a></td>
+                        <td className="p-1.5">{r.playbook || "-"}</td>
+                        <td className="p-1.5"><Badge variant="outline" className="text-[10px]">{r.status}</Badge></td>
+                        <td className="p-1.5">{new Date(r.scheduled_for).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className="p-1.5">{r.attempts}</td>
+                        <td className="p-1.5 max-w-[260px] truncate" title={r.last_error || ""}>{r.outcome || r.last_error || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
