@@ -131,6 +131,10 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   let content = "";
   let mediaUrl = null;
   let messageType = "Conversation";
+  // Eventos de SISTEMA (ex.: resposta à permissão de ligação) ficam no histórico mas
+  // NÃO viram "fala do cliente" pros agentes — senão o agente de texto responde
+  // "anotado, um especialista vai te ligar" e atropela a ligação da Nina.
+  let skipAgents = false;
 
   switch (msgType) {
     case "text":
@@ -174,6 +178,8 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
         const accepted = String(cpr.response || "").toLowerCase() === "accept";
         const expiresAt = cpr.expiration_timestamp ? new Date(Number(cpr.expiration_timestamp) * 1000).toISOString() : null;
         content = accepted ? `✅ Permitiu ligação${cpr.is_permanent ? " (permanente)" : expiresAt ? ` até ${new Date(expiresAt).toLocaleDateString("pt-BR")}` : ""}` : "❌ Não permitiu ligação";
+        messageType = "call_permission_reply";
+        skipAgents = true;
         try {
           await handleCallPermissionReply(supabase, from.replace(/\D/g, ""), { accepted, expiresAt, isPermanent: !!cpr.is_permanent, source: cpr.response_source || null });
         } catch (e) { console.error("[Cloud Webhook] call_permission_reply:", (e as Error).message); }
@@ -315,6 +321,10 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // === ROTEADOR V2 (Plataforma de Agentes) — PORTEIRO ===
   // Gated por config.agent_platform_v2_enabled (off = legado intacto).
   // Se um agente V2 casar nesta instância, ele responde via Cloud API e o legado é pulado.
+  if (skipAgents) {
+    console.log(`[Cloud Webhook] evento de sistema (${messageType}) — não vai pros agentes`);
+    return;
+  }
   if (content && content.trim()) {
     try {
       const handledByV2 = await tryHandleViaAgentPlatformCloud({
