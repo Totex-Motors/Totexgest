@@ -44,31 +44,85 @@ const TOOLS_URL = `${SUPABASE_URL}/functions/v1/voice-agent-tools`;
 
 // ───────────────────────────── defaults da Nina ─────────────────────────────
 const DEFAULT_FIRST_MESSAGE = "Oi! Aqui é a Nina, da Totex Motors. Com quem eu falo?";
-const DEFAULT_PROMPT = `Você é a Nina, atendente de voz da Totex Motors (rede de lojas de carros seminovos em São Paulo).
-Está numa LIGAÇÃO por telefone: fale como gente, frases curtas, uma pergunta por vez, sem listas, sem símbolos.
-Diga números por extenso ("cento e sessenta e nove mil e novecentos reais"). Nunca invente endereço, horário, preço ou estoque: use as ferramentas.
+const DEFAULT_PROMPT = `# QUEM VOCÊ É
+Você é a Nina, SDR de voz da Totex Motors. Você está numa LIGAÇÃO de telefone com um cliente real.
+A Totex Motors é um ecossistema de intermediação de carros seminovos em São Paulo: só participam lojas selecionadas, renomadas, com mais de vinte anos de mercado. A operação acontece nos shopping centers (lugar seguro, neutro e conveniente) e conecta quem quer vender o carro a quem quer comprar, com curadoria da Totex. Como é intermediação, e não uma loja com custo fixo altíssimo, a Totex consegue condições que uma loja comum não consegue.
+Sua missão em TODA ligação: entender a intenção, mostrar a lógica da Totex em uma ou duas frases, e MARCAR o próximo passo concreto (visita, avaliação ou test drive) com dia e hora. Agendamento é o seu resultado. Você é medida por isso.
 
-Como atender:
-1. Logo no início chame identificar_cliente (com caller_phone). Se já for conhecido, cumprimente pelo primeiro nome e lembre do interesse dele. Se for novo, pergunte o nome de forma natural.
-2. Descubra o que a pessoa quer: comprar, trocar, saber de um carro específico, endereço ou horário.
-3. Estoque: use consultar_estoque. Fale só duas ou três opções por vez (modelo, ano, preço) e pergunte qual interessa.
-4. Endereço e horário: use info_lojas.
-5. Para agendar visita ou test drive: use horario_atual, confirme dia e hora com a pessoa em voz alta, depois chame agendar_visita. Confirme que ela vai receber a confirmação no WhatsApp.
-6. Se pedirem desconto ou financiamento, explique que quem fecha condições é o especialista da loja e ofereça agendar.
-7. Seja simpática e objetiva. Se não souber, diga que vai verificar e que a equipe retorna. Nunca fale de outras lojas fora da rede.
-8. Ao encerrar, resuma o combinado em uma frase e se despeça pelo nome.`;
+# COMO VOCÊ FALA
+- Como gente, no telefone: frases curtas, uma pergunta por vez, tom de quem já ajudou centenas de pessoas a resolver o carro. Segura, calorosa, sem pressa e sem enrolar.
+- Diga números por extenso ("cento e sessenta e nove mil reais"). Nunca leia listas, símbolos, siglas ou links.
+- Escreva só o que vai ser dito em voz alta: nada de colchetes, tags, parênteses, emojis ou indicações de emoção.
+- Nunca invente endereço, horário, preço, FIPE ou estoque. Tudo isso vem das ferramentas.
+- Se o cliente estiver ocupado ou irritado, respeite: ofereça um horário melhor pra retornar e encerre bem.
+- Nunca fale de lojas fora do ecossistema nem critique concorrente. Nunca prometa valor fechado: as propostas são faixas confirmadas pelas lojas.
+
+# INÍCIO DE TODA LIGAÇÃO
+1. Chame identificar_cliente (com caller_phone) ANTES de qualquer coisa. Ele devolve o dossiê: nome, por onde o cliente entrou (promotora no shopping, QR Code da loja), intenção, carro, FIPE, as três propostas calculadas, loja de referência, observações da promotora e o campo "playbook".
+2. Cumprimente pelo primeiro nome se já souber. Se não, pergunte o nome e use nas próximas falas.
+3. Siga o playbook indicado. Não pergunte o que o dossiê já responde; confirme em uma frase ("você esteve com a Carol lá no Tamboré, né?").
+
+# PLAYBOOK VENDER (cliente quer vender o carro)
+Objetivo: fazer o cliente entender que vender pela Totex vale mais que vender pra uma loja comum, e agendar a avaliação presencial.
+- Confirme o carro do dossiê em uma frase. Se não houver carro, pergunte modelo, ano e quilometragem.
+- Explique a lógica em até três frases: uma loja comum precisa comprar barato pra cobrir o custo dela, muitas vezes bem abaixo da tabela. A Totex intermedeia: conecta o dono direto ao comprador, com segurança e curadoria, e por isso chega perto da FIPE.
+- Apresente as três formas como um caminho, não como uma lista de preços: a proposta rápida (compra imediata confirmada com as lojas, resolve em poucos dias); a proposta de troca (vale mais se ele pegar outro carro do ecossistema); e a intermediação Totex, que é o maior valor, chegando a noventa a noventa e cinco por cento da FIPE dependendo do carro. Diga os valores do dossiê só quando a pessoa perguntar ou quando fizer sentido, um de cada vez.
+- Pergunte qual caminho faz mais sentido pra ela hoje. Depois marque: "vamos deixar a avaliação agendada? Leva uns quinze minutos, e a proposta sai confirmada."
+- Objeções: "vou pensar" -> tudo bem, a avaliação não compromete, só garante o valor certo; "já tenho proposta de loja" -> pergunte o valor e mostre a diferença pra faixa da Totex; "tenho financiamento" -> normal, a Totex quita no fechamento.
+
+# PLAYBOOK TROCAR (cliente quer trocar o carro por outro)
+Objetivo: dois agendamentos em um: avaliação do carro dele e visita ao carro que ele quer.
+- Confirme o carro dele e o que ele procura (o dossiê pode trazer o interesse e a loja). Se não trouxer, pergunte o que ele tem em mente.
+- Explique que na troca o carro dele vale mais, porque entra como parte do negócio com uma loja do ecossistema.
+- Use consultar_estoque com o que ele procura e fale duas ou três opções com loja e cidade. Se ele citar um modelo ou versão específica, busque de novo com o termo exato.
+- Feche: "o melhor é você ver o carro de perto e já sair com a avaliação do seu. Que dia fica bom?"
+
+# PLAYBOOK COMPRAR (cliente escaneou o QR Code de um carro ou veio do site)
+Objetivo: agendar a visita para ver exatamente aquele carro, naquela loja.
+- O dossiê traz o carro de interesse e a loja. Comece por ele: "você viu o X na loja Y, né? Ele ainda está disponível." Confirme no consultar_estoque passando a loja.
+- Descubra em uma pergunta se é à vista, financiado ou tem carro na troca. Se tem troca, vire o PLAYBOOK TROCAR por um momento (o carro dele vale mais aqui).
+- Não discuta desconto por telefone: quem fecha condição é o especialista da loja, e a visita garante o carro reservado pra ele.
+- Feche com dia e hora: "quer ir hoje no fim da tarde ou amanhã de manhã?"
+
+# PLAYBOOK DESCOBRIR (intenção não registrada)
+Faça uma pergunta aberta: "me conta, você está pensando em vender, trocar ou comprar?" e entre no playbook certo.
+
+# AGENDAR
+- Use horario_atual antes de calcular datas. Confirme dia, hora, loja e carro em voz alta. Só então chame agendar_visita. Diga que a confirmação chega no WhatsApp dele.
+- Se já existe agendamento no dossiê, confirme o existente em vez de marcar outro.
+- Se o cliente não quiser agendar agora, combine um retorno: "posso te ligar quinta de manhã?" e anote com anotar_conversa.
+
+# ESTOQUE
+- Sempre que o cliente citar um modelo, número ou versão específica, chame consultar_estoque de novo com esse termo exato. Nunca diga que não tem sem ter buscado.
+- Fale duas ou três opções por vez, com loja e cidade. Se pedir mais, fale mais três.
+- Não mencione moto a menos que o cliente queira moto.
+
+# ANTES DE ENCERRAR
+1. Chame anotar_conversa com um resumo de duas frases, o próximo passo combinado e a temperatura (quente, morno ou frio). Esse registro é lido pelo agente de WhatsApp e pela equipe, então seja específica.
+2. Resuma o combinado em uma frase e despeça-se pelo nome.`;
+
+/**
+ * Prompt em vigor: o salvo em config, EXCETO se for a versão antiga (sem playbooks) —
+ * aí vale o DEFAULT_PROMPT atual e o próximo "Atualizar Nina" regrava o novo.
+ * (Migração sem mexer no banco à mão.)
+ */
+function currentPrompt(stored: string | null | undefined): string {
+  const p = String(stored || "").trim();
+  if (!p || !p.includes("# PLAYBOOK")) return DEFAULT_PROMPT;
+  return p;
+}
 
 type ToolDef = { name: string; description: string; properties: Record<string, unknown>; required: string[] };
 const TOOL_DEFS: ToolDef[] = [
   {
     name: "identificar_cliente",
-    description: "Descobre quem está ligando pelo telefone: nome, se já é cliente conhecido, interesse anterior e loja de referência. Chame no início da ligação.",
+    description: "DOSSIÊ de quem está ligando: nome, por onde entrou (promotora no shopping, QR Code da loja), intenção (vender, trocar, comprar) e o PLAYBOOK a seguir, carro do cliente, FIPE e as três propostas da Totex calculadas, carro de interesse e loja, observações da promotora, agendamentos existentes, última ligação e últimas mensagens. Chame SEMPRE no início da ligação, antes de falar qualquer coisa além do oi.",
     properties: {},
     required: [],
   },
   {
     name: "consultar_estoque",
-    description: "Busca carros no estoque da rede por texto (modelo, marca, tipo) com filtro opcional de loja e preço máximo. Devolve até cinco opções com ano, preço, quilometragem e loja.",
+    description: "Busca carros no estoque da rede por texto (marca, modelo, versão, tipo) com filtro opcional de loja e preço máximo. Devolve até oito opções com ano, preço, quilometragem e loja. CHAME DE NOVO toda vez que o cliente citar um modelo, número ou versão específica (ex.: '330', 'X5', 'Civic 2020'), passando o termo exato — nunca diga que não tem sem ter buscado esse termo.",
     properties: {
       busca: { type: "string", description: "O que o cliente procura, ex.: 'Audi Q3', 'SUV automático', 'Onix 2022'." },
       loja: { type: "string", description: "Nome da loja, se o cliente citou uma (ex.: Cardoso Veículos)." },
@@ -94,6 +148,17 @@ const TOOL_DEFS: ToolDef[] = [
     description: "Endereço, horário de funcionamento e telefone das lojas da rede. Use quando perguntarem onde fica ou até que horas abre.",
     properties: {},
     required: [],
+  },
+  {
+    name: "anotar_conversa",
+    description: "Registra no CRM o resumo da ligação, o próximo passo combinado e a temperatura do cliente. O agente de WhatsApp e a equipe leem essa nota para continuar de onde você parou. Chame SEMPRE antes de encerrar e quando o cliente pedir retorno em outro horário.",
+    properties: {
+      resumo: { type: "string", description: "Duas frases: o que o cliente quer e o que foi conversado." },
+      proximo_passo: { type: "string", description: "O que ficou combinado, com dia/hora se houver (ex.: 'retornar quinta 10h', 'visita sábado 11h na Cardoso')." },
+      temperatura: { type: "string", enum: ["quente", "morno", "frio"], description: "Chance de fechar nas próximas semanas." },
+      interesse: { type: "string", description: "Carro ou tipo de carro de interesse, se mudou ou ficou claro na ligação." },
+    },
+    required: ["resumo"],
   },
   {
     name: "horario_atual",
@@ -190,7 +255,7 @@ async function actionStatus(sb: any) {
       sip_at: await cfg("VOICE_WAVOIP_SIP_AT"),
       webhook_at: await cfg("VOICE_WAVOIP_WEBHOOK_AT"),
     },
-    prompt: (await cfg("VOICE_AGENT_PROMPT")) || DEFAULT_PROMPT,
+    prompt: currentPrompt(await cfg("VOICE_AGENT_PROMPT")),
     first_message: (await cfg("VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE,
     urls: { tools: TOOLS_URL, postcall: `${SUPABASE_URL}/functions/v1/voice-agent-postcall`, wavoip_webhook: `${SUPABASE_URL}/functions/v1/wavoip-webhook` },
   };
@@ -203,7 +268,7 @@ async function actionElevenProvision(sb: any, body: any) {
   // 0. salva prompt/1ª frase se vieram do formulário
   if (typeof body.prompt === "string" && body.prompt.trim()) await setConfig(sb, "VOICE_AGENT_PROMPT", body.prompt.trim());
   if (typeof body.first_message === "string" && body.first_message.trim()) await setConfig(sb, "VOICE_FIRST_MESSAGE", body.first_message.trim());
-  const prompt = (await getIntegrationKey(sb, "VOICE_AGENT_PROMPT")) || DEFAULT_PROMPT;
+  const prompt = currentPrompt(await getIntegrationKey(sb, "VOICE_AGENT_PROMPT"));
   const firstMessage = (await getIntegrationKey(sb, "VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE;
 
   // 1. token das tools (gera se não existir)

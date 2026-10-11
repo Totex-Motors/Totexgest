@@ -27,6 +27,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { buildLeadBrief, appendAgentNote } from "../_shared/lead-brief.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -143,18 +144,30 @@ async function callEdge(fn: string, body: Record<string, unknown>): Promise<unkn
   try { return JSON.parse(text); } catch { return { raw: text, status: res.status }; }
 }
 
-/** Resposta enxuta pra ser FALADA: sem foto/link, no máximo 5 carros. */
-function trimVehicles(result: any) {
-  const list = Array.isArray(result?.veiculos) ? result.veiculos : [];
-  const veiculos = list.slice(0, 5).map((v: any) => ({
+/**
+ * Resposta enxuta pra ser FALADA: sem foto/link. Tira MOTO quando o cliente não pediu moto
+ * (na 1ª ligação de teste "BMW" trouxe uma F 750 GS antes dos carros). Até 8 carros; a
+ * Nina fala 2–3 por vez.
+ */
+function trimVehicles(result: any, busca: string) {
+  const list: any[] = Array.isArray(result?.veiculos) ? result.veiculos : [];
+  const querMoto = /\bmoto|motocicleta|scooter\b/i.test(busca);
+  const semMoto = querMoto ? list : list.filter((v) => !/moto/i.test(String(v.tipo || "")));
+  const veiculos = semMoto.slice(0, 8).map((v: any) => ({
     titulo: v.titulo, ano: v.ano, preco: v.preco, km: v.km, cor: v.cor, cambio: v.cambio,
     cidade: v.cidade, loja: v.loja, vehicle_id: v.vehicle_id,
   }));
+  const motosRemovidas = list.length - semMoto.length;
   return {
-    total: result?.total ?? veiculos.length,
+    total: veiculos.length,
     mostrando: veiculos.length,
     veiculos,
-    dica: veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez e pergunte qual interessa." : undefined,
+    dica: [
+      veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez (modelo, ano, preço, loja) e pergunte qual interessa." : null,
+      result?.observacao || null,
+      motosRemovidas > 0 ? `${motosRemovidas} moto(s) ficaram de fora; só mencione se o cliente quiser moto.` : null,
+      "Se o cliente citar um modelo ou versão específica, chame consultar_estoque de novo com esse termo exato.",
+    ].filter(Boolean).join(" "),
     ...(result?.error ? { error: result.error } : {}),
   };
 }
@@ -199,39 +212,42 @@ Deno.serve(async (req) => {
       }
 
       case "identificar_cliente": {
-        if (!phone) return json({ conhecido: false, erro: "sem telefone do chamador" });
+        if (!phone) return json({ conhecido: false, playbook: "descobrir", erro: "sem telefone do chamador" });
         const ctx = await ensureCallerContext(sb, phone, args.nome || null);
-        let lead: any = null;
-        if (ctx.leadId) {
-          const { data } = await sb.from("leads")
-            .select("id, name, city_name, state, metadata, source, last_interaction_at, created_at")
-            .eq("id", ctx.leadId).maybeSingle();
-          lead = data;
+        if (!ctx.leadId) return json({ conhecido: false, playbook: "descobrir", orientacao: "Cliente novo: pergunte o nome e o que procura." });
+        // DOSSIÊ: intenção (vender/trocar/comprar) → playbook, carro, FIPE, 3 propostas,
+        // loja do QR, promotora, agendamentos, última ligação e mensagens (_shared/lead-brief.ts)
+        const brief = await buildLeadBrief(sb, ctx.leadId, { created: ctx.created });
+        return json(brief || { conhecido: false, playbook: "descobrir", lead_id: ctx.leadId });
+      }
+
+      case "anotar_conversa": {
+        if (!phone) return json({ success: false, message: "Sem telefone do chamador." });
+        const ctx = await ensureCallerContext(sb, phone, args.nome_cliente || null);
+        if (!ctx.leadId) return json({ success: false, message: "Lead não encontrado." });
+        const resumo = String(args.resumo || "").trim();
+        if (!resumo) return json({ success: false, message: "Informe o resumo." });
+        const extra: Record<string, unknown> = {};
+        if (args.proximo_passo) extra.proximo_passo = String(args.proximo_passo).slice(0, 300);
+        if (args.temperatura) extra.temperatura = String(args.temperatura);
+        if (args.interesse) extra.interesse = String(args.interesse).slice(0, 200);
+        await appendAgentNote(sb, ctx.leadId, "Nina (voz)", resumo + (args.proximo_passo ? ` Próximo passo: ${args.proximo_passo}` : ""), extra);
+        // temperatura/interesse também no lead (o agente de texto e o time leem daqui)
+        const patch: Record<string, unknown> = { last_interaction_at: new Date().toISOString() };
+        if (args.interesse) {
+          const { data: l } = await sb.from("leads").select("metadata").eq("id", ctx.leadId).maybeSingle();
+          patch.metadata = { ...((l?.metadata as Record<string, unknown>) || {}), veiculo_interesse_texto: String(args.interesse).slice(0, 200) };
         }
-        const md = (lead?.metadata || {}) as Record<string, any>;
-        const interesse = md.veiculo_interesse_texto || md.vehicle?.description || md.vehicle?.title || null;
-        const lojaRef = md.marketplace_store_name || md.store?.name || md.credere_store_name || null;
-        const nome = lead?.name && !/^lead sem nome|^\+?\d+$/i.test(lead.name) ? lead.name : null;
-        return json({
-          conhecido: !ctx.created && !!lead,
-          lead_id: ctx.leadId,
-          nome,
-          primeiro_nome: firstName(nome),
-          cidade: [lead?.city_name, lead?.state].filter(Boolean).join("/") || null,
-          interesse,
-          loja_referencia: lojaRef,
-          ultima_interacao: lead?.last_interaction_at || null,
-          orientacao: nome
-            ? `Cliente já conhecido: cumprimente pelo primeiro nome (${firstName(nome)}).${interesse ? ` Já demonstrou interesse em: ${interesse}.` : ""}`
-            : "Cliente novo: pergunte o nome de forma natural e use nas próximas falas.",
-        });
+        await sb.from("leads").update(patch).eq("id", ctx.leadId);
+        return json({ success: true, message: "Anotado. O time e o agente de WhatsApp vão ver." });
       }
 
       case "consultar_estoque": {
         const ctx = phone ? await ensureCallerContext(sb, phone, args.nome_cliente || null) : null;
         const { caller_phone: _c, phone: _p, system__caller_id: _s, nome_cliente: _n, ...rest } = args;
-        const result = await callEdge("consultar-estoque", { arguments: rest, session_id: ctx?.sessionId || null, user_id: null });
-        return json(trimVehicles(result));
+        // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
+        const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
+        return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
       }
 
       case "agendar_visita": {
@@ -249,7 +265,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "agendar_visita", "info_lojas", "horario_atual"] }, 404);
+        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
     }
   } catch (e) {
     console.error(`[voice-tools] ${tool} err:`, (e as Error).message);
