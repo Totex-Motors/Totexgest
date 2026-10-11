@@ -316,33 +316,63 @@ async function actionWavoipSetup(sb: any, body: any) {
 
   const log: string[] = ["login ok"];
 
-  // dispositivo OFFICIAL
-  let deviceId: string | null = String(body.device_id || (await getIntegrationKey(sb, "VOICE_WAVOIP_DEVICE_ID")) || "").trim() || null;
+  // Número oficial cadastrado no Totexgest (pra casar com o dispositivo certo)
+  const { data: inst } = await sb.from("whatsapp_instances").select("phone_number").eq("provider", "meta_cloud").limit(1).maybeSingle();
+  const officialDigits = String(inst?.phone_number || "").replace(/\D/g, "");
+
+  // Dispositivo OFFICIAL. A LISTA (/devices) não traz `plan`; só o detalhe
+  // (/devices/{id}) tem plan.call_type = OFFICIAL | UNOFFICIAL. Então: lista →
+  // detalhe de cada um → filtra. Prioridade: device_id informado > já salvo >
+  // o que tem o telefone do número oficial > único OFFICIAL.
   const list = await wavoipFetch(jwt, "/devices");
-  const devices: any[] = Array.isArray(list.data?.data) ? list.data.data : Array.isArray(list.data) ? list.data : [];
-  const officials = devices.filter((d) => String(d?.plan?.call_type || d?.call_type || "").toUpperCase() === "OFFICIAL");
-  if (!deviceId) {
-    if (officials.length === 1) deviceId = String(officials[0].id);
-    else if (officials.length > 1) return json({ error: "Mais de um dispositivo OFFICIAL — informe device_id.", devices: officials.map((d) => ({ id: d.id, name: d.name, phone: d.phone })) }, 400);
-    else return json({ error: "Nenhum dispositivo do tipo OFFICIAL na conta WaVoIP. Contrate um canal OFFICIAL primeiro.", devices: devices.map((d) => ({ id: d.id, name: d.name, call_type: d?.plan?.call_type || null })) }, 400);
+  const listed: any[] = Array.isArray(list.data?.data) ? list.data.data : Array.isArray(list.data) ? list.data : [];
+  if (!list.ok) return json({ error: `Lista de dispositivos falhou (${list.status}): ${JSON.stringify(list.data).slice(0, 200)}` }, 502);
+  const details: any[] = [];
+  for (const d of listed.slice(0, 20)) {
+    const det = await wavoipFetch(jwt, `/devices/${d.id}`);
+    const full = det.ok ? (det.data?.data || det.data) : d;
+    details.push({ ...d, ...full, call_type: String(full?.plan?.call_type || "").toUpperCase() || null });
   }
-  const device = devices.find((d) => String(d.id) === deviceId);
-  if (device && String(device?.plan?.call_type || "").toUpperCase() !== "OFFICIAL") {
-    return json({ error: `Dispositivo ${deviceId} não é OFFICIAL (é ${device?.plan?.call_type || "sem plano"}). Regra da casa: nunca escaneado.` }, 400);
+  const officials = details.filter((d) => d.call_type === "OFFICIAL");
+  const byPhone = officials.find((d) => officialDigits && String(d.phone || "").replace(/\D/g, "").endsWith(officialDigits.slice(-8)));
+  let deviceId: string | null = String(body.device_id || "").trim() || null;
+  if (!deviceId) {
+    const saved = await getIntegrationKey(sb, "VOICE_WAVOIP_DEVICE_ID");
+    if (saved && officials.some((d) => String(d.id) === saved)) deviceId = saved;
+  }
+  if (!deviceId && byPhone) deviceId = String(byPhone.id);
+  if (!deviceId && officials.length === 1) deviceId = String(officials[0].id);
+  const resumo = details.map((d) => ({ id: d.id, name: d.name, phone: d.phone || null, call_type: d.call_type || "sem plano", status: d.status }));
+  if (!deviceId) {
+    if (officials.length > 1) return json({ error: "Mais de um dispositivo OFFICIAL e nenhum com o número oficial — informe device_id.", devices: resumo }, 400);
+    return json({ error: "Nenhum dispositivo do tipo OFFICIAL na conta WaVoIP (o detalhe /devices/{id} não trouxe plan.call_type = OFFICIAL). Veja a lista.", devices: resumo }, 400);
+  }
+  const device = details.find((d) => String(d.id) === deviceId);
+  if (device && device.call_type !== "OFFICIAL") {
+    return json({ error: `Dispositivo ${deviceId} não é OFFICIAL (é ${device.call_type || "sem plano"}). Regra da casa: nunca escaneado.`, devices: resumo }, 400);
   }
   await setConfig(sb, "VOICE_WAVOIP_DEVICE_ID", deviceId);
-  log.push(`dispositivo ${deviceId}`);
+  log.push(`dispositivo ${deviceId} (${device?.name || "?"}, ${device?.phone || "sem telefone"})`);
 
-  // vínculo com o número oficial (token/ID da Meta já cadastrados no Totexgest)
-  const fbToken = await getIntegrationKey(sb, "WHATSAPP_CLOUD_TOKEN", HQ_TENANT);
-  const phoneNumberId = await getIntegrationKey(sb, "WHATSAPP_PHONE_NUMBER_ID", HQ_TENANT);
-  if (!fbToken || !phoneNumberId) return json({ error: "Faltam WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID em Integrações.", log }, 400);
-  const link = await wavoipFetch(jwt, `/devices/${deviceId}/waba-link`, { method: "PUT", body: JSON.stringify({ fb_token: fbToken, id_phone_number: phoneNumberId }) });
-  if (link.ok) { await setConfig(sb, "VOICE_WAVOIP_LINKED_AT", new Date().toISOString()); log.push("vinculado ao número oficial"); }
-  else log.push(`waba-link falhou (${link.status}): ${JSON.stringify(link.data).slice(0, 200)}`);
+  // Vínculo com o número oficial: se já está CONNECTED (feito pelo painel), não refaz.
+  const waba = await wavoipFetch(jwt, `/devices/${deviceId}/waba`);
+  const wabaStatus = String(waba.data?.data?.status || waba.data?.status || "").toUpperCase();
+  let linkOk = false;
+  if (waba.ok && wabaStatus === "CONNECTED") {
+    linkOk = true;
+    await setConfig(sb, "VOICE_WAVOIP_LINKED_AT", new Date().toISOString());
+    log.push(`já vinculado ao número oficial (${waba.data?.data?.phone || device?.phone || ""})`);
+  } else {
+    const fbToken = await getIntegrationKey(sb, "WHATSAPP_CLOUD_TOKEN", HQ_TENANT);
+    const phoneNumberId = await getIntegrationKey(sb, "WHATSAPP_PHONE_NUMBER_ID", HQ_TENANT);
+    if (!fbToken || !phoneNumberId) return json({ error: "Faltam WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID em Integrações.", log }, 400);
+    const link = await wavoipFetch(jwt, `/devices/${deviceId}/waba-link`, { method: "PUT", body: JSON.stringify({ fb_token: fbToken, id_phone_number: phoneNumberId }) });
+    linkOk = link.ok;
+    if (link.ok) { await setConfig(sb, "VOICE_WAVOIP_LINKED_AT", new Date().toISOString()); log.push("vinculado ao número oficial"); }
+    else log.push(`waba-link falhou (${link.status}): ${JSON.stringify(link.data).slice(0, 200)}`);
+  }
 
   // SIP → ElevenLabs
-  const { data: inst } = await sb.from("whatsapp_instances").select("phone_number").eq("provider", "meta_cloud").limit(1).maybeSingle();
   const sip = await wavoipFetch(jwt, `/devices/${deviceId}/sip`, {
     method: "PUT",
     body: JSON.stringify({ active: true, ip: ELEVEN_SIP_HOST, port: 5060, transport: "TCP", caller_id: inst?.phone_number ? String(inst.phone_number).replace(/\D/g, "") : undefined }),
@@ -358,7 +388,7 @@ async function actionWavoipSetup(sb: any, body: any) {
   if (wh.ok) { await setConfig(sb, "VOICE_WAVOIP_WEBHOOK_AT", new Date().toISOString()); log.push("webhook configurado"); }
   else log.push(`webhook falhou (${wh.status}): ${JSON.stringify(wh.data).slice(0, 200)}`);
 
-  const allOk = link.ok && sip.ok && wh.ok;
+  const allOk = linkOk && sip.ok && wh.ok;
   return json({ ok: allOk, device_id: deviceId, log }, allOk ? 200 : 207);
 }
 
