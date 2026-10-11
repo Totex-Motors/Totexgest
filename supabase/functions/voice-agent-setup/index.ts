@@ -261,6 +261,9 @@ async function actionStatus(sb: any) {
       enabled: (await cfg("NINA_OUTBOUND_ENABLED")) === "true",
       sources: (await cfg("NINA_AUTO_CALL_SOURCES")) || "captacao,stand,stand_totex,totem-compra,marketplace",
       delay_min: Number((await cfg("NINA_AUTO_CALL_DELAY_MIN")) || 10),
+      hora_inicio: Number((await cfg("NINA_HORARIO_INICIO")) || 10),
+      hora_fim: Number((await cfg("NINA_HORARIO_FIM")) || 22),
+      dias: (await cfg("NINA_DIAS_SEMANA")) || "0,1,2,3,4,5,6",
       trunk_configured_at: await cfg("VOICE_ELEVEN_OUTBOUND_AT"),
       sip_user: await cfg("VOICE_WAVOIP_SIP_USER"),
       queue: await queueSummary(sb),
@@ -513,6 +516,9 @@ async function actionSetOutbound(sb: any, body: any) {
   if (typeof body.enabled === "boolean") await setConfig(sb, "NINA_OUTBOUND_ENABLED", body.enabled ? "true" : "false");
   if (typeof body.sources === "string") await setConfig(sb, "NINA_AUTO_CALL_SOURCES", body.sources.trim() || null);
   if (body.delay_min !== undefined && Number.isFinite(Number(body.delay_min))) await setConfig(sb, "NINA_AUTO_CALL_DELAY_MIN", String(Math.max(0, Math.min(1440, Number(body.delay_min)))));
+  if (body.hora_inicio !== undefined && Number.isFinite(Number(body.hora_inicio))) await setConfig(sb, "NINA_HORARIO_INICIO", String(Math.max(0, Math.min(23, Number(body.hora_inicio)))));
+  if (body.hora_fim !== undefined && Number.isFinite(Number(body.hora_fim))) await setConfig(sb, "NINA_HORARIO_FIM", String(Math.max(1, Math.min(24, Number(body.hora_fim)))));
+  if (typeof body.dias === "string") await setConfig(sb, "NINA_DIAS_SEMANA", body.dias.replace(/[^0-6,]/g, "") || "0,1,2,3,4,5,6");
   return json({ ok: true });
 }
 

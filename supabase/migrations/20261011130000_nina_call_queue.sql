@@ -48,11 +48,36 @@ DROP TRIGGER IF EXISTS trg_nina_call_queue_updated ON public.nina_call_queue;
 CREATE TRIGGER trg_nina_call_queue_updated BEFORE UPDATE ON public.nina_call_queue
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+-- ─── Horário da NINA (separado do SLA das lojas): todo dia 10h–22h = shopping ─────────
+CREATE OR REPLACE FUNCTION public.nina_business_time(p_ts timestamptz)
+RETURNS timestamptz LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE
+  v_ini   int   := coalesce((SELECT value::int FROM public.config WHERE key = 'NINA_HORARIO_INICIO'),
+                            (SELECT value::int FROM public.config WHERE key = 'SLA_HORARIO_INICIO'), 10);
+  v_fim   int   := coalesce((SELECT value::int FROM public.config WHERE key = 'NINA_HORARIO_FIM'),
+                            (SELECT value::int FROM public.config WHERE key = 'SLA_HORARIO_FIM'), 22);
+  v_dias  int[] := coalesce((SELECT string_to_array(value, ',')::int[] FROM public.config WHERE key = 'NINA_DIAS_SEMANA'),
+                            (SELECT string_to_array(value, ',')::int[] FROM public.config WHERE key = 'SLA_DIAS_SEMANA'),
+                            ARRAY[0,1,2,3,4,5,6]);
+  v_local timestamp := (p_ts AT TIME ZONE 'America/Sao_Paulo');
+  v_day   date := v_local::date;
+  v_hour  numeric := extract(hour from v_local) + extract(minute from v_local) / 60.0;
+  i       int := 0;
+BEGIN
+  IF extract(dow from v_day)::int = ANY(v_dias) AND v_hour >= v_ini AND v_hour < v_fim THEN RETURN p_ts; END IF;
+  IF NOT (extract(dow from v_day)::int = ANY(v_dias) AND v_hour < v_ini) THEN v_day := v_day + 1; END IF;
+  WHILE NOT (extract(dow from v_day)::int = ANY(v_dias)) AND i < 8 LOOP v_day := v_day + 1; i := i + 1; END LOOP;
+  RETURN (v_day + make_interval(hours => v_ini)) AT TIME ZONE 'America/Sao_Paulo';
+END;
+$$;
+INSERT INTO public.config (key, value) VALUES ('NINA_HORARIO_INICIO','10'), ('NINA_HORARIO_FIM','22'), ('NINA_DIAS_SEMANA','0,1,2,3,4,5,6')
+ON CONFLICT (key) DO NOTHING;
+
 -- ─── Enfileirar (interna, sem auth) ──────────────────────────────────────────
 -- Dedupe: 1 ligação aberta por lead. Horário: joga pra dentro do expediente do SLA.
 CREATE OR REPLACE FUNCTION public._nina_enqueue_call(p_lead_id uuid, p_reason text, p_delay_minutes int DEFAULT 5, p_requested_by uuid DEFAULT NULL)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_lead leads%ROWTYPE; v_id uuid; v_phone text; v_playbook text;
+DECLARE v_lead leads%ROWTYPE; v_id uuid; v_phone text; v_playbook text; v_when timestamptz;
 BEGIN
   SELECT * INTO v_lead FROM leads WHERE id = p_lead_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Lead não encontrado'; END IF;
@@ -70,9 +95,12 @@ BEGIN
     WHEN v_lead.lead_kind = 'buyer' AND (v_lead.source LIKE 'stand%' OR v_lead.source LIKE 'totem%' OR v_lead.source = 'marketplace' OR v_lead.metadata ? 'vehicle') THEN 'comprar'
     ELSE 'descobrir' END;
 
+  -- Pedido MANUAL (botão) = agora. Automático = horário da Nina (nina_business_time).
+  v_when := now() + make_interval(mins => greatest(p_delay_minutes, 0));
+  IF coalesce(p_reason,'') <> 'manual' THEN v_when := nina_business_time(v_when); END IF;
+
   INSERT INTO nina_call_queue (tenant_id, lead_id, phone, playbook, reason, scheduled_for, requested_by)
-  VALUES (v_lead.tenant_id, p_lead_id, v_phone, v_playbook, p_reason,
-          next_business_time(now() + make_interval(mins => greatest(p_delay_minutes, 0))), p_requested_by)
+  VALUES (v_lead.tenant_id, p_lead_id, v_phone, v_playbook, p_reason, v_when, p_requested_by)
   RETURNING id INTO v_id;
   RETURN v_id;
 END $$;

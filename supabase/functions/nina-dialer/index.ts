@@ -59,8 +59,9 @@ Deno.serve(async (req) => {
   const enabled = (await getIntegrationKey(sb, "NINA_OUTBOUND_ENABLED")) === "true";
   if (!enabled) return json({ skipped: "NINA_OUTBOUND_ENABLED != true" });
 
-  // 1. horário comercial — vale pras ligações AUTOMÁTICAS. Pedido manual (botão) liga agora.
-  const { data: nbt } = await sb.rpc("next_business_time", { p_ts: new Date().toISOString() });
+  // 1. horário da NINA (config NINA_HORARIO_*; padrão todo dia 10h–22h = shopping) — vale pras
+  //    ligações AUTOMÁTICAS. Pedido manual (botão) liga agora.
+  const { data: nbt } = await sb.rpc("nina_business_time", { p_ts: new Date().toISOString() });
   const outsideHours = !!nbt && new Date(nbt).getTime() > Date.now() + 60_000;
 
   // 2. 1 por vez
@@ -148,7 +149,7 @@ Deno.serve(async (req) => {
   if (!call.ok || callData?.success === false) {
     const err = `ElevenLabs ${call.status}: ${JSON.stringify(callData).slice(0, 300)}`;
     const retry = attempts < Number(row.max_attempts || 3);
-    const { data: next } = await sb.rpc("next_business_time", { p_ts: new Date(Date.now() + 2 * 3600_000).toISOString() });
+    const { data: next } = await sb.rpc("nina_business_time", { p_ts: new Date(Date.now() + 2 * 3600_000).toISOString() });
     await sb.from("nina_call_queue").update({ status: retry ? "queued" : "failed", scheduled_for: next || new Date().toISOString(), last_error: err }).eq("id", row.id);
     log(`erro ao discar: ${err}`);
     return json({ id: row.id, status: retry ? "queued" : "failed", error: err }, 502);
