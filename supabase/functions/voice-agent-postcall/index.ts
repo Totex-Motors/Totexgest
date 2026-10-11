@@ -214,7 +214,7 @@ async function settleQueue(sb: any, conversationId: string, outcome: string, dur
   const retry = attempts < Number(q.max_attempts || 3);
   let next: string | null = null;
   if (retry) {
-    const { data: nbt } = await sb.rpc("next_business_time", { p_ts: new Date(Date.now() + 2 * 3600_000).toISOString() });
+    const { data: nbt } = await sb.rpc("nina_business_time", { p_ts: new Date(Date.now() + 2 * 3600_000).toISOString() });
     next = nbt || new Date(Date.now() + 2 * 3600_000).toISOString();
   }
   await sb.from("nina_call_queue").update({

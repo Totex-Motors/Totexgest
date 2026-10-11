@@ -26,6 +26,7 @@ interface Status {
   wavoip: { device_id: string | null; linked_at: string | null; sip_at: string | null; webhook_at: string | null };
   outbound: {
     enabled: boolean; sources: string; delay_min: number; trunk_configured_at: string | null; sip_user: string | null;
+    hora_inicio: number; hora_fim: number; dias: string;
     queue: { counts: Record<string, number>; recent: { id: string; lead_id: string; lead_name: string | null; phone: string; playbook: string | null; reason: string | null; status: string; scheduled_for: string; attempts: number; outcome: string | null; last_error: string | null; created_at: string }[] };
   };
   prompt: string;
@@ -70,6 +71,9 @@ export function NinaVozSection() {
   const [sipPass, setSipPass] = useState("");
   const [sources, setSources] = useState<string | null>(null);
   const [delayMin, setDelayMin] = useState<number | null>(null);
+  const [horaIni, setHoraIni] = useState<number | null>(null);
+  const [horaFim, setHoraFim] = useState<number | null>(null);
+  const [dias, setDias] = useState<string | null>(null);
   const [testLead, setTestLead] = useState("");
 
   const outboundTrunk = useMutation({
@@ -262,7 +266,22 @@ export function NinaVozSection() {
                 <Input type="number" min={0} max={1440} value={delayMin ?? st.outbound?.delay_min ?? 10} onChange={(e) => setDelayMin(Number(e.target.value))} className="mt-1 h-9 text-sm" />
               </div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setOutbound.mutate({ sources: sources ?? st.outbound?.sources, delay_min: delayMin ?? st.outbound?.delay_min })} disabled={setOutbound.isPending}>Salvar origens e espera</Button>
+            <div className="grid sm:grid-cols-3 gap-2 items-end">
+              <div>
+                <Label className="text-[11px]">Nina liga a partir de (hora)</Label>
+                <Input type="number" min={0} max={23} value={horaIni ?? st.outbound?.hora_inicio ?? 10} onChange={(e) => setHoraIni(Number(e.target.value))} className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-[11px]">até (hora)</Label>
+                <Input type="number" min={1} max={24} value={horaFim ?? st.outbound?.hora_fim ?? 22} onChange={(e) => setHoraFim(Number(e.target.value))} className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-[11px]">Dias (0=dom … 6=sáb)</Label>
+                <Input value={dias ?? st.outbound?.dias ?? "0,1,2,3,4,5,6"} onChange={(e) => setDias(e.target.value)} className="mt-1 h-9 text-sm font-mono" />
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Horário da Nina, separado do SLA das lojas. Padrão: todos os dias, 10h às 22h (shopping). O botão manual liga a qualquer hora.</p>
+            <Button size="sm" variant="outline" onClick={() => setOutbound.mutate({ sources: sources ?? st.outbound?.sources, delay_min: delayMin ?? st.outbound?.delay_min, hora_inicio: horaIni ?? st.outbound?.hora_inicio, hora_fim: horaFim ?? st.outbound?.hora_fim, dias: dias ?? st.outbound?.dias })} disabled={setOutbound.isPending}>Salvar origens, espera e horário</Button>
           </div>
 
           <div className="rounded-md border border-border p-3 space-y-2">
