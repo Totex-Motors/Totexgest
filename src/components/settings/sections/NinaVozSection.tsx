@@ -139,9 +139,16 @@ export function NinaVozSection() {
               {test.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />} Testar ferramentas
             </Button>
             {st.eleven.agent_id && (
-              <a className="text-xs text-violet-700 underline inline-flex items-center gap-1" href={`https://elevenlabs.io/app/agents/${st.eleven.agent_id}`} target="_blank" rel="noreferrer">
-                abrir na ElevenLabs <ExternalLink className="h-3 w-3" />
-              </a>
+              <span className="text-xs inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                {/* Rota do painel ElevenAgents: /app/agents/agents/<id>. A lista é o fallback se a rota mudar. */}
+                <a className="text-violet-700 underline inline-flex items-center gap-1" href={`https://elevenlabs.io/app/agents/agents/${st.eleven.agent_id}`} target="_blank" rel="noreferrer">
+                  abrir a Nina na ElevenLabs <ExternalLink className="h-3 w-3" />
+                </a>
+                <a className="text-muted-foreground underline inline-flex items-center gap-1" href="https://elevenlabs.io/app/agents" target="_blank" rel="noreferrer">
+                  lista de agentes <ExternalLink className="h-3 w-3" />
+                </a>
+                <code className="text-[10px] text-muted-foreground">{st.eleven.agent_id}</code>
+              </span>
             )}
           </div>
           {!k.webhook_secret && (
