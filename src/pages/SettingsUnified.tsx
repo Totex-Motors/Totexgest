@@ -38,6 +38,7 @@ import {
   FileSignature,
   Repeat,
   Activity,
+  PhoneCall,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ import { ProfileSection } from "@/components/settings/sections/ProfileSection";
 import { GoogleCalendarSection } from "@/components/settings/sections/GoogleCalendarSection";
 import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
+import { NinaVozSection } from "@/components/settings/sections/NinaVozSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
 import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfigTab";
 import { InstagramConfigTab } from "@/components/settings/InstagramConfigTab";
@@ -272,6 +274,12 @@ const navigationSections: NavSection[] = [
         label: "Coach de Vendas",
         icon: Headphones,
         description: "IA que analisa ligações do time comercial e dá feedback sobre tom de voz, objeções não tratadas e oportunidades perdidas.",
+      },
+      {
+        id: "nina-voz",
+        label: "Nina — Ligações",
+        icon: PhoneCall,
+        description: "A IA atende a ligação de voz do WhatsApp oficial com a sua voz clonada: estoque, endereço, horário e agendamento. Configuração por botão (ElevenLabs + WaVoIP).",
       },
     ],
   },
@@ -587,6 +595,8 @@ function SettingsContent({ section }: { section: string }) {
       return <AIAgentTab />;
     case "coach":
       return <CoachPlaybooksTab />;
+    case "nina-voz":
+      return <NinaVozSection />;
 
     // Equipe
     case "membros":

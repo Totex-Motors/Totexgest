@@ -58,6 +58,25 @@ por `conversation_id`.
 | `VOICE_AGENT_TENANT_ID` (config, opcional) | tenant dos leads da ligação (padrão: tenant da instância oficial / HQ) |
 | `VOICE_LOJAS_INFO` (config, opcional) | JSON `[{"nome":"Cardoso Veículos","endereco":"…","horario":"seg–sex 9h–18h, sáb 9h–13h","telefone":"…"}]` |
 
+## 2b. Módulo de ligação (Configurações › IA & Bots › Nina — Ligações)
+
+Tela só pra superadmin, backend `voice-agent-setup` (JWT + `is_platform_superadmin`). Botões:
+
+1. **Criar Nina na ElevenLabs** — pela API: secret com o token das tools, 5 webhook tools
+   (URLs `voice-agent-tools/<tool>`, header `x-voice-token`, `caller_phone` = `system__caller_id`),
+   agente (prompt editável na tela, voz clonada = a mesma da nota de voz, `eleven_flash_v2_5`,
+   LLM `gpt-4.1-mini`), importa o número oficial como tronco SIP e atribui. Ids em config
+   `VOICE_ELEVEN_AGENT_ID`, `VOICE_ELEVEN_PHONE_ID`, `VOICE_ELEVEN_TOOL_IDS`, `VOICE_ELEVEN_SECRET_ID`.
+   Idempotente (clicar de novo atualiza). Gera `VOICE_AGENT_TOKEN` se não existir.
+   **1b (manual, 1x):** webhook pós-chamada na ElevenLabs → secret em `ELEVENLABS_WEBHOOK_SECRET`.
+2. **Configurar WaVoIP** — login com e-mail/senha da conta (API da WaVoIP só tem JWT de 7 dias;
+   a senha NÃO é guardada), acha o dispositivo `OFFICIAL` (recusa `UNOFFICIAL`), `waba-link` com
+   `WHATSAPP_CLOUD_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID`, SIP → `sip.rtc.elevenlabs.io:5060 TCP`,
+   webhook → `wavoip-webhook`. Marcas em `VOICE_WAVOIP_*`.
+3. **Testar ferramentas** — chama `horario_atual` com o token (prova a autenticação ponta a ponta).
+
+As seções 3 e 4 abaixo descrevem o mesmo passo a passo manual, caso a API falhe.
+
 ## 3. Configuração na WaVoIP (Marco + suporte)
 
 1. Contratar **1 canal do tipo `OFFICIAL`** (`callType: "OFFICIAL"`). Perguntar preço e se cobre a Business Calling API.
