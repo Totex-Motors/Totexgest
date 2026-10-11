@@ -62,6 +62,22 @@ const DEFAULT_HUMANIZATION = {
  * Resposta em ÁUDIO (nota de voz) — settings.voice_reply. Lido pela edge fn
  * whatsapp-cloud-webhook/agent-platform.ts via _shared/tts.ts. Só WhatsApp oficial (Cloud API).
  */
+/** Ajuste fino ElevenLabs (settings.voice_reply.eleven) — espelha DEFAULT_ELEVEN_TUNING em _shared/tts.ts */
+const DEFAULT_ELEVEN = {
+  model_id: 'eleven_multilingual_v2',
+  stability: 0.4,
+  similarity: 0.85,
+  style: 0.35,
+  speaker_boost: true,
+  speed: 1.0,
+};
+
+const ELEVEN_MODELS = [
+  { id: 'eleven_multilingual_v2', label: 'Multilingual v2 (estável, recomendado)' },
+  { id: 'eleven_v3', label: 'v3 (mais expressivo, ainda em evolução)' },
+  { id: 'eleven_turbo_v2_5', label: 'Turbo v2.5 (mais rápido, um pouco menos natural)' },
+];
+
 const DEFAULT_VOICE_REPLY = {
   enabled: false,
   mode: 'mirror' as 'mirror' | 'always',
@@ -69,6 +85,7 @@ const DEFAULT_VOICE_REPLY = {
   voice: '',
   max_chars: 600,
   instructions: '',
+  eleven: DEFAULT_ELEVEN,
 };
 
 const OPENAI_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
@@ -83,6 +100,17 @@ export function TabHumanizacao({ draft, setDraft }: Props) {
   const h = { ...DEFAULT_HUMANIZATION, ...(settings.humanization || {}) };
   h.message_split = { ...DEFAULT_HUMANIZATION.message_split, ...(h.message_split || {}) };
   const v = { ...DEFAULT_VOICE_REPLY, ...(settings.voice_reply || {}) };
+  v.eleven = { ...DEFAULT_ELEVEN, ...((settings.voice_reply || {}).eleven || {}) };
+
+  const updateEleven = (patch: Record<string, any>) => {
+    setDraft((prev) => ({
+      ...prev,
+      settings: {
+        ...((prev.settings as Record<string, any>) || {}),
+        voice_reply: { ...v, eleven: { ...v.eleven, ...patch } },
+      },
+    }));
+  };
 
   const updateVoice = (patch: Record<string, any>) => {
     setDraft((prev) => ({
@@ -427,15 +455,76 @@ export function TabHumanizacao({ draft, setDraft }: Props) {
               </div>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Jeito de falar (só OpenAI, opcional)</Label>
-              <Input
-                value={v.instructions}
-                onChange={(e) => updateVoice({ instructions: e.target.value })}
-                placeholder="ex.: fale em português do Brasil, simpática, ritmo natural de vendedora"
-                className="mt-1 h-9 text-sm"
-              />
-            </div>
+            {v.provider !== 'openai' && (
+              <div className="rounded-lg border border-violet-200/60 dark:border-violet-900/50 p-3 space-y-3 bg-violet-500/5">
+                <div>
+                  <p className="text-xs font-medium">Ajuste fino da voz (ElevenLabs)</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Voz clonada com os padrões da ElevenLabs sai “robótica”. Comece com estes valores, mande um áudio de
+                    teste e mexa um de cada vez. Lembra de <strong>Publicar versão</strong>.
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-[11px]">Modelo de fala</Label>
+                  <select
+                    value={v.eleven.model_id}
+                    onChange={(e) => updateEleven({ model_id: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    {ELEVEN_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                </div>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {[
+                    { k: 'stability', label: 'Estabilidade', hint: 'Baixo = mais emoção e variação. Alto = monótono. Clone: 0,30–0,45.' },
+                    { k: 'similarity', label: 'Semelhança', hint: 'Fidelidade à voz original. Clone: 0,80–0,90.' },
+                    { k: 'style', label: 'Estilo', hint: 'Exagero da entonação. Acima de 0,5 fica teatral. (ignorado no v3)' },
+                  ].map((f) => (
+                    <div key={f.k}>
+                      <Label className="text-[11px]">{f.label}: <span className="font-mono">{Number((v.eleven as any)[f.k]).toFixed(2)}</span></Label>
+                      <input
+                        type="range" min={0} max={1} step={0.05}
+                        value={(v.eleven as any)[f.k]}
+                        onChange={(e) => updateEleven({ [f.k]: Number(e.target.value) })}
+                        className="mt-2 w-full accent-violet-600"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1">{f.hint}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3 items-end">
+                  <div>
+                    <Label className="text-[11px]">Velocidade: <span className="font-mono">{Number(v.eleven.speed).toFixed(2)}</span></Label>
+                    <input
+                      type="range" min={0.7} max={1.2} step={0.05}
+                      value={v.eleven.speed}
+                      onChange={(e) => updateEleven({ speed: Number(e.target.value) })}
+                      className="mt-2 w-full accent-violet-600"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">1,00 = normal. Vendedora animada: 1,05.</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-border p-2">
+                    <div>
+                      <p className="text-xs font-medium">Realce de timbre (speaker boost)</p>
+                      <p className="text-[10px] text-muted-foreground">Deixa a voz mais presente. Pode ligar.</p>
+                    </div>
+                    <Switch checked={v.eleven.speaker_boost} onCheckedChange={(val) => updateEleven({ speaker_boost: val })} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {v.provider !== 'elevenlabs' && (
+              <div>
+                <Label className="text-[11px]">Jeito de falar (só OpenAI, opcional)</Label>
+                <Input
+                  value={v.instructions}
+                  onChange={(e) => updateVoice({ instructions: e.target.value })}
+                  placeholder="ex.: fale em português do Brasil, simpática, ritmo natural de vendedora"
+                  className="mt-1 h-9 text-sm"
+                />
+              </div>
+            )}
 
             <p className="text-[10px] text-muted-foreground">
               Chaves em Configurações › Integrações: <strong>OPENAI_API_KEY</strong> (já usada na transcrição) ou{' '}
