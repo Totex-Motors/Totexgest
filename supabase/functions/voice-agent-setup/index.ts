@@ -494,14 +494,17 @@ async function actionElevenOutbound(sb: any, body: any) {
   const pass = String(body.sip_password || "");
   if (!user || !pass) return json({ error: "Informe usuário e senha SIP do dispositivo WaVoIP (painel › dispositivo › SIP)." }, 400);
   const address = String(body.sip_host || (await getIntegrationKey(sb, "WAVOIP_SIP_HOST")) || "sipv2.wavoip.com").trim();
-  const transport = ["auto", "udp", "tcp", "tls"].includes(String(body.transport)) ? String(body.transport) : "auto";
+  // TCP, não "auto"/UDP: o INVITE da ElevenLabs é grande e estourou o MTU em UDP
+  // ("size of packet larger than MTU. transaction transport error"). Codecs mínimos
+  // (G.711) também encurtam o SDP.
+  const transport = ["udp", "tcp", "tls"].includes(String(body.transport)) ? String(body.transport) : "tcp";
   const r = await elevenFetch(apiKey, `/convai/phone-numbers/${phoneId}`, {
     method: "PATCH",
     body: JSON.stringify({
       outbound_trunk_config: {
         address, transport, media_encryption: "allowed",
         credentials: { username: user, password: pass },
-        enabled_codecs: ["PCMU/8000", "PCMA/8000", "G722/8000"],
+        enabled_codecs: ["PCMU/8000", "PCMA/8000"],
       },
     }),
   });
