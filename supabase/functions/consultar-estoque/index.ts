@@ -65,6 +65,7 @@ function toResumo(v: any, base: string) {
     estado: v.state ?? null,
     loja: v.dealership?.name ?? null,
     loja_telefone: v.dealership?.phone ?? null,
+    tipo: v.bodyType ?? null, // "Carro" | "Moto" … — a Nina (voz) filtra moto quando o cliente quer carro
     foto: primaryFoto(v),
     link: `${base}/veiculo/${v.id}`,
   };

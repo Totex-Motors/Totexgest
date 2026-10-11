@@ -143,18 +143,30 @@ async function callEdge(fn: string, body: Record<string, unknown>): Promise<unkn
   try { return JSON.parse(text); } catch { return { raw: text, status: res.status }; }
 }
 
-/** Resposta enxuta pra ser FALADA: sem foto/link, no máximo 5 carros. */
-function trimVehicles(result: any) {
-  const list = Array.isArray(result?.veiculos) ? result.veiculos : [];
-  const veiculos = list.slice(0, 5).map((v: any) => ({
+/**
+ * Resposta enxuta pra ser FALADA: sem foto/link. Tira MOTO quando o cliente não pediu moto
+ * (na 1ª ligação de teste "BMW" trouxe uma F 750 GS antes dos carros). Até 8 carros; a
+ * Nina fala 2–3 por vez.
+ */
+function trimVehicles(result: any, busca: string) {
+  const list: any[] = Array.isArray(result?.veiculos) ? result.veiculos : [];
+  const querMoto = /\bmoto|motocicleta|scooter\b/i.test(busca);
+  const semMoto = querMoto ? list : list.filter((v) => !/moto/i.test(String(v.tipo || "")));
+  const veiculos = semMoto.slice(0, 8).map((v: any) => ({
     titulo: v.titulo, ano: v.ano, preco: v.preco, km: v.km, cor: v.cor, cambio: v.cambio,
     cidade: v.cidade, loja: v.loja, vehicle_id: v.vehicle_id,
   }));
+  const motosRemovidas = list.length - semMoto.length;
   return {
-    total: result?.total ?? veiculos.length,
+    total: veiculos.length,
     mostrando: veiculos.length,
     veiculos,
-    dica: veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez e pergunte qual interessa." : undefined,
+    dica: [
+      veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez (modelo, ano, preço, loja) e pergunte qual interessa." : null,
+      result?.observacao || null,
+      motosRemovidas > 0 ? `${motosRemovidas} moto(s) ficaram de fora; só mencione se o cliente quiser moto.` : null,
+      "Se o cliente citar um modelo ou versão específica, chame consultar_estoque de novo com esse termo exato.",
+    ].filter(Boolean).join(" "),
     ...(result?.error ? { error: result.error } : {}),
   };
 }
@@ -230,8 +242,9 @@ Deno.serve(async (req) => {
       case "consultar_estoque": {
         const ctx = phone ? await ensureCallerContext(sb, phone, args.nome_cliente || null) : null;
         const { caller_phone: _c, phone: _p, system__caller_id: _s, nome_cliente: _n, ...rest } = args;
-        const result = await callEdge("consultar-estoque", { arguments: rest, session_id: ctx?.sessionId || null, user_id: null });
-        return json(trimVehicles(result));
+        // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
+        const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
+        return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
       }
 
       case "agendar_visita": {

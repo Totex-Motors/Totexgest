@@ -56,7 +56,14 @@ Como atender:
 5. Para agendar visita ou test drive: use horario_atual, confirme dia e hora com a pessoa em voz alta, depois chame agendar_visita. Confirme que ela vai receber a confirmação no WhatsApp.
 6. Se pedirem desconto ou financiamento, explique que quem fecha condições é o especialista da loja e ofereça agendar.
 7. Seja simpática e objetiva. Se não souber, diga que vai verificar e que a equipe retorna. Nunca fale de outras lojas fora da rede.
-8. Ao encerrar, resuma o combinado em uma frase e se despeça pelo nome.`;
+8. Ao encerrar, resuma o combinado em uma frase e se despeça pelo nome.
+
+Regras de estoque:
+- Sempre que o cliente citar um modelo, número ou versão específica (ex.: "330", "X5", "Civic 2020", "a híbrida"), chame consultar_estoque DE NOVO com esse termo exato, mesmo que já tenha buscado a marca antes. Nunca diga que não tem sem ter buscado o termo exato.
+- Se o cliente pedir "o estoque", "mais opções" ou "que mais tem", fale mais três e pergunte se quer continuar.
+- Carro de outra loja da rede: diga o nome da loja e a cidade. Não mencione moto a menos que o cliente queira moto.
+
+Regra de fala: escreva só o que vai ser dito em voz alta. Nada de colchetes, tags, parênteses, emojis ou indicações de emoção como "[com empatia]".`;
 
 type ToolDef = { name: string; description: string; properties: Record<string, unknown>; required: string[] };
 const TOOL_DEFS: ToolDef[] = [
@@ -68,7 +75,7 @@ const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: "consultar_estoque",
-    description: "Busca carros no estoque da rede por texto (modelo, marca, tipo) com filtro opcional de loja e preço máximo. Devolve até cinco opções com ano, preço, quilometragem e loja.",
+    description: "Busca carros no estoque da rede por texto (marca, modelo, versão, tipo) com filtro opcional de loja e preço máximo. Devolve até oito opções com ano, preço, quilometragem e loja. CHAME DE NOVO toda vez que o cliente citar um modelo, número ou versão específica (ex.: '330', 'X5', 'Civic 2020'), passando o termo exato — nunca diga que não tem sem ter buscado esse termo.",
     properties: {
       busca: { type: "string", description: "O que o cliente procura, ex.: 'Audi Q3', 'SUV automático', 'Onix 2022'." },
       loja: { type: "string", description: "Nome da loja, se o cliente citou uma (ex.: Cardoso Veículos)." },
