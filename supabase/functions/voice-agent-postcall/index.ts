@@ -165,8 +165,29 @@ Deno.serve(async (req) => {
   }).select("id").single();
   if (error) { console.error("[voice-postcall] call_history:", error.message); return json({ error: error.message }, 500); }
 
+  // Resultado da ligação (dashboard da Nina) + memória compartilhada com o agente de texto
+  const toolNames = (Array.isArray(data.transcript) ? data.transcript : [])
+    .flatMap((t: any) => [...(t.tool_calls || []), ...(t.tool_results || [])])
+    .map((c: any) => String(c?.tool_name || c?.name || ""));
+  const agendou = toolNames.includes("agendar_visita") && /agend/i.test(transcription) && !/não consegui registrar|nao consegui registrar/i.test(transcription);
+  const outcome = duration < 8 ? "nao_atendeu" : agendou ? "agendou" : toolNames.includes("consultar_estoque") || toolNames.includes("identificar_cliente") ? "qualificou" : "conversou";
+  await sb.from("call_history").update({ call_outcome: outcome, call_outcome_details: { tools: [...new Set(toolNames)].filter(Boolean), agendou } }).eq("id", call.id);
+
   if (leadId) {
-    await sb.from("leads").update({ last_interaction_at: new Date().toISOString() }).eq("id", leadId);
+    const { data: l } = await sb.from("leads").select("metadata").eq("id", leadId).maybeSingle();
+    const md = ((l?.metadata as Record<string, unknown>) || {}) as Record<string, any>;
+    const nina = (md.nina || {}) as Record<string, any>;
+    await sb.from("leads").update({
+      last_interaction_at: new Date().toISOString(),
+      metadata: {
+        ...md,
+        nina: {
+          ...nina,
+          last_call: { at: endedAt.toISOString(), duracao: duration, resumo: summary, agendou, outcome, conversation_id: conversationId, call_id: call.id },
+          calls: (Number(nina.calls) || 0) + 1,
+        },
+      },
+    }).eq("id", leadId);
   }
 
   console.log(`[voice-postcall] ligação gravada ${call.id} lead=${leadId || "-"} ${duration}s conv=${conversationId}`);

@@ -186,6 +186,22 @@ async function buildSessionContextBlock(
       `- Urgência da compra: ${has(m.urgencia) ? m.urgencia : "? falta descobrir"}`,
       "Quando o cliente revelar qualquer um desses dados, chame a tool capturar_perfil_compra com o campo correspondente. Não pergunte o que já está preenchido.",
     );
+
+    // === MEMÓRIA COMPARTILHADA COM A NINA (voz) — ligações e notas (leads.metadata.nina) ===
+    const nina = (m.nina ?? {}) as Record<string, any>;
+    if (nina.last_call || (Array.isArray(nina.notes) && nina.notes.length)) {
+      lines.push("", "Nina (agente de VOZ, mesma equipe) já falou com este cliente por ligação:");
+      if (nina.last_call) {
+        const lc = nina.last_call;
+        const quando = lc.at ? new Date(lc.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+        lines.push(`- Última ligação ${quando}: ${lc.outcome === "nao_atendeu" ? "NÃO ATENDEU" : `${lc.duracao || 0}s`}${lc.agendou ? " — AGENDOU visita" : ""}${lc.resumo ? ` — ${String(lc.resumo).slice(0, 400)}` : ""}`);
+        if (lc.outcome === "nao_atendeu") lines.push("  → Diga que a Nina tentou ligar e não conseguiu; pergunte o melhor horário pra retornar (e registre com agendar_lembrete).");
+      }
+      for (const n of (nina.notes || []).slice(-3)) {
+        lines.push(`- Nota (${n.quem || "agente"}): ${String(n.texto || "").slice(0, 300)}`);
+      }
+      lines.push("Continue de onde a Nina parou; não repita perguntas que ela já fez.");
+    }
   }
 
   lines.push("", "Use estes UUIDs SEMPRE que chamar tools que pedem `lead_id` ou `deal_id`.");

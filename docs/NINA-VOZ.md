@@ -77,6 +77,40 @@ Tela só pra superadmin, backend `voice-agent-setup` (JWT + `is_platform_superad
 
 As seções 3 e 4 abaixo descrevem o mesmo passo a passo manual, caso a API falhe.
 
+## 2c. O ouro: dossiê, playbooks e memória entre agentes (Fase A)
+
+**Dossiê** (`_shared/lead-brief.ts`, devolvido por `identificar_cliente`): tudo que o CRM já sabe
+quando o lead entra, pra Nina não perguntar de novo.
+
+| campo | de onde vem |
+|---|---|
+| `playbook` vender / trocar / comprar / descobrir | `seller_qualification.intent` (promotora), `lead_intent`, `lead_kind`, origem (stand/totem/marketplace = comprar) |
+| origem, promotora, local | `captured_by_member_id` → `team_members`, `capture_location_id` → `capture_locations`, `source` |
+| carro do cliente | `seller_vehicles` (último) ou `vehicle_fipe_snapshot` |
+| FIPE + **3 propostas** | `vehicle_fipe_snapshot` × config `NINA_PROPOSTA_RAPIDA_PCT` (80), `NINA_PROPOSTA_TROCA_PCT` (85), `NINA_PROPOSTA_INTERMEDIACAO_MIN_PCT` (90) / `_MAX_PCT` (95) — **percentuais a confirmar com a diretoria** |
+| carro de interesse + loja (QR) | `leads.metadata.vehicle/veiculo_interesse_texto`, `working_memory` da sessão do agente de texto (`carro`, `owner_label`) |
+| observações da promotora, temperatura | `seller_qualification.observacao/temperatura` |
+| agendamento existente / intermediação | `company_activities` (meeting futuro), `intermediations` |
+| memória entre agentes | últimas 6 mensagens do WhatsApp; `leads.metadata.nina.last_call` e `.notes` |
+
+**Playbooks** (prompt padrão em `voice-agent-setup`, editável na tela): VENDER (lógica da
+intermediação: loja comum compra até 25% abaixo da tabela; Totex chega a 90–95% da FIPE; três
+caminhos: proposta rápida, troca, intermediação), TROCAR (avaliação + visita ao carro desejado),
+COMPRAR (QR Code: o carro e a loja já vêm no dossiê; visita reservada), DESCOBRIR. Sempre fecha
+com dia e hora. Antes de encerrar chama `anotar_conversa`.
+
+**Memória compartilhada Nina ↔ agente de WhatsApp**: `anotar_conversa` e o pós-chamada gravam
+`leads.metadata.nina` (`last_call` com resumo/outcome/agendou, `notes`) + nota na timeline; o
+`agent-runner` (auto-context) injeta isso no prompt do agente de texto ("a Nina ligou, não atendeu
+→ pergunte o melhor horário"). `call_history.call_outcome` = `agendou | qualificou | conversou |
+nao_atendeu` (base do dashboard da Nina).
+
+**Fase B (a fazer): a Nina LIGA.** Exige permissão de ligação do cliente (Meta, válida 7 dias,
+pedida pelo agente de texto logo no 1º contato), ligação de saída pela WaVoIP/ElevenLabs
+(`POST /v1/convai/sip-trunk/outbound-call`), fila com horário comercial, retry; não atendeu →
+agente de texto manda "tentei te ligar, qual horário?". **Fase C: dashboard** (ligações,
+atendidas, qualificadas, agendadas, % por playbook/loja/promotora, meta e prêmio).
+
 ## 3. Configuração na WaVoIP (Marco + suporte)
 
 1. Contratar **1 canal do tipo `OFFICIAL`** (`callType: "OFFICIAL"`). Perguntar preço e se cobre a Business Calling API.
