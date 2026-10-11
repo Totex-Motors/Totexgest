@@ -422,6 +422,8 @@ admin/comercial/closer (promotora vê preço e faixa). Automação sem usuário 
 - **Sem chave de midia**: agente recebe `[Audio]` / `[Imagem]` vazio e pode alucinar ("nao consigo ver") — ensinar o aluno a cadastrar Gemini logo de cara
 - **Resposta em audio (nota de voz)**: agente V2 no WhatsApp oficial pode responder falado — `agents_registry.settings.voice_reply` (aba Humanização do agente), sintese em `_shared/tts.ts` (ElevenLabs `ELEVENLABS_API_KEY` ou OpenAI `OPENAI_API_KEY`, ambos Ogg/Opus = nota de voz), arquivo no bucket `whatsapp-media`, envio via `send-whatsapp-cloud` action `send_audio`). A resposta e dividida por paragrafo: conversa vai em audio, ficha de carro (`|` ou 2+ linhas com emoji)/lista/link/telefone vao em texto. Modo `mirror` (so quando o lead mandou audio) ou `always`. So Cloud API — UAZAPI nao fala 1:1. Erro de entrega da Meta fica em `whatsapp_messages.metadata.delivery_errors`.
 
+- **Ligacao atendida pela IA (Nina voz)**: ver `docs/NINA-VOZ.md`. Meta (numero oficial) → WaVoIP dispositivo `OFFICIAL` (ponte SIP, nunca `UNOFFICIAL`) → ElevenLabs Agent → tools `voice-agent-tools` (header `x-voice-token` = config `VOICE_AGENT_TOKEN`) → pos-chamada `voice-agent-postcall` (HMAC `ELEVENLABS_WEBHOOK_SECRET`) grava em `call_history` (`call_type = whatsapp_ai`).
+
 ## Visibilidade de eventos do agente
 
 Tabela `ai_agent_chat_events` loga TUDO que o agente faz ou deixa de fazer:

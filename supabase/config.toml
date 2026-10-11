@@ -243,3 +243,12 @@ verify_jwt = false
 # Service-to-service (tool do agente / automação).
 [functions.distribuir-lead]
 verify_jwt = false
+
+# Nina VOZ (Fase 2 — docs/NINA-VOZ.md): ferramentas chamadas pela ElevenLabs durante a
+# ligação (auth por header x-voice-token = config VOICE_AGENT_TOKEN) e webhook pós-chamada
+# (assinatura HMAC = config ELEVENLABS_WEBHOOK_SECRET). Sem JWT de usuário.
+[functions.voice-agent-tools]
+verify_jwt = false
+
+[functions.voice-agent-postcall]
+verify_jwt = false
