@@ -30,6 +30,29 @@ import { getIntegrationKey } from "./config.ts";
 export type VoiceReplyMode = "mirror" | "always";
 export type VoiceProvider = "auto" | "openai" | "elevenlabs";
 
+/**
+ * Ajuste fino da ElevenLabs (settings.voice_reply.eleven). Voz CLONADA com os padrões da
+ * ElevenLabs (stability 0.5, style 0) sai "robótica"/chapada — por isso mandamos
+ * voice_settings explícitos em toda chamada.
+ */
+export interface ElevenTuning {
+  model_id: string;        // eleven_multilingual_v2 (estável) | eleven_v3 (mais expressivo) | eleven_turbo_v2_5 (rápido)
+  stability: number;       // 0–1: baixo = mais emoção/variação; alto = monótono
+  similarity: number;      // 0–1: fidelidade à voz clonada
+  style: number;           // 0–1: exagero do estilo (só v2); >0.5 fica teatral
+  speaker_boost: boolean;  // realce de timbre
+  speed: number;           // 0.7–1.2 (1.0 = normal)
+}
+
+export const DEFAULT_ELEVEN_TUNING: ElevenTuning = {
+  model_id: "eleven_multilingual_v2",
+  stability: 0.4,
+  similarity: 0.85,
+  style: 0.35,
+  speaker_boost: true,
+  speed: 1.0,
+};
+
 export interface VoiceReplyConfig {
   enabled: boolean;
   mode: VoiceReplyMode;
@@ -37,6 +60,7 @@ export interface VoiceReplyConfig {
   voice: string;
   max_chars: number;
   instructions?: string;
+  eleven: ElevenTuning;
 }
 
 export const DEFAULT_VOICE_REPLY: VoiceReplyConfig = {
@@ -45,10 +69,16 @@ export const DEFAULT_VOICE_REPLY: VoiceReplyConfig = {
   provider: "auto",
   voice: "",
   max_chars: 600,
+  eleven: DEFAULT_ELEVEN_TUNING,
 };
 
 const OPENAI_DEFAULT_VOICE = "nova";
-const ELEVENLABS_DEFAULT_MODEL = "eleven_multilingual_v2";
+const ELEVEN_MODELS = new Set(["eleven_multilingual_v2", "eleven_v3", "eleven_turbo_v2_5", "eleven_flash_v2_5"]);
+
+function clamp01(v: unknown, def: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : def;
+}
 
 /** Lê settings.voice_reply do agente. null = desligado. */
 export function resolveVoiceReply(settings: Record<string, unknown> | null | undefined): VoiceReplyConfig | null {
@@ -57,6 +87,8 @@ export function resolveVoiceReply(settings: Record<string, unknown> | null | und
   const mode: VoiceReplyMode = raw.mode === "always" ? "always" : "mirror";
   const provider: VoiceProvider = raw.provider === "openai" || raw.provider === "elevenlabs" ? raw.provider : "auto";
   const maxChars = Number(raw.max_chars);
+  const e = (raw.eleven || {}) as Partial<ElevenTuning>;
+  const speed = Number(e.speed);
   return {
     enabled: true,
     mode,
@@ -64,6 +96,14 @@ export function resolveVoiceReply(settings: Record<string, unknown> | null | und
     voice: String(raw.voice || "").trim(),
     max_chars: Number.isFinite(maxChars) && maxChars >= 80 ? Math.min(maxChars, 2000) : DEFAULT_VOICE_REPLY.max_chars,
     instructions: raw.instructions ? String(raw.instructions).slice(0, 500) : undefined,
+    eleven: {
+      model_id: ELEVEN_MODELS.has(String(e.model_id)) ? String(e.model_id) : DEFAULT_ELEVEN_TUNING.model_id,
+      stability: clamp01(e.stability, DEFAULT_ELEVEN_TUNING.stability),
+      similarity: clamp01(e.similarity, DEFAULT_ELEVEN_TUNING.similarity),
+      style: clamp01(e.style, DEFAULT_ELEVEN_TUNING.style),
+      speaker_boost: e.speaker_boost !== false,
+      speed: Number.isFinite(speed) ? Math.min(1.2, Math.max(0.7, speed)) : DEFAULT_ELEVEN_TUNING.speed,
+    },
   };
 }
 
@@ -187,11 +227,23 @@ export async function synthesizeSpeech(
 async function elevenLabsTts(apiKey: string, text: string, cfg: VoiceReplyConfig): Promise<SynthesizedAudio | null> {
   const voiceId = cfg.voice;
   if (!voiceId) { console.warn("[tts] elevenlabs: voice_id não configurado (settings.voice_reply.voice)"); return null; }
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=opus_48000_64`, {
+  const t = cfg.eleven;
+  // v3 ignora `style` e aceita stability só em 3 níveis (0 / 0.5 / 1) — normaliza.
+  const isV3 = t.model_id === "eleven_v3";
+  const stability = isV3 ? (t.stability < 0.34 ? 0 : t.stability < 0.67 ? 0.5 : 1) : t.stability;
+  const voice_settings: Record<string, unknown> = {
+    stability,
+    similarity_boost: t.similarity,
+    use_speaker_boost: t.speaker_boost,
+    speed: t.speed,
+    ...(isV3 ? {} : { style: t.style }),
+  };
+  // opus_48000_128 (não 64): WhatsApp recomprime; partir de mais qualidade soa menos "metálico".
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=opus_48000_128`, {
     method: "POST",
     headers: { "xi-api-key": apiKey, "Content-Type": "application/json", "Accept": "audio/ogg" },
     // sem language_code: o multilingual_v2 detecta o idioma e rejeita o parâmetro
-    body: JSON.stringify({ text, model_id: ELEVENLABS_DEFAULT_MODEL }),
+    body: JSON.stringify({ text, model_id: t.model_id, voice_settings }),
   });
   if (!res.ok) throw new Error(`elevenlabs ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/ogg", provider: "elevenlabs" };
