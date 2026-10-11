@@ -189,7 +189,10 @@ Deno.serve(async (req) => {
   // ElevenLabs manda os parâmetros no corpo; aceita também { arguments: {...} }
   const args: Record<string, any> = { ...(body.arguments || {}), ...body };
   delete args.arguments;
-  const phone = normalizePhone(args.caller_phone ?? args.phone ?? args.system__caller_id);
+  // Ligação RECEBIDA: caller_phone = system__caller_id (o cliente). Ligação de SAÍDA (Fase B):
+  // system__caller_id é o NOSSO número, então o cliente vem em customer_phone (dynamic var
+  // passada pelo nina-dialer). customer_phone tem prioridade quando preenchida.
+  const phone = normalizePhone(args.customer_phone || args.caller_phone || args.phone || args.system__caller_id);
 
   console.log(`[voice-tools] ${tool} phone=${phone || "-"} args=${JSON.stringify(args).slice(0, 300)}`);
 
@@ -244,7 +247,7 @@ Deno.serve(async (req) => {
 
       case "consultar_estoque": {
         const ctx = phone ? await ensureCallerContext(sb, phone, args.nome_cliente || null) : null;
-        const { caller_phone: _c, phone: _p, system__caller_id: _s, nome_cliente: _n, ...rest } = args;
+        const { caller_phone: _c, customer_phone: _cp, phone: _p, system__caller_id: _s, nome_cliente: _n, ...rest } = args;
         // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
         const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
         return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
@@ -254,7 +257,7 @@ Deno.serve(async (req) => {
         if (!phone) return json({ success: false, message: "Sem telefone do chamador — não dá pra agendar." });
         const ctx = await ensureCallerContext(sb, phone, args.nome_cliente || null);
         if (!ctx.sessionId) return json({ success: false, message: "Não consegui abrir a sessão do agente." });
-        const { caller_phone: _c, phone: _p, system__caller_id: _s, ...rest } = args;
+        const { caller_phone: _c, customer_phone: _cp, phone: _p, system__caller_id: _s, ...rest } = args;
         if (!rest.nome_cliente && ctx.leadId) {
           const { data: l } = await sb.from("leads").select("name").eq("id", ctx.leadId).maybeSingle();
           if (l?.name) rest.nome_cliente = l.name;

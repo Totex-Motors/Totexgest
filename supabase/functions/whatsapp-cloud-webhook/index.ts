@@ -168,7 +168,18 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       content = msg.button?.text || "[Botão]";
       break;
     case "interactive":
-      content = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "[Interativo]";
+      if (msg.interactive?.type === "call_permission_reply" || msg.interactive?.call_permission_reply) {
+        // Resposta ao pedido de permissão pra LIGAR (Nina — Fase B). Guarda no lead e libera a fila.
+        const cpr = msg.interactive.call_permission_reply || {};
+        const accepted = String(cpr.response || "").toLowerCase() === "accept";
+        const expiresAt = cpr.expiration_timestamp ? new Date(Number(cpr.expiration_timestamp) * 1000).toISOString() : null;
+        content = accepted ? `✅ Permitiu ligação${cpr.is_permanent ? " (permanente)" : expiresAt ? ` até ${new Date(expiresAt).toLocaleDateString("pt-BR")}` : ""}` : "❌ Não permitiu ligação";
+        try {
+          await handleCallPermissionReply(supabase, from.replace(/\D/g, ""), { accepted, expiresAt, isPermanent: !!cpr.is_permanent, source: cpr.response_source || null });
+        } catch (e) { console.error("[Cloud Webhook] call_permission_reply:", (e as Error).message); }
+      } else {
+        content = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "[Interativo]";
+      }
       break;
     default:
       content = `[${msgType}]`;
@@ -478,6 +489,28 @@ async function transcribeAudio(supabase: any, audioUrl: string, openaiKey: strin
   } catch (err: any) {
     console.error("[Cloud Webhook] Transcription error:", err.message);
     return null;
+  }
+}
+
+/**
+ * Permissão de ligação (Meta) respondida pelo cliente: grava em leads.metadata.call_permission
+ * (todos os leads com esse telefone) e, se aceitou, libera as ligações da Nina que esperavam.
+ */
+async function handleCallPermissionReply(supabase: any, phone: string, r: { accepted: boolean; expiresAt: string | null; isPermanent: boolean; source: string | null }) {
+  const last8 = phone.slice(-8);
+  const { data: leads } = await supabase.from("leads").select("id, metadata").like("phone", `%${last8}`).limit(10);
+  for (const l of leads || []) {
+    const md = (l.metadata || {}) as Record<string, unknown>;
+    await supabase.from("leads").update({
+      metadata: { ...md, call_permission: { status: r.accepted ? (r.isPermanent ? "permanent" : "temporary") : "rejected", expires_at: r.expiresAt, source: r.source, at: new Date().toISOString() } },
+    }).eq("id", l.id);
+  }
+  const { data: q } = await supabase.from("nina_call_queue").select("id").eq("status", "awaiting_permission").like("phone", `%${last8}`);
+  if (q && q.length) {
+    await supabase.from("nina_call_queue")
+      .update(r.accepted ? { status: "queued", scheduled_for: new Date().toISOString() } : { status: "expired", last_error: "cliente não permitiu a ligação" })
+      .in("id", q.map((x: any) => x.id));
+    console.log(`[Cloud Webhook] permissão ${r.accepted ? "aceita" : "negada"} por ${phone} → ${q.length} ligação(ões) da Nina ${r.accepted ? "liberadas" : "encerradas"}`);
   }
 }
 

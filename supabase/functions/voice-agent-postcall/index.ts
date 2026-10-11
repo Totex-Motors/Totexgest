@@ -190,6 +190,54 @@ Deno.serve(async (req) => {
     }).eq("id", leadId);
   }
 
-  console.log(`[voice-postcall] ligação gravada ${call.id} lead=${leadId || "-"} ${duration}s conv=${conversationId}`);
-  return json({ ok: true, call_id: call.id, lead_id: leadId, duration });
+  // ── Fase B: fecha a tentativa da fila (ligação de SAÍDA) ──
+  await settleQueue(sb, conversationId, outcome, duration, phone, leadId, summary);
+
+  console.log(`[voice-postcall] ligação gravada ${call.id} lead=${leadId || "-"} ${duration}s conv=${conversationId} outcome=${outcome}`);
+  return json({ ok: true, call_id: call.id, lead_id: leadId, duration, outcome });
 });
+
+/**
+ * Fila de saída (nina_call_queue): done / no_answer (+retry em horário comercial) e,
+ * se não atendeu, o aviso no WhatsApp "tentei te ligar — qual horário?". O agente de
+ * texto continua a conversa (ele lê leads.metadata.nina.last_call).
+ */
+async function settleQueue(sb: any, conversationId: string, outcome: string, duration: number, phone: string, leadId: string | null, summary: string | null) {
+  const { data: q } = await sb.from("nina_call_queue").select("*").eq("conversation_id", conversationId).maybeSingle();
+  if (!q) return;
+  const answered = outcome !== "nao_atendeu" && duration >= 8;
+  if (answered) {
+    await sb.from("nina_call_queue").update({ status: "done", outcome }).eq("id", q.id);
+    return;
+  }
+  const attempts = Number(q.attempts || 0);
+  const retry = attempts < Number(q.max_attempts || 3);
+  let next: string | null = null;
+  if (retry) {
+    const { data: nbt } = await sb.rpc("next_business_time", { p_ts: new Date(Date.now() + 2 * 3600_000).toISOString() });
+    next = nbt || new Date(Date.now() + 2 * 3600_000).toISOString();
+  }
+  await sb.from("nina_call_queue").update({
+    status: retry ? "queued" : "no_answer", outcome: "nao_atendeu",
+    scheduled_for: next || q.scheduled_for, last_error: retry ? `não atendeu (tentativa ${attempts}); próxima ${next}` : "não atendeu em todas as tentativas",
+  }).eq("id", q.id);
+
+  // Aviso por WhatsApp (free-form: a janela de 24h costuma estar aberta — o lead acabou de
+  // entrar/responder; fora da janela a Meta recusa e o agente de texto cuida na próxima msg).
+  if (phone && attempts === 1) {
+    let nome = "";
+    if (leadId) {
+      const { data: l } = await sb.from("leads").select("name").eq("id", leadId).maybeSingle();
+      nome = String(l?.name || "").trim().split(/\s+/)[0];
+      if (/^\+?\d+$/.test(nome) || /lead sem nome/i.test(nome)) nome = "";
+    }
+    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da Totex Motors. Tentei te ligar agora e não consegui. Qual horário fica bom pra eu te ligar? 😊`;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      body: JSON.stringify({ action: "send_text", phone, text: texto, lead_id: leadId, tenant_id: q.tenant_id, sent_by: "nina_dialer" }),
+    });
+    if (!res.ok) console.warn("[voice-postcall] aviso 'tentei te ligar' não enviado:", res.status, (await res.text().catch(() => "")).slice(0, 200));
+  }
+  void summary;
+}

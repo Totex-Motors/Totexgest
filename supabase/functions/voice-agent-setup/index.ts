@@ -217,6 +217,8 @@ function toolConfig(def: ToolDef, token: string, secretId: string | null) {
           properties: {
             // A API só aceita UM de: description | dynamic_variable | constant_value… — sem description aqui.
             caller_phone: { type: "string", dynamic_variable: "system__caller_id" },
+            // Ligação de SAÍDA (nina-dialer): o cliente vem aqui (system__caller_id seria o nosso número).
+            customer_phone: { type: "string", dynamic_variable: "customer_phone" },
             ...def.properties,
           },
         },
@@ -254,6 +256,14 @@ async function actionStatus(sb: any) {
       linked_at: await cfg("VOICE_WAVOIP_LINKED_AT"),
       sip_at: await cfg("VOICE_WAVOIP_SIP_AT"),
       webhook_at: await cfg("VOICE_WAVOIP_WEBHOOK_AT"),
+    },
+    outbound: {
+      enabled: (await cfg("NINA_OUTBOUND_ENABLED")) === "true",
+      sources: (await cfg("NINA_AUTO_CALL_SOURCES")) || "captacao,stand,stand_totex,totem-compra,marketplace",
+      delay_min: Number((await cfg("NINA_AUTO_CALL_DELAY_MIN")) || 10),
+      trunk_configured_at: await cfg("VOICE_ELEVEN_OUTBOUND_AT"),
+      sip_user: await cfg("VOICE_WAVOIP_SIP_USER"),
+      queue: await queueSummary(sb),
     },
     prompt: currentPrompt(await cfg("VOICE_AGENT_PROMPT")),
     first_message: (await cfg("VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE,
@@ -330,6 +340,11 @@ async function actionElevenProvision(sb: any, body: any) {
       stability: Number(tune.stability), similarity_boost: Number(tune.similarity), speed: Number(tune.speed),
     },
     turn: { turn_timeout: 7, turn_eagerness: "normal" },
+  };
+  // Placeholders das dynamic variables: na ligação RECEBIDA ninguém preenche customer_phone
+  // (fica vazio → tools usam system__caller_id); na de SAÍDA o nina-dialer preenche.
+  (conversation_config.agent as any).dynamic_variables = {
+    dynamic_variable_placeholders: { customer_phone: "", customer_name: "", playbook: "descobrir", reason: "" },
   };
   let agentId: string | null = (await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID")) || null;
   let r = agentId
@@ -457,6 +472,60 @@ async function actionWavoipSetup(sb: any, body: any) {
   return json({ ok: allOk, device_id: deviceId, log }, allOk ? 200 : 207);
 }
 
+async function queueSummary(sb: any) {
+  const { data } = await sb.from("nina_call_queue")
+    .select("id, lead_id, phone, playbook, reason, status, scheduled_for, attempts, outcome, last_error, created_at, leads(name)")
+    .order("created_at", { ascending: false }).limit(20);
+  const rows = (data || []).map((r: any) => ({ ...r, lead_name: r.leads?.name || null, leads: undefined }));
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  return { recent: rows, counts };
+}
+
+/** Tronco de SAÍDA na ElevenLabs → WaVoIP (sipv2.wavoip.com) com as credenciais SIP do dispositivo. */
+async function actionElevenOutbound(sb: any, body: any) {
+  const apiKey = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+  const phoneId = await getIntegrationKey(sb, "VOICE_ELEVEN_PHONE_ID");
+  if (!apiKey || !phoneId) return json({ error: "Faça o passo 1 (Criar Nina) antes." }, 400);
+  const user = String(body.sip_user || "").trim();
+  const pass = String(body.sip_password || "");
+  if (!user || !pass) return json({ error: "Informe usuário e senha SIP do dispositivo WaVoIP (painel › dispositivo › SIP)." }, 400);
+  const address = String(body.sip_host || (await getIntegrationKey(sb, "WAVOIP_SIP_HOST")) || "sipv2.wavoip.com").trim();
+  const transport = ["auto", "udp", "tcp", "tls"].includes(String(body.transport)) ? String(body.transport) : "auto";
+  const r = await elevenFetch(apiKey, `/convai/phone-numbers/${phoneId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      outbound_trunk_config: {
+        address, transport, media_encryption: "allowed",
+        credentials: { username: user, password: pass },
+        enabled_codecs: ["PCMU/8000", "PCMA/8000", "G722/8000"],
+      },
+    }),
+  });
+  if (!r.ok) return json({ error: `ElevenLabs ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}` }, 502);
+  await setConfig(sb, "VOICE_WAVOIP_SIP_USER", user);
+  await setConfig(sb, "VOICE_ELEVEN_OUTBOUND_AT", new Date().toISOString());
+  return json({ ok: true, address, transport });
+}
+
+/** Interruptor mestre + fontes + atraso da ligação automática. */
+async function actionSetOutbound(sb: any, body: any) {
+  if (typeof body.enabled === "boolean") await setConfig(sb, "NINA_OUTBOUND_ENABLED", body.enabled ? "true" : "false");
+  if (typeof body.sources === "string") await setConfig(sb, "NINA_AUTO_CALL_SOURCES", body.sources.trim() || null);
+  if (body.delay_min !== undefined && Number.isFinite(Number(body.delay_min))) await setConfig(sb, "NINA_AUTO_CALL_DELAY_MIN", String(Math.max(0, Math.min(1440, Number(body.delay_min)))));
+  return json({ ok: true });
+}
+
+/** Enfileira uma ligação de teste agora (lead pelo id) — ignora o atraso. */
+async function actionEnqueueTest(sb: any, body: any, userId: string) {
+  const leadId = String(body.lead_id || "").trim();
+  if (!leadId) return json({ error: "lead_id obrigatório" }, 400);
+  const { data: member } = await sb.from("team_members").select("id").eq("auth_user_id", userId).maybeSingle();
+  const { data, error } = await sb.rpc("_nina_enqueue_call", { p_lead_id: leadId, p_reason: "manual", p_delay_minutes: 0, p_requested_by: member?.id || null });
+  if (error) return json({ error: error.message }, 400);
+  return json({ ok: true, queue_id: data });
+}
+
 async function actionTestTools(sb: any) {
   const token = await getIntegrationKey(sb, "VOICE_AGENT_TOKEN");
   if (!token) return json({ ok: false, error: "VOICE_AGENT_TOKEN não existe ainda (rode 'Criar Nina na ElevenLabs' ou cadastre em Integrações)." });
@@ -487,6 +556,9 @@ Deno.serve(async (req) => {
       case "eleven_provision": return await actionElevenProvision(sb, body);
       case "wavoip_setup": return await actionWavoipSetup(sb, body);
       case "test_tools": return await actionTestTools(sb);
+      case "eleven_outbound": return await actionElevenOutbound(sb, body);
+      case "set_outbound": return await actionSetOutbound(sb, body);
+      case "enqueue_test": return await actionEnqueueTest(sb, body, u.user.id);
       default: return json({ error: `action desconhecida: ${action}` }, 400);
     }
   } catch (e) {

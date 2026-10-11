@@ -100,6 +100,12 @@ Deno.serve(async (req) => {
         result = await sendMedia(body, formattedPhone, "audio", cfg, supabase);
         break;
 
+      case "send_call_permission":
+        // Pedido de permissão pra LIGAR (Meta: 1 por 24h, 2 por 7 dias; vale 7 dias).
+        // Free-form = precisa da janela de 24h aberta; fora dela, template aprovado.
+        result = await sendCallPermission(body, formattedPhone, cfg);
+        break;
+
       case "send_video":
         result = await sendMedia(body, formattedPhone, "video", cfg);
         break;
@@ -267,6 +273,21 @@ async function sendText(body: any, phone: string, cfg: CloudApiCfg) {
     content: text,
     messageType: "Conversation",
   };
+}
+
+// ==================== CALL PERMISSION REQUEST ====================
+
+async function sendCallPermission(body: any, phone: string, cfg: CloudApiCfg) {
+  const text = String(body.text || "Podemos te ligar? É só tocar em permitir.").slice(0, 1024);
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: phone,
+    type: "interactive",
+    interactive: { type: "call_permission_request", action: { name: "call_permission_request" }, body: { text } },
+  };
+  const response = await callCloudAPI(payload, cfg);
+  return { ok: response.ok, data: response.data, content: `📞 ${text}`, messageType: "call_permission_request", extraMeta: { call_permission_request: true } };
 }
 
 // ==================== SEND MEDIA ====================
