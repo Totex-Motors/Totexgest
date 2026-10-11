@@ -86,6 +86,11 @@ export function NinaVozSection() {
     onSuccess: () => { toast.success("Salvo."); qc.invalidateQueries({ queryKey: ["nina-voz-status"] }); },
     onError: (e: Error) => toast.error("Não salvou", { description: e.message }),
   });
+  const metaDiag = useMutation({
+    mutationFn: () => callSetup({ action: "meta_diag", phone: testLead.trim().match(/^\+?\d{10,15}$/) ? testLead.trim() : undefined }),
+    onSuccess: (r: any) => { setLog([`Diagnóstico Meta: ${JSON.stringify(r, null, 2)}`]); toast.success("Diagnóstico da Meta no registro abaixo."); },
+    onError: (e: Error) => toast.error("Diagnóstico Meta", { description: e.message }),
+  });
   const enqueue = useMutation({
     mutationFn: () => callSetup({ action: "enqueue_test", lead_id: testLead.trim() }),
     onSuccess: () => { toast.success("Ligação enfileirada. O discador roda a cada 2 min no horário comercial."); qc.invalidateQueries({ queryKey: ["nina-voz-status"] }); },
@@ -293,6 +298,10 @@ export function NinaVozSection() {
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground">Ou use o botão "Pedir pra Nina ligar" no detalhe do lead.</p>
+            <Button size="sm" variant="ghost" onClick={() => metaDiag.mutate()} disabled={metaDiag.isPending}>
+              {metaDiag.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />} Diagnóstico Meta (ligação habilitada? horário? permissão)
+            </Button>
+            <p className="text-[10px] text-muted-foreground">Dica: no campo acima, em vez do ID do lead, cole um telefone (ex.: 5511947448137) para ver a permissão dele.</p>
           </div>
 
           {st.outbound?.queue?.recent?.length > 0 && (
@@ -333,7 +342,7 @@ export function NinaVozSection() {
       {log.length > 0 && (
         <div className="rounded-md border border-border bg-muted/30 p-3">
           <p className="text-[11px] font-medium mb-1">Registro da última ação</p>
-          <ul className="text-[11px] font-mono space-y-0.5">{log.map((l, i) => <li key={i}>• {l}</li>)}</ul>
+          <ul className="text-[11px] font-mono space-y-0.5 whitespace-pre-wrap break-all">{log.map((l, i) => <li key={i}>• {l}</li>)}</ul>
         </div>
       )}
     </div>
