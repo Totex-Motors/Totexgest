@@ -36,6 +36,10 @@ export interface LeadBrief {
   fipe: null | { valor: string; valor_num: number; referencia: string };
   propostas: Proposta[];
   carro_interesse: string | null;
+  /** true = ainda no estoque; false = já saiu (vendido/retirado); null = não deu pra conferir */
+  carro_interesse_disponivel: boolean | null;
+  /** 2–3 opções parecidas quando o carro de interesse já saiu */
+  alternativas: string[];
   loja_referencia: string | null;
   temperatura: string | null;
   observacoes_promotora: string | null;
@@ -153,6 +157,40 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     lojaRef = lojaRef || wm.owner_label || wm.loja || null;
   }
 
+  // ── o carro de interesse AINDA está no estoque? (o lead pode ter sido captado dias atrás) ──
+  let disponivel: boolean | null = null;
+  const alternativas: string[] = [];
+  if (carroInteresse) {
+    try {
+      const vehicleId = md.vehicle?.id || md.vehicle_id || null;
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/consultar-estoque`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "" },
+        body: JSON.stringify({ arguments: vehicleId ? { vehicle_id: vehicleId, busca: carroInteresse, limite: 6 } : { busca: carroInteresse, ...(lojaRef ? { loja: lojaRef } : {}), limite: 6 }, session_id: null, user_id: null }),
+      });
+      const est = await r.json().catch(() => ({}));
+      const list: any[] = Array.isArray(est?.veiculos) ? est.veiculos : [];
+      if (r.ok && !est?.error) {
+        const normTxt = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const words = normTxt(carroInteresse).split(/\s+/).filter((w) => w.length >= 3).slice(0, 2);
+        const exact = vehicleId ? list.find((v) => String(v.vehicle_id) === String(vehicleId)) : list.find((v) => words.every((w) => normTxt(v.titulo).includes(w)));
+        disponivel = !!exact;
+        if (!exact) {
+          // parecidos: mesma marca/modelo (busca mais aberta pela 1ª palavra)
+          const r2 = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/consultar-estoque`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "" },
+            body: JSON.stringify({ arguments: { busca: words[0] || carroInteresse, limite: 6 }, session_id: null, user_id: null }),
+          });
+          const est2 = await r2.json().catch(() => ({}));
+          for (const v of (Array.isArray(est2?.veiculos) ? est2.veiculos : []).filter((v: any) => !/moto/i.test(String(v.tipo || ""))).slice(0, 3)) {
+            alternativas.push(`${v.titulo}${v.ano ? ` ${v.ano}` : ""}${v.preco ? ` por ${v.preco}` : ""}${v.loja ? ` na ${v.loja}` : ""}`);
+          }
+        }
+      }
+    } catch (e) { console.warn("[lead-brief] estoque do carro de interesse:", (e as Error).message); }
+  }
+
   // ── agendamento existente / intermediação ──
   const { data: ag } = await sb.from("company_activities").select("name, scheduled_at")
     .eq("lead_id", leadId).eq("task_type", "meeting").gte("scheduled_at", new Date().toISOString())
@@ -180,7 +218,11 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     `Playbook: ${playbook.toUpperCase()} — ${intencaoTexto}.`,
     carroDoCliente ? `Já sabemos o carro: ${carroDoCliente.descricao}${carroDoCliente.ano ? ` ${carroDoCliente.ano}` : ""}. Não pergunte de novo.` : null,
     fipe ? `Temos a ${fipe.referencia}: ${fipe.valor}. As três propostas estão calculadas — apresente a lógica, não despeje os três números de uma vez.` : (playbook !== "comprar" && playbook !== "descobrir" ? "Sem FIPE ainda: diga que a avaliação sai em minutos e ofereça agendar." : null),
-    carroInteresse ? `Interesse: ${carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""}. Fale desse carro primeiro.` : null,
+    carroInteresse
+      ? (disponivel === false
+          ? `Interesse: ${carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""} — JÁ SAIU do estoque. Não diga que está disponível: avise com naturalidade que ele já foi e ofereça${alternativas.length ? `: ${alternativas.join("; ")}` : " opções parecidas (consultar_estoque)"}.`
+          : `Interesse: ${carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""}${disponivel ? " (ainda disponível)" : ""}. Fale desse carro primeiro.`)
+      : null,
     agendamento ? `JÁ TEM agendamento: ${agendamento}. Confirme em vez de marcar outro.` : null,
     ultimaLigacao ? `Já conversou com a Nina em ${ultimaLigacao.quando}. Continue de onde parou.` : null,
   ].filter(Boolean).join(" ");
@@ -192,7 +234,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     cidade: [lead.city_name, lead.state].filter(Boolean).join("/") || null,
     playbook, intencao_texto: intencaoTexto, origem, promotora, local_captacao: local,
     carro_do_cliente: carroDoCliente, fipe, propostas,
-    carro_interesse: carroInteresse, loja_referencia: lojaRef,
+    carro_interesse: carroInteresse, carro_interesse_disponivel: disponivel, alternativas, loja_referencia: lojaRef,
     temperatura: sq.temperatura || null,
     observacoes_promotora: sq.observacao || null,
     agendamento_existente: agendamento, intermediacao,

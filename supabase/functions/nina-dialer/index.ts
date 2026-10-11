@@ -30,7 +30,7 @@ const STALE_CALLING_MIN = 15;
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
-function firstMessageFor(playbook: string | null, nome: string, extra: { promotora?: string | null; local?: string | null; carro?: string | null; loja?: string | null }): string {
+function firstMessageFor(playbook: string | null, nome: string, extra: { promotora?: string | null; local?: string | null; carro?: string | null; loja?: string | null; disponivel?: boolean | null }): string {
   const oi = nome ? `Oi, ${nome}! ` : "Oi! ";
   const base = `${oi}Aqui é a Nina, da Totex Motors. Tudo bem? `;
   switch (playbook) {
@@ -39,7 +39,10 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
     case "trocar":
       return base + (extra.carro ? `Você falou com a gente sobre trocar o seu ${extra.carro}, né? Tenho novidade boa pra você. Tem um minutinho?` : "Você falou com a gente sobre trocar de carro, né? Tem um minutinho?");
     case "comprar":
-      return base + (extra.carro ? `Vi que você se interessou pelo ${extra.carro}${extra.loja ? ` na ${extra.loja}` : ""}. Ele ainda está disponível. Posso te ajudar a ver ele de perto?` : "Vi que você se interessou por um carro com a gente. Posso te ajudar?");
+      if (extra.carro && extra.disponivel === false) {
+        return base + `Vi que você se interessou pelo ${extra.carro}${extra.loja ? ` na ${extra.loja}` : ""}. Ele acabou saindo, mas tenho opções bem parecidas pra te mostrar. Tem um minutinho?`;
+      }
+      return base + (extra.carro ? `Vi que você se interessou pelo ${extra.carro}${extra.loja ? ` na ${extra.loja}` : ""}${extra.disponivel ? ". Ele ainda está disponível" : ""}. Posso te ajudar a ver ele de perto?` : "Vi que você se interessou por um carro com a gente. Posso te ajudar?");
     default:
       return base + "Você deixou seu contato com a gente. Está pensando em vender, trocar ou comprar um carro?";
   }
@@ -130,6 +133,7 @@ Deno.serve(async (req) => {
   const firstMessage = firstMessageFor(brief?.playbook || row.playbook, nome, {
     promotora: brief?.promotora ? brief.promotora.split(/\s+/)[0] : null, local: brief?.local_captacao || null,
     carro: brief?.carro_do_cliente?.descricao || brief?.carro_interesse || null, loja: brief?.loja_referencia || null,
+    disponivel: brief?.carro_interesse_disponivel ?? null,
   });
   const call = await fetch(`${ELEVEN}/convai/sip-trunk/outbound-call`, {
     method: "POST",
