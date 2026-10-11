@@ -101,6 +101,17 @@ Faça uma pergunta aberta: "me conta, você está pensando em vender, trocar ou 
 1. Chame anotar_conversa com um resumo de duas frases, o próximo passo combinado e a temperatura (quente, morno ou frio). Esse registro é lido pelo agente de WhatsApp e pela equipe, então seja específica.
 2. Resuma o combinado em uma frase e despeça-se pelo nome.`;
 
+/**
+ * Prompt em vigor: o salvo em config, EXCETO se for a versão antiga (sem playbooks) —
+ * aí vale o DEFAULT_PROMPT atual e o próximo "Atualizar Nina" regrava o novo.
+ * (Migração sem mexer no banco à mão.)
+ */
+function currentPrompt(stored: string | null | undefined): string {
+  const p = String(stored || "").trim();
+  if (!p || !p.includes("# PLAYBOOK")) return DEFAULT_PROMPT;
+  return p;
+}
+
 type ToolDef = { name: string; description: string; properties: Record<string, unknown>; required: string[] };
 const TOOL_DEFS: ToolDef[] = [
   {
@@ -244,7 +255,7 @@ async function actionStatus(sb: any) {
       sip_at: await cfg("VOICE_WAVOIP_SIP_AT"),
       webhook_at: await cfg("VOICE_WAVOIP_WEBHOOK_AT"),
     },
-    prompt: (await cfg("VOICE_AGENT_PROMPT")) || DEFAULT_PROMPT,
+    prompt: currentPrompt(await cfg("VOICE_AGENT_PROMPT")),
     first_message: (await cfg("VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE,
     urls: { tools: TOOLS_URL, postcall: `${SUPABASE_URL}/functions/v1/voice-agent-postcall`, wavoip_webhook: `${SUPABASE_URL}/functions/v1/wavoip-webhook` },
   };
@@ -257,7 +268,7 @@ async function actionElevenProvision(sb: any, body: any) {
   // 0. salva prompt/1ª frase se vieram do formulário
   if (typeof body.prompt === "string" && body.prompt.trim()) await setConfig(sb, "VOICE_AGENT_PROMPT", body.prompt.trim());
   if (typeof body.first_message === "string" && body.first_message.trim()) await setConfig(sb, "VOICE_FIRST_MESSAGE", body.first_message.trim());
-  const prompt = (await getIntegrationKey(sb, "VOICE_AGENT_PROMPT")) || DEFAULT_PROMPT;
+  const prompt = currentPrompt(await getIntegrationKey(sb, "VOICE_AGENT_PROMPT"));
   const firstMessage = (await getIntegrationKey(sb, "VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE;
 
   // 1. token das tools (gera se não existir)
