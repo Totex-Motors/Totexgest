@@ -150,7 +150,8 @@ function toolConfig(def: ToolDef, token: string, secretId: string | null) {
           type: "object",
           required: ["caller_phone", ...def.required],
           properties: {
-            caller_phone: { type: "string", description: "Telefone de quem está ligando (preenchido pelo sistema).", dynamic_variable: "system__caller_id" },
+            // A API só aceita UM de: description | dynamic_variable | constant_value… — sem description aqui.
+            caller_phone: { type: "string", dynamic_variable: "system__caller_id" },
             ...def.properties,
           },
         },
