@@ -498,11 +498,14 @@ async function actionElevenOutbound(sb: any, body: any) {
   // ("size of packet larger than MTU. transaction transport error"). Codecs mínimos
   // (G.711) também encurtam o SDP.
   const transport = ["udp", "tcp", "tls"].includes(String(body.transport)) ? String(body.transport) : "tcp";
+  // media_encryption "disabled": com "allowed" a ElevenLabs ofertava RTP/SAVP (SRTP obrigatório)
+  // e a WaVoIP tocava (180) e recusava (603 Decline) ao negociar o áudio. Tronco SIP comum = RTP/AVP.
+  const mediaEncryption = ["disabled", "allowed", "required"].includes(String(body.media_encryption)) ? String(body.media_encryption) : "disabled";
   const r = await elevenFetch(apiKey, `/convai/phone-numbers/${phoneId}`, {
     method: "PATCH",
     body: JSON.stringify({
       outbound_trunk_config: {
-        address, transport, media_encryption: "allowed",
+        address, transport, media_encryption: mediaEncryption,
         credentials: { username: user, password: pass },
         enabled_codecs: ["PCMU/8000", "PCMA/8000"],
       },
@@ -511,7 +514,7 @@ async function actionElevenOutbound(sb: any, body: any) {
   if (!r.ok) return json({ error: `ElevenLabs ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}` }, 502);
   await setConfig(sb, "VOICE_WAVOIP_SIP_USER", user);
   await setConfig(sb, "VOICE_ELEVEN_OUTBOUND_AT", new Date().toISOString());
-  return json({ ok: true, address, transport });
+  return json({ ok: true, address, transport, media_encryption: mediaEncryption });
 }
 
 /** Interruptor mestre + fontes + atraso da ligação automática. */
@@ -533,6 +536,24 @@ async function actionEnqueueTest(sb: any, body: any, userId: string) {
   const { data, error } = await sb.rpc("_nina_enqueue_call", { p_lead_id: leadId, p_reason: "manual", p_delay_minutes: 0, p_requested_by: member?.id || null });
   if (error) return json({ error: error.message }, 400);
   return json({ ok: true, queue_id: data });
+}
+
+/**
+ * Diagnóstico Meta: configurações de ligação do número (status, horário permitido, SIP,
+ * callback) + permissão do telefone informado. Lê direto do Graph com o token da loja.
+ */
+async function actionMetaDiag(sb: any, body: any) {
+  const waToken = await getIntegrationKey(sb, "WHATSAPP_CLOUD_TOKEN", HQ_TENANT);
+  const phoneNumberId = await getIntegrationKey(sb, "WHATSAPP_PHONE_NUMBER_ID", HQ_TENANT);
+  if (!waToken || !phoneNumberId) return json({ error: "Faltam WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID" }, 400);
+  const h = { Authorization: `Bearer ${waToken}` };
+  const settings = await fetch(`https://graph.facebook.com/v22.0/${phoneNumberId}/settings`, { headers: h }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }));
+  const numero = await fetch(`https://graph.facebook.com/v22.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier,status,code_verification_status`, { headers: h }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }));
+  const phone = String(body.phone || "").replace(/\D/g, "");
+  const permission = phone
+    ? await fetch(`https://graph.facebook.com/v22.0/${phoneNumberId}/call_permissions?user_wa_id=${phone}`, { headers: h }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    : null;
+  return json({ numero: numero.data, calling: settings.data?.calling ?? settings.data, permission: permission?.data ?? null, http: { settings: settings.status, numero: numero.status, permission: permission?.status ?? null } });
 }
 
 async function actionTestTools(sb: any) {
@@ -568,6 +589,7 @@ Deno.serve(async (req) => {
       case "eleven_outbound": return await actionElevenOutbound(sb, body);
       case "set_outbound": return await actionSetOutbound(sb, body);
       case "enqueue_test": return await actionEnqueueTest(sb, body, u.user.id);
+      case "meta_diag": return await actionMetaDiag(sb, body);
       default: return json({ error: `action desconhecida: ${action}` }, 400);
     }
   } catch (e) {
