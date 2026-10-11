@@ -59,18 +59,20 @@ Deno.serve(async (req) => {
   const enabled = (await getIntegrationKey(sb, "NINA_OUTBOUND_ENABLED")) === "true";
   if (!enabled) return json({ skipped: "NINA_OUTBOUND_ENABLED != true" });
 
-  // 1. horário comercial
+  // 1. horário comercial — vale pras ligações AUTOMÁTICAS. Pedido manual (botão) liga agora.
   const { data: nbt } = await sb.rpc("next_business_time", { p_ts: new Date().toISOString() });
-  if (nbt && new Date(nbt).getTime() > Date.now() + 60_000) return json({ skipped: "fora do horário comercial", next: nbt });
+  const outsideHours = !!nbt && new Date(nbt).getTime() > Date.now() + 60_000;
 
   // 2. 1 por vez
   const { data: active } = await sb.from("nina_call_queue").select("id").eq("status", "calling").limit(1);
   if (active && active.length) return json({ skipped: "ligação em curso" });
 
-  const { data: row } = await sb.from("nina_call_queue").select("*")
+  let q = sb.from("nina_call_queue").select("*")
     .eq("status", "queued").lte("scheduled_for", new Date().toISOString())
-    .order("scheduled_for", { ascending: true }).limit(1).maybeSingle();
-  if (!row) return json({ idle: true });
+    .order("scheduled_for", { ascending: true }).limit(1);
+  if (outsideHours) q = q.eq("reason", "manual");
+  const { data: row } = await q.maybeSingle();
+  if (!row) return json({ idle: true, outside_hours: outsideHours, next: nbt });
 
   const log = (msg: string) => console.log(`[nina-dialer] ${row.id} ${msg}`);
   const fail = async (status: string, err: string) => {
