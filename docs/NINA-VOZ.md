@@ -141,6 +141,24 @@ volume); pedido de permissão custa como mensagem. Recebida é grátis.
 
 **Fase C: dashboard** (ligações, atendidas, qualificadas, agendadas, % por playbook/loja/promotora, meta e prêmio).
 
+## 2e. Loja exclusiva e voz da ligação (2026-10-13)
+
+Depois do 1º teste de saída (a Nina citou várias lojas, agendou na First Line e falou com a
+voz clonada "Marcão" em vez da Carla), ficaram duas chaves na tabela `config`:
+
+| Chave | Valor hoje | Efeito |
+|---|---|---|
+| `NINA_LOJA_EXCLUSIVA` | tenant da Cardoso Veículos | "Nina, da Cardoso Veículos"; regra no topo do prompt; `consultar_estoque` preso ao `tenant_id` da loja, `agendar_visita` e `info_lojas` só nela; dossiê com alternativas só dela. Vazia = ecossistema todo. |
+| `VOICE_CALL_VOICE_ID` | Carla (`mPDAoQyGzxBSkE0OAOKw`) | Voz da LIGAÇÃO. Sem ela, usa a voz da nota de voz do `agente-stand`. |
+
+Quem aplica no agente da ElevenLabs: `nina-dialer` (`syncNinaAgent`, a cada 2 min pelo cron,
+só quando o hash `VOICE_ELEVEN_SYNC_HASH` muda — vale também pra ligação recebida) e
+`voice-agent-setup` (provisionamento). Manutenção sem ligar: `POST nina-dialer`
+`{ "action": "ensure_agent" }` com `x-voice-token`. Código em `_shared/nina-store.ts`.
+
+Outros ajustes: busca "Tanque" → "Tank" (transcrição do GWM Tank 300); se a consulta de
+estoque falhar, a Nina não diz que o carro não existe.
+
 ## 3. Configuração na WaVoIP (Marco + suporte)
 
 1. Contratar **1 canal do tipo `OFFICIAL`** (`callType: "OFFICIAL"`). Perguntar preço e se cobre a Business Calling API.

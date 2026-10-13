@@ -15,6 +15,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { getNinaExclusiveStore, ninaBrand } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -231,7 +232,7 @@ async function settleQueue(sb: any, conversationId: string, outcome: string, dur
       nome = String(l?.name || "").trim().split(/\s+/)[0];
       if (/^\+?\d+$/.test(nome) || /lead sem nome/i.test(nome)) nome = "";
     }
-    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da Totex Motors. Tentei te ligar agora e não consegui. Qual horário fica bom pra eu te ligar? 😊`;
+    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da ${ninaBrand(await getNinaExclusiveStore(sb))}. Tentei te ligar agora e não consegui. Qual horário fica bom pra eu te ligar? 😊`;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },

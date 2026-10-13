@@ -24,6 +24,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, invalidateIntegrationKeyCache } from "../_shared/config.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -288,8 +289,10 @@ async function actionElevenProvision(sb: any, body: any) {
   // 0. salva prompt/1ª frase se vieram do formulário
   if (typeof body.prompt === "string" && body.prompt.trim()) await setConfig(sb, "VOICE_AGENT_PROMPT", body.prompt.trim());
   if (typeof body.first_message === "string" && body.first_message.trim()) await setConfig(sb, "VOICE_FIRST_MESSAGE", body.first_message.trim());
-  const prompt = currentPrompt(await getIntegrationKey(sb, "VOICE_AGENT_PROMPT"));
-  const firstMessage = (await getIntegrationKey(sb, "VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE;
+  // Loja exclusiva (config NINA_LOJA_EXCLUSIVA): regra no topo do prompt + "Nina, da <loja>".
+  const store = await getNinaExclusiveStore(sb);
+  const prompt = applyExclusivity(currentPrompt(await getIntegrationKey(sb, "VOICE_AGENT_PROMPT")), store);
+  const firstMessage = brandFirstMessage((await getIntegrationKey(sb, "VOICE_FIRST_MESSAGE")) || DEFAULT_FIRST_MESSAGE, store);
 
   // 1. token das tools (gera se não existir)
   let token = await getIntegrationKey(sb, "VOICE_AGENT_TOKEN");
@@ -299,7 +302,8 @@ async function actionElevenProvision(sb: any, body: any) {
   const slug = (await getIntegrationKey(sb, "VOICE_AGENT_SLUG")) || "agente-stand";
   const { data: agentRow } = await sb.from("agents_registry").select("settings").eq("slug", slug).limit(1).maybeSingle();
   const vr = ((agentRow?.settings as any)?.voice_reply || {}) as any;
-  const voiceId = String(body.voice_id || vr.voice || "").trim();
+  // Voz da LIGAÇÃO: config VOICE_CALL_VOICE_ID (ex.: Carla) > voice_id do pedido > voz da nota de voz.
+  const voiceId = String(body.voice_id || (await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || vr.voice || "").trim();
   if (!voiceId) return json({ error: "Sem Voice ID: cadastre a voz na aba Humanização do agente (Responder por áudio) ou informe voice_id." }, 400);
   const tune = { stability: 0.4, similarity: 0.85, speed: 1.0, ...(vr.eleven || {}) };
 

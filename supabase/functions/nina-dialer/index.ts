@@ -20,6 +20,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, ninaBrand, BLOCK_VERSION } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,9 +31,9 @@ const STALE_CALLING_MIN = 15;
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
-function firstMessageFor(playbook: string | null, nome: string, extra: { promotora?: string | null; local?: string | null; carro?: string | null; loja?: string | null; disponivel?: boolean | null }): string {
+function firstMessageFor(playbook: string | null, nome: string, extra: { promotora?: string | null; local?: string | null; carro?: string | null; loja?: string | null; disponivel?: boolean | null; marca?: string }): string {
   const oi = nome ? `Oi, ${nome}! ` : "Oi! ";
-  const base = `${oi}Aqui é a Nina, da Totex Motors. Tudo bem? `;
+  const base = `${oi}Aqui é a Nina, da ${extra.marca || "Totex Motors"}. Tudo bem? `;
   switch (playbook) {
     case "vender":
       return base + (extra.promotora ? `Você conversou com a ${extra.promotora}${extra.local ? ` no ${extra.local}` : " no nosso stand"} sobre vender o seu carro, né? Posso te explicar rapidinho como funciona?` : "Você deixou seu contato com a gente sobre vender o seu carro, né? Posso te explicar rapidinho como funciona?");
@@ -48,18 +49,44 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
   }
 }
 
-/** Libera no agente a 1ª frase vinda do discador (senão a ElevenLabs derruba a ligação com
- *  "Override for field 'first_message' is not allowed by config"). Faz 1x por agente. */
-async function ensureAgentOverrides(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail?: string }> {
-  if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_OVERRIDES_OK")) === agentId) return { ok: true, detail: "já liberado" };
+/**
+ * Mantém o agente da ElevenLabs alinhado com o Totexgest (só quando algo muda — hash em
+ * config VOICE_ELEVEN_SYNC_HASH):
+ *  - libera a 1ª frase vinda do discador (senão: "Override for field 'first_message' is
+ *    not allowed by config" e a ligação cai);
+ *  - voz da LIGAÇÃO = config VOICE_CALL_VOICE_ID (ex.: Carla), se preenchida;
+ *  - LOJA EXCLUSIVA (config NINA_LOJA_EXCLUSIVA): bloco de regra no topo do prompt e
+ *    "Nina, da <loja>" na 1ª frase da ligação recebida (_shared/nina-store.ts).
+ */
+async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail: string }> {
+  const voiceId = String((await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "").trim();
+  const store = await getNinaExclusiveStore(sb);
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1"].join("|");
+  if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
+
+  const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
+  if (!g.ok) return { ok: false, detail: `GET agente ${g.status}` };
+  const agent = await g.json();
+  const ag = agent?.conversation_config?.agent || {};
+  const pr = ag.prompt || {};
+  const conversation_config: Record<string, unknown> = {
+    agent: {
+      first_message: brandFirstMessage(String(ag.first_message || ""), store),
+      prompt: { prompt: applyExclusivity(String(pr.prompt || ""), store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
+    },
+  };
+  if (voiceId) conversation_config.tts = { voice_id: voiceId };
   const r = await fetch(`${ELEVEN}/convai/agents/${agentId}`, {
     method: "PATCH",
     headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ platform_settings: { overrides: { conversation_config_override: { agent: { first_message: true } } } } }),
+    body: JSON.stringify({
+      conversation_config,
+      platform_settings: { overrides: { conversation_config_override: { agent: { first_message: true } } } },
+    }),
   });
-  if (!r.ok) return { ok: false, detail: `ElevenLabs ${r.status}: ${(await r.text()).slice(0, 200)}` };
-  await sb.from("config").upsert({ key: "VOICE_ELEVEN_OVERRIDES_OK", value: agentId }, { onConflict: "key" });
-  return { ok: true, detail: "liberado agora" };
+  if (!r.ok) return { ok: false, detail: `PATCH agente ${r.status}: ${(await r.text()).slice(0, 200)}` };
+  await sb.from("config").upsert({ key: "VOICE_ELEVEN_SYNC_HASH", value: hash }, { onConflict: "key" });
+  return { ok: true, detail: `sincronizado (voz ${voiceId || "padrão"}, loja ${store?.name || "todas"})` };
 }
 
 Deno.serve(async (req) => {
@@ -79,7 +106,18 @@ Deno.serve(async (req) => {
     const k = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
     const a = await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID");
     if (!k || !a) return json({ ok: false, error: "ElevenLabs não provisionada" }, 400);
-    return json(await ensureAgentOverrides(sb, k, a, true));
+    return json(await syncNinaAgent(sb, k, a, true));
+  }
+
+  // Agente alinhado (voz/loja/1ª frase) — barato: só age quando a config muda. Roda mesmo com
+  // a chave de ligações desligada, pra ligação RECEBIDA também pegar a mudança.
+  {
+    const k = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+    const a = await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID");
+    if (k && a) {
+      const sync = await syncNinaAgent(sb, k, a).catch((e) => ({ ok: false, detail: String(e) }));
+      if (!sync.ok || sync.detail !== "em dia") console.log(`[nina-dialer] agente: ${sync.detail}`);
+    }
   }
 
   const enabled = (await getIntegrationKey(sb, "NINA_OUTBOUND_ENABLED")) === "true";
@@ -129,6 +167,7 @@ Deno.serve(async (req) => {
 
   const brief = await buildLeadBrief(sb, row.lead_id).catch(() => null);
   const nome = brief?.primeiro_nome || "";
+  const store = await getNinaExclusiveStore(sb);
 
   if (!canCall) {
     if (row.permission_requested_at && Date.now() - new Date(row.permission_requested_at).getTime() < 7 * 86400_000 && row.status === "queued" && row.attempts === 0 && !canAsk) {
@@ -137,7 +176,7 @@ Deno.serve(async (req) => {
     if (!canAsk) return fail("expired", `sem permissão e sem poder pedir (${status})`);
     // pede permissão (free-form: precisa da janela de 24h aberta — o lead acabou de falar com a gente)
     const assunto = row.playbook === "vender" ? "a venda do seu carro" : row.playbook === "trocar" ? "a troca do seu carro" : row.playbook === "comprar" ? (brief?.carro_interesse ? `o ${brief.carro_interesse}` : "o carro que você viu") : "o seu carro";
-    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da Totex Motors. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
+    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da ${ninaBrand(store)}. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
@@ -151,14 +190,13 @@ Deno.serve(async (req) => {
   }
 
   // 5. liga
-  const ov = await ensureAgentOverrides(sb, elevenKey, agentId);
-  if (!ov.ok) log(`aviso: não liberei a 1ª frase no agente (${ov.detail})`);
   const attempts = Number(row.attempts || 0) + 1;
   await sb.from("nina_call_queue").update({ status: "calling", attempts, last_attempt_at: new Date().toISOString(), playbook: brief?.playbook || row.playbook }).eq("id", row.id);
   const firstMessage = firstMessageFor(brief?.playbook || row.playbook, nome, {
     promotora: brief?.promotora ? brief.promotora.split(/\s+/)[0] : null, local: brief?.local_captacao || null,
-    carro: brief?.carro_do_cliente?.descricao || brief?.carro_interesse || null, loja: brief?.loja_referencia || null,
+    carro: brief?.carro_do_cliente?.descricao || brief?.carro_interesse || null, loja: store ? null : (brief?.loja_referencia || null),
     disponivel: brief?.carro_interesse_disponivel ?? null,
+    marca: ninaBrand(store),
   });
   const call = await fetch(`${ELEVEN}/convai/sip-trunk/outbound-call`, {
     method: "POST",
