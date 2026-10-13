@@ -22,6 +22,8 @@ export type AttendanceCandidate = {
 export type LinkAttendanceResult = {
   ok: boolean;
   already: boolean;
+  /** já vinculado à própria promotora logada */
+  mine?: boolean;
   master_lead_id?: string;
   store_lead_id: string;
   store_name: string | null;

@@ -95,8 +95,10 @@ export default function CaptureLinkAttendance() {
             {done.already ? "Esse atendimento já estava vinculado" : "Atendimento vinculado!"}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {done.already
-              ? <>Já havia uma promotora {done.promoter_name ? <>(<strong>{done.promoter_name}</strong>)</> : null} nesse cliente da <strong>{done.store_name ?? "loja"}</strong>. Vale quem chegou primeiro.</>
+            {done.already && done.mine
+              ? <>Esse cliente da <strong>{done.store_name ?? "loja"}</strong> já está no seu nome.</>
+              : done.already
+              ? <>Já havia uma promotora {done.promoter_name ? <>(<strong>{done.promoter_name}</strong>)</> : null} nesse cliente da <strong>{done.store_name ?? "loja"}</strong>. Vale quem chegou primeiro. O vendedor da loja não conta: só promotora.</>
               : <>Pronto — o cliente da <strong>{done.store_name ?? "loja"}</strong> agora está no seu nome, sem duplicar o cadastro.</>}
           </p>
         </div>
