@@ -166,6 +166,14 @@ export default function CaptureHome() {
               </div>
             </div>
           )}
+          {/* Compradores (cadastro "Comprar" + vínculo de atendimento) — contam à parte:
+              a meta acima é de leads de VENDEDOR válidos. */}
+          <Link to="/captacao/leads" className="mt-3 flex items-center justify-center gap-1.5 rounded-md bg-muted/60 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <span>Compradores atendidos:</span>
+            <span>hoje <strong className="text-foreground tabular-nums">{stats.isLoading ? "…" : (s?.compradores_hoje ?? 0)}</strong></span>
+            <span>· semana <strong className="text-foreground tabular-nums">{stats.isLoading ? "…" : (s?.compradores_semana ?? 0)}</strong></span>
+            <span>· mês <strong className="text-foreground tabular-nums">{stats.isLoading ? "…" : (s?.compradores_mes ?? 0)}</strong></span>
+          </Link>
           {!stats.isLoading && (s?.invalidos_semana ?? 0) > 0 && (
             <Link to="/captacao/leads" className="mt-3 block text-center text-[11px] text-amber-700 dark:text-amber-400">
               {s!.invalidos_semana} lead{s!.invalidos_semana! > 1 ? "s" : ""} da semana ainda não conta{s!.invalidos_semana! > 1 ? "m" : ""} — ver o que falta

@@ -193,6 +193,10 @@ export interface CaptureHomeStats {
   /** meta diária de leads válidos (config do tenant ou meta semanal ÷ 5) */
   meta_diaria?: number;
   meta_label?: string | null;
+  /** Compradores que a promotora cadastrou/vinculou (não entram na meta de vendedor) */
+  compradores_hoje?: number;
+  compradores_semana?: number;
+  compradores_mes?: number;
   wallet?: { pending_cents: number; earned_cents: number; vouchers_pending: number };
 }
 
