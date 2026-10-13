@@ -225,8 +225,10 @@ function toolConfig(def: ToolDef, token: string, secretId: string | null) {
           properties: {
             // A API só aceita UM de: description | dynamic_variable | constant_value… — sem description aqui.
             caller_phone: { type: "string", dynamic_variable: "system__caller_id" },
-            // Ligação de SAÍDA (nina-dialer): o cliente vem aqui (system__caller_id seria o nosso número).
-            customer_phone: { type: "string", dynamic_variable: "customer_phone" },
+            // Número que RECEBEU a ligação. Na de SAÍDA é o cliente (system__caller_id é o nosso).
+            // Variável de sistema: sempre existe. (customer_phone customizada derrubava a ligação
+            // RECEBIDA com "Missing required dynamic variables in tools" — placeholder não vale em SIP.)
+            called_phone: { type: "string", dynamic_variable: "system__called_number" },
             ...def.properties,
           },
         },

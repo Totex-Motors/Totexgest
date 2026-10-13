@@ -61,7 +61,7 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
 async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail: string }> {
   const voiceId = String((await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "").trim();
   const store = await getNinaExclusiveStore(sb);
-  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1"].join("|");
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1"].join("|");
   if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
 
   const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
@@ -94,8 +94,39 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
     }),
   });
   if (!r.ok) return { ok: false, detail: `PATCH agente ${r.status}: ${(await r.text()).slice(0, 200)}` };
+  const tools = await fixToolPhones(elevenKey, (pr.tool_ids || []) as string[]);
+  if (!tools.ok) return { ok: false, detail: `tools: ${tools.detail}` };
   await sb.from("config").upsert({ key: "VOICE_ELEVEN_SYNC_HASH", value: hash }, { onConflict: "key" });
   return { ok: true, detail: `sincronizado (voz ${voiceId || "padrão"}, loja ${store?.name || "todas"})` };
+}
+
+/**
+ * Tools antigas pediam a dynamic variable customizada customer_phone → a ElevenLabs derrubava a
+ * ligação RECEBIDA ("Missing required dynamic variables in tools"; placeholder não vale em SIP).
+ * Troca por called_phone = system__called_number (variável de sistema, sempre existe).
+ */
+async function fixToolPhones(elevenKey: string, toolIds: string[]): Promise<{ ok: boolean; detail: string }> {
+  let fixed = 0;
+  for (const id of toolIds) {
+    const g = await fetch(`${ELEVEN}/convai/tools/${id}`, { headers: { "xi-api-key": elevenKey } });
+    if (!g.ok) return { ok: false, detail: `GET tool ${id} ${g.status}` };
+    const t = await g.json();
+    const tc = t?.tool_config;
+    const schema = tc?.api_schema?.request_body_schema;
+    const props = schema?.properties;
+    if (!props || !props.customer_phone) continue;
+    delete props.customer_phone;
+    props.called_phone = { type: "string", dynamic_variable: "system__called_number" };
+    if (Array.isArray(schema.required)) schema.required = schema.required.filter((k: string) => k !== "customer_phone");
+    const p = await fetch(`${ELEVEN}/convai/tools/${id}`, {
+      method: "PATCH",
+      headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ tool_config: tc }),
+    });
+    if (!p.ok) return { ok: false, detail: `PATCH tool ${id} ${p.status}: ${(await p.text()).slice(0, 200)}` };
+    fixed++;
+  }
+  return { ok: true, detail: `${fixed} tool(s) corrigida(s)` };
 }
 
 Deno.serve(async (req) => {
