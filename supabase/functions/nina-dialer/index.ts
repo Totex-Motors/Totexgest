@@ -61,7 +61,7 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
 async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail: string }> {
   const voiceId = String((await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "").trim();
   const store = await getNinaExclusiveStore(sb);
-  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1"].join("|");
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1"].join("|");
   if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
 
   const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
@@ -73,6 +73,15 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
     agent: {
       first_message: brandFirstMessage(String(ag.first_message || ""), store),
       prompt: { prompt: applyExclusivity(String(pr.prompt || ""), store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
+      // customer_phone vazio derruba a ligação RECEBIDA ("Missing required dynamic variables in
+      // tools") — placeholder não-vazio; voice-agent-tools ignora o que não for telefone.
+      dynamic_variables: {
+        dynamic_variable_placeholders: {
+          customer_name: "", playbook: "descobrir", reason: "",
+          ...((ag.dynamic_variables?.dynamic_variable_placeholders as Record<string, unknown>) || {}),
+          customer_phone: "desconhecido",
+        },
+      },
     },
   };
   if (voiceId) conversation_config.tts = { voice_id: voiceId };

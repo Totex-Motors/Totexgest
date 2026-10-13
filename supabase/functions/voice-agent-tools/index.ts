@@ -198,7 +198,10 @@ Deno.serve(async (req) => {
   // Ligação RECEBIDA: caller_phone = system__caller_id (o cliente). Ligação de SAÍDA (Fase B):
   // system__caller_id é o NOSSO número, então o cliente vem em customer_phone (dynamic var
   // passada pelo nina-dialer). customer_phone tem prioridade quando preenchida.
-  const phone = normalizePhone(args.customer_phone || args.caller_phone || args.phone || args.system__caller_id);
+  // customer_phone tem placeholder "desconhecido" (a ElevenLabs derruba a ligação RECEBIDA se a
+  // dynamic variable da tool estiver vazia) → vale o 1º valor que for telefone de verdade.
+  const phone = [args.customer_phone, args.caller_phone, args.phone, args.system__caller_id]
+    .map((v) => normalizePhone(v)).find((p) => p.length >= 10) || "";
 
   console.log(`[voice-tools] ${tool} phone=${phone || "-"} args=${JSON.stringify(args).slice(0, 300)}`);
 
