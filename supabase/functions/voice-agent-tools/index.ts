@@ -20,6 +20,9 @@
  * mesmo agente do texto (config VOICE_AGENT_SLUG, padrão agente-stand), pra que
  * `agendar-visita` e `consultar-estoque` funcionem IGUAL ao WhatsApp de texto.
  *
+ * LOJA EXCLUSIVA (config NINA_LOJA_EXCLUSIVA, _shared/nina-store.ts): estoque, agendamento
+ * e info_lojas ficam presos a essa loja, mesmo que o modelo peça outra.
+ *
  * Regras: nunca envia mensagem pra ninguém daqui; lead entra pela porta única
  * find_or_create_lead (lead_kind buyer, source 'ligacao_ia').
  */
@@ -28,6 +31,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief, appendAgentNote } from "../_shared/lead-brief.ts";
+import { getNinaExclusiveStore, normalizeStockSearch } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -166,7 +170,9 @@ function trimVehicles(result: any, busca: string) {
       veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez (modelo, ano, preço, loja) e pergunte qual interessa." : null,
       result?.observacao || null,
       motosRemovidas > 0 ? `${motosRemovidas} moto(s) ficaram de fora; só mencione se o cliente quiser moto.` : null,
-      "Se o cliente citar um modelo ou versão específica, chame consultar_estoque de novo com esse termo exato.",
+      result?.error
+        ? "A CONSULTA DE ESTOQUE FALHOU (erro técnico): não diga que o carro não existe nem que saiu; diga que vai confirmar com a equipe e siga pro agendamento."
+        : "Se o cliente citar um modelo ou versão específica, chame consultar_estoque de novo com esse termo exato.",
     ].filter(Boolean).join(" "),
     ...(result?.error ? { error: result.error } : {}),
   };
@@ -204,6 +210,23 @@ Deno.serve(async (req) => {
 
       case "info_lojas": {
         const raw = await getIntegrationKey(sb, "VOICE_LOJAS_INFO");
+        const excl = await getNinaExclusiveStore(sb);
+        if (excl) {
+          let info: unknown = null;
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              const arr = Array.isArray(parsed) ? parsed : [parsed];
+              const nrm = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              info = arr.find((x: any) => nrm(String(x?.nome || x?.name || "")).includes(nrm(excl.name))) || null;
+            } catch { /* texto livre: ignora */ }
+          }
+          return json({
+            lojas: [info || { nome: excl.name }],
+            regra: `Você atende EXCLUSIVAMENTE a ${excl.name}. Não cite nem agende em outra loja.`,
+            ...(info ? {} : { aviso: "Endereço e horário não cadastrados. Diga que a equipe confirma junto com o agendamento." }),
+          });
+        }
         if (raw) {
           try { return json({ lojas: JSON.parse(raw) }); } catch { return json({ lojas: raw }); }
         }
@@ -248,6 +271,9 @@ Deno.serve(async (req) => {
       case "consultar_estoque": {
         const ctx = phone ? await ensureCallerContext(sb, phone, args.nome_cliente || null) : null;
         const { caller_phone: _c, customer_phone: _cp, phone: _p, system__caller_id: _s, nome_cliente: _n, ...rest } = args;
+        for (const k of ["busca", "modelo"]) if (rest[k]) rest[k] = normalizeStockSearch(String(rest[k]));
+        const excl = await getNinaExclusiveStore(sb);
+        if (excl) { rest.tenant_id = excl.tenantId; rest.loja = excl.name; }
         // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
         const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
         return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
@@ -262,6 +288,8 @@ Deno.serve(async (req) => {
           const { data: l } = await sb.from("leads").select("name").eq("id", ctx.leadId).maybeSingle();
           if (l?.name) rest.nome_cliente = l.name;
         }
+        const exclA = await getNinaExclusiveStore(sb);
+        if (exclA) rest.loja = exclA.name;
         rest.observacoes = [rest.observacoes, "Agendado por ligação (Nina voz)"].filter(Boolean).join(" — ");
         const result = await callEdge("agendar-visita", { arguments: rest, session_id: ctx.sessionId });
         return json(result);

@@ -16,6 +16,7 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "./config.ts";
+import { getNinaExclusiveStore } from "./nina-store.ts";
 
 export type Playbook = "vender" | "trocar" | "comprar" | "descobrir";
 
@@ -157,6 +158,11 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     lojaRef = lojaRef || wm.owner_label || wm.loja || null;
   }
 
+  // Nina exclusiva de uma loja (config NINA_LOJA_EXCLUSIVA): estoque e alternativas só dela.
+  const excl = await getNinaExclusiveStore(sb).catch(() => null);
+  if (excl) lojaRef = excl.name;
+  const escopo = excl ? { tenant_id: excl.tenantId } : {};
+
   // ── o carro de interesse AINDA está no estoque? (o lead pode ter sido captado dias atrás) ──
   let disponivel: boolean | null = null;
   const alternativas: string[] = [];
@@ -166,7 +172,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
       const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/consultar-estoque`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "" },
-        body: JSON.stringify({ arguments: vehicleId ? { vehicle_id: vehicleId, busca: carroInteresse, limite: 6 } : { busca: carroInteresse, ...(lojaRef ? { loja: lojaRef } : {}), limite: 6 }, session_id: null, user_id: null }),
+        body: JSON.stringify({ arguments: vehicleId ? { vehicle_id: vehicleId, busca: carroInteresse, limite: 6 } : { busca: carroInteresse, ...(lojaRef ? { loja: lojaRef } : {}), ...escopo, limite: 6 }, session_id: null, user_id: null }),
       });
       const est = await r.json().catch(() => ({}));
       const list: any[] = Array.isArray(est?.veiculos) ? est.veiculos : [];
@@ -180,7 +186,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
           const r2 = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/consultar-estoque`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "" },
-            body: JSON.stringify({ arguments: { busca: words[0] || carroInteresse, limite: 6 }, session_id: null, user_id: null }),
+            body: JSON.stringify({ arguments: { busca: words[0] || carroInteresse, ...escopo, limite: 6 }, session_id: null, user_id: null }),
           });
           const est2 = await r2.json().catch(() => ({}));
           for (const v of (Array.isArray(est2?.veiculos) ? est2.veiculos : []).filter((v: any) => !/moto/i.test(String(v.tipo || ""))).slice(0, 3)) {
