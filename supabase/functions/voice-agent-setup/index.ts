@@ -37,6 +37,13 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+// O discador (nina-dialer) manda a 1ª frase por playbook em
+// conversation_config_override.agent.first_message — a ElevenLabs derruba a ligação
+// ("Override for field 'first_message' is not allowed by config") se o agente não liberar.
+const NINA_PLATFORM_SETTINGS = {
+  overrides: { conversation_config_override: { agent: { first_message: true } } },
+};
+
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -351,11 +358,11 @@ async function actionElevenProvision(sb: any, body: any) {
   };
   let agentId: string | null = (await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID")) || null;
   let r = agentId
-    ? await elevenFetch(apiKey, `/convai/agents/${agentId}`, { method: "PATCH", body: JSON.stringify({ name: "Nina — Totex Motors", conversation_config }) })
-    : await elevenFetch(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify({ name: "Nina — Totex Motors", tags: ["totexgest", "voz"], conversation_config }) });
+    ? await elevenFetch(apiKey, `/convai/agents/${agentId}`, { method: "PATCH", body: JSON.stringify({ name: "Nina — Totex Motors", conversation_config, platform_settings: NINA_PLATFORM_SETTINGS }) })
+    : await elevenFetch(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify({ name: "Nina — Totex Motors", tags: ["totexgest", "voz"], conversation_config, platform_settings: NINA_PLATFORM_SETTINGS }) });
   if (!r.ok && agentId && r.status === 404) {
     agentId = null;
-    r = await elevenFetch(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify({ name: "Nina — Totex Motors", tags: ["totexgest", "voz"], conversation_config }) });
+    r = await elevenFetch(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify({ name: "Nina — Totex Motors", tags: ["totexgest", "voz"], conversation_config, platform_settings: NINA_PLATFORM_SETTINGS }) });
   }
   if (!r.ok) return json({ error: `agente: ${r.status} ${JSON.stringify(r.data).slice(0, 400)}`, log }, 502);
   agentId = r.data?.agent_id || agentId;

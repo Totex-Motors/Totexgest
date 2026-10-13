@@ -48,6 +48,20 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
   }
 }
 
+/** Libera no agente a 1ª frase vinda do discador (senão a ElevenLabs derruba a ligação com
+ *  "Override for field 'first_message' is not allowed by config"). Faz 1x por agente. */
+async function ensureAgentOverrides(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail?: string }> {
+  if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_OVERRIDES_OK")) === agentId) return { ok: true, detail: "já liberado" };
+  const r = await fetch(`${ELEVEN}/convai/agents/${agentId}`, {
+    method: "PATCH",
+    headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ platform_settings: { overrides: { conversation_config_override: { agent: { first_message: true } } } } }),
+  });
+  if (!r.ok) return { ok: false, detail: `ElevenLabs ${r.status}: ${(await r.text()).slice(0, 200)}` };
+  await sb.from("config").upsert({ key: "VOICE_ELEVEN_OVERRIDES_OK", value: agentId }, { onConflict: "key" });
+  return { ok: true, detail: "liberado agora" };
+}
+
 Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const expected = await getIntegrationKey(sb, "VOICE_AGENT_TOKEN");
@@ -58,6 +72,15 @@ Deno.serve(async (req) => {
   const staleBefore = new Date(Date.now() - STALE_CALLING_MIN * 60_000).toISOString();
   await sb.from("nina_call_queue").update({ status: "no_answer", last_error: "sem retorno da ligação em 15 min" })
     .eq("status", "calling").lt("last_attempt_at", staleBefore);
+
+  // Manutenção: { action: "ensure_agent" } só libera a 1ª frase no agente (não liga pra ninguém).
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  if (body?.action === "ensure_agent") {
+    const k = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+    const a = await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID");
+    if (!k || !a) return json({ ok: false, error: "ElevenLabs não provisionada" }, 400);
+    return json(await ensureAgentOverrides(sb, k, a, true));
+  }
 
   const enabled = (await getIntegrationKey(sb, "NINA_OUTBOUND_ENABLED")) === "true";
   if (!enabled) return json({ skipped: "NINA_OUTBOUND_ENABLED != true" });
@@ -128,6 +151,8 @@ Deno.serve(async (req) => {
   }
 
   // 5. liga
+  const ov = await ensureAgentOverrides(sb, elevenKey, agentId);
+  if (!ov.ok) log(`aviso: não liberei a 1ª frase no agente (${ov.detail})`);
   const attempts = Number(row.attempts || 0) + 1;
   await sb.from("nina_call_queue").update({ status: "calling", attempts, last_attempt_at: new Date().toISOString(), playbook: brief?.playbook || row.playbook }).eq("id", row.id);
   const firstMessage = firstMessageFor(brief?.playbook || row.playbook, nome, {
