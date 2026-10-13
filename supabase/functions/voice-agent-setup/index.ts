@@ -24,7 +24,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, invalidateIntegrationKeyCache } from "../_shared/config.ts";
-import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore } from "../_shared/nina-store.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -208,13 +208,17 @@ function randomToken(): string {
   return "nina_" + Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-function toolConfig(def: ToolDef, token: string, secretId: string | null) {
+function toolConfig(def: ToolDef, token: string, secretId: string | null, toolSound: string | null = null) {
   const headerValue = secretId ? { secret_id: secretId } : token;
+  const sound = TOOLS_WITH_SOUND.includes(def.name) ? toolSound : null;
   return {
     tool_config: {
       type: "webhook",
       name: def.name,
       description: def.description,
+      // teclado digitando enquanto a ferramenta roda (_shared/nina-store.ts → getNinaSounds)
+      tool_call_sound: sound,
+      tool_call_sound_behavior: "always",
       api_schema: {
         url: `${TOOLS_URL}/${def.name}`,
         method: "POST",
@@ -225,8 +229,10 @@ function toolConfig(def: ToolDef, token: string, secretId: string | null) {
           properties: {
             // A API só aceita UM de: description | dynamic_variable | constant_value… — sem description aqui.
             caller_phone: { type: "string", dynamic_variable: "system__caller_id" },
-            // Ligação de SAÍDA (nina-dialer): o cliente vem aqui (system__caller_id seria o nosso número).
-            customer_phone: { type: "string", dynamic_variable: "customer_phone" },
+            // Número que RECEBEU a ligação. Na de SAÍDA é o cliente (system__caller_id é o nosso).
+            // Variável de sistema: sempre existe. (customer_phone customizada derrubava a ligação
+            // RECEBIDA com "Missing required dynamic variables in tools" — placeholder não vale em SIP.)
+            called_phone: { type: "string", dynamic_variable: "system__called_number" },
             ...def.properties,
           },
         },
@@ -317,16 +323,17 @@ async function actionElevenProvision(sb: any, body: any) {
     else log.push(`secret falhou (${r.status}) — header vai em texto`);
   }
 
-  // 4. tools (cria ou atualiza)
+  // 4. tools (cria ou atualiza) — com som de teclado nas de consulta/agendamento
+  const sounds = await getNinaSounds(sb);
   const toolIds: Record<string, string> = JSON.parse((await getIntegrationKey(sb, "VOICE_ELEVEN_TOOL_IDS")) || "{}");
   for (const def of TOOL_DEFS) {
-    let cfgBody = toolConfig(def, token, secretId);
+    let cfgBody = toolConfig(def, token, secretId, sounds.toolSound);
     let r = toolIds[def.name]
       ? await elevenFetch(apiKey, `/convai/tools/${toolIds[def.name]}`, { method: "PATCH", body: JSON.stringify(cfgBody) })
       : await elevenFetch(apiKey, "/convai/tools", { method: "POST", body: JSON.stringify(cfgBody) });
     if (!r.ok && secretId && r.status === 422) {
       // formato do secret no header pode variar entre versões da API → tenta texto puro
-      cfgBody = toolConfig(def, token, null);
+      cfgBody = toolConfig(def, token, null, sounds.toolSound);
       r = toolIds[def.name]
         ? await elevenFetch(apiKey, `/convai/tools/${toolIds[def.name]}`, { method: "PATCH", body: JSON.stringify(cfgBody) })
         : await elevenFetch(apiKey, "/convai/tools", { method: "POST", body: JSON.stringify(cfgBody) });
@@ -354,6 +361,8 @@ async function actionElevenProvision(sb: any, body: any) {
       stability: Number(tune.stability), similarity_boost: Number(tune.similarity), speed: Number(tune.speed),
     },
     turn: { turn_timeout: 7, turn_eagerness: "normal" },
+    // clima de escritório: som de fundo bem baixo (config VOICE_BACKGROUND_SOUND/VOLUME)
+    conversation: { background_sound: sounds.background },
   };
   // Placeholders das dynamic variables: na ligação RECEBIDA ninguém preenche customer_phone.
   // Vazio a ElevenLabs derruba a chamada ("Missing required dynamic variables in tools") →

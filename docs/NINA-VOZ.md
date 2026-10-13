@@ -156,6 +156,13 @@ só quando o hash `VOICE_ELEVEN_SYNC_HASH` muda — vale também pra ligação r
 `voice-agent-setup` (provisionamento). Manutenção sem ligar: `POST nina-dialer`
 `{ "action": "ensure_agent" }` com `x-voice-token`. Código em `_shared/nina-store.ts`.
 
+Clima de escritório (pedido do Marco): som de fundo da ElevenLabs e teclado digitando nas
+tools `identificar_cliente`, `consultar_estoque`, `agendar_visita` e `info_lojas` (toca
+mesmo com a Nina em silêncio). Chaves: `VOICE_BACKGROUND_SOUND` (padrão `office1`; outros
+presets `office2`, `restaurant`, `city`, `typing`, `elevator1-4`; `off` desliga),
+`VOICE_BACKGROUND_VOLUME` (padrão `0.08`, faixa 0.01–1) e `VOICE_TOOL_SOUND` (padrão
+`typing`; `off` desliga). Aplicado pelo `syncNinaAgent` quando a chave muda.
+
 Outros ajustes: busca "Tanque" → "Tank" (transcrição do GWM Tank 300); se a consulta de
 estoque falhar, a Nina não diz que o carro não existe.
 

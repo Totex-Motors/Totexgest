@@ -20,7 +20,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
-import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, ninaBrand, BLOCK_VERSION } from "../_shared/nina-store.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -61,7 +61,8 @@ function firstMessageFor(playbook: string | null, nome: string, extra: { promoto
 async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force = false): Promise<{ ok: boolean; detail: string }> {
   const voiceId = String((await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "").trim();
   const store = await getNinaExclusiveStore(sb);
-  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1"].join("|");
+  const sounds = await getNinaSounds(sb);
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1", sounds.key].join("|");
   if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
 
   const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
@@ -85,6 +86,8 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
     },
   };
   if (voiceId) conversation_config.tts = { voice_id: voiceId };
+  // clima de escritório (som de fundo bem baixo) — config VOICE_BACKGROUND_SOUND/VOLUME
+  conversation_config.conversation = { background_sound: sounds.background };
   const r = await fetch(`${ELEVEN}/convai/agents/${agentId}`, {
     method: "PATCH",
     headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
@@ -94,8 +97,51 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
     }),
   });
   if (!r.ok) return { ok: false, detail: `PATCH agente ${r.status}: ${(await r.text()).slice(0, 200)}` };
+  const tools = await fixToolPhones(elevenKey, (pr.tool_ids || []) as string[], sounds.toolSound);
+  if (!tools.ok) return { ok: false, detail: `tools: ${tools.detail}` };
   await sb.from("config").upsert({ key: "VOICE_ELEVEN_SYNC_HASH", value: hash }, { onConflict: "key" });
   return { ok: true, detail: `sincronizado (voz ${voiceId || "padrão"}, loja ${store?.name || "todas"})` };
+}
+
+/**
+ * Tools antigas pediam a dynamic variable customizada customer_phone → a ElevenLabs derrubava a
+ * ligação RECEBIDA ("Missing required dynamic variables in tools"; placeholder não vale em SIP).
+ * Troca por called_phone = system__called_number (variável de sistema, sempre existe).
+ */
+async function fixToolPhones(elevenKey: string, toolIds: string[], toolSound: string | null = null): Promise<{ ok: boolean; detail: string }> {
+  let fixed = 0;
+  for (const id of toolIds) {
+    const g = await fetch(`${ELEVEN}/convai/tools/${id}`, { headers: { "xi-api-key": elevenKey } });
+    if (!g.ok) return { ok: false, detail: `GET tool ${id} ${g.status}` };
+    const t = await g.json();
+    const tc = t?.tool_config;
+    const schema = tc?.api_schema?.request_body_schema;
+    const props = schema?.properties;
+    if (!tc || !props) continue;
+    let changed = false;
+    if (props.customer_phone) {
+      delete props.customer_phone;
+      props.called_phone = { type: "string", dynamic_variable: "system__called_number" };
+      if (Array.isArray(schema.required)) schema.required = schema.required.filter((k: string) => k !== "customer_phone");
+      changed = true;
+    }
+    // teclado digitando enquanto a ferramenta roda (mesmo com a Nina em silêncio)
+    const wantSound = TOOLS_WITH_SOUND.includes(String(tc.name)) ? toolSound : null;
+    if ((tc.tool_call_sound ?? null) !== wantSound || (wantSound && tc.tool_call_sound_behavior !== "always")) {
+      tc.tool_call_sound = wantSound;
+      tc.tool_call_sound_behavior = "always";
+      changed = true;
+    }
+    if (!changed) continue;
+    const p = await fetch(`${ELEVEN}/convai/tools/${id}`, {
+      method: "PATCH",
+      headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ tool_config: tc }),
+    });
+    if (!p.ok) return { ok: false, detail: `PATCH tool ${id} ${p.status}: ${(await p.text()).slice(0, 200)}` };
+    fixed++;
+  }
+  return { ok: true, detail: `${fixed} tool(s) corrigida(s)` };
 }
 
 Deno.serve(async (req) => {

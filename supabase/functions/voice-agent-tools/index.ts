@@ -138,6 +138,16 @@ async function ensureCallerContext(sb: any, phone: string, name?: string | null)
   return { tenantId, agent, leadId, created, sessionId };
 }
 
+/** Números oficiais da Totex (instância meta_cloud) — nunca são o cliente. Cache 5 min. */
+let oursCache: { at: number; set: Set<string> } | null = null;
+async function ourNumbers(sb: any): Promise<Set<string>> {
+  if (oursCache && Date.now() - oursCache.at < 300_000) return oursCache.set;
+  const { data } = await sb.from("whatsapp_instances").select("phone_number").eq("provider", "meta_cloud");
+  const set = new Set<string>((data || []).map((r: any) => normalizePhone(r.phone_number)).filter(Boolean));
+  oursCache = { at: Date.now(), set };
+  return set;
+}
+
 async function callEdge(fn: string, body: Record<string, unknown>): Promise<unknown> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
     method: "POST",
@@ -200,8 +210,10 @@ Deno.serve(async (req) => {
   // passada pelo nina-dialer). customer_phone tem prioridade quando preenchida.
   // customer_phone tem placeholder "desconhecido" (a ElevenLabs derruba a ligação RECEBIDA se a
   // dynamic variable da tool estiver vazia) → vale o 1º valor que for telefone de verdade.
-  const phone = [args.customer_phone, args.caller_phone, args.phone, args.system__caller_id]
-    .map((v) => normalizePhone(v)).find((p) => p.length >= 10) || "";
+  // Cliente = o número da ligação que NÃO é o nosso (recebida: caller; saída: called).
+  const ours = await ourNumbers(sb);
+  const phone = [args.customer_phone, args.caller_phone, args.called_phone, args.phone, args.system__caller_id, args.system__called_number]
+    .map((v) => normalizePhone(v)).find((p) => p.length >= 10 && !ours.has(p)) || "";
 
   console.log(`[voice-tools] ${tool} phone=${phone || "-"} args=${JSON.stringify(args).slice(0, 300)}`);
 

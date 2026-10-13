@@ -76,3 +76,35 @@ export function normalizeStockSearch(s: string): string {
   for (const [re, to] of ALIASES) out = out.replace(re, to);
   return out;
 }
+
+/**
+ * Clima de escritório na ligação (2026-10-13, pedido do Marco):
+ *  - som de fundo da ElevenLabs (conversation.background_sound, presets office1/office2/
+ *    restaurant/city/typing/elevator1-4) — config VOICE_BACKGROUND_SOUND (padrão office1;
+ *    "off" desliga) e VOICE_BACKGROUND_VOLUME (0.01–1, padrão 0.08 = bem suave);
+ *  - som de teclado enquanto a ferramenta roda (tool_call_sound "typing", behavior "always"
+ *    = toca mesmo quando a Nina não fala antes) — config VOICE_TOOL_SOUND (padrão typing;
+ *    "off" desliga) nas tools de consulta/agendamento.
+ * O agente NÃO ouve o som de fundo (não entra no reconhecimento de voz).
+ */
+export const TOOLS_WITH_SOUND = ["identificar_cliente", "consultar_estoque", "agendar_visita", "info_lojas"];
+const BG_PRESETS = ["office1", "office2", "restaurant", "city", "typing", "elevator1", "elevator2", "elevator3", "elevator4"];
+
+export type NinaSounds = {
+  background: { source_type: string | null; source_id: string | null; volume?: number; crossfade_loop?: boolean };
+  toolSound: string | null;
+  key: string;
+};
+
+export async function getNinaSounds(sb: SupabaseClient): Promise<NinaSounds> {
+  const bgRaw = String((await getIntegrationKey(sb, "VOICE_BACKGROUND_SOUND")) || "office1").trim().toLowerCase();
+  const volRaw = Number(await getIntegrationKey(sb, "VOICE_BACKGROUND_VOLUME"));
+  const volume = Number.isFinite(volRaw) && volRaw >= 0.01 && volRaw <= 1 ? volRaw : 0.08;
+  const toolRaw = String((await getIntegrationKey(sb, "VOICE_TOOL_SOUND")) || "typing").trim().toLowerCase();
+  const bgOn = bgRaw !== "off" && BG_PRESETS.includes(bgRaw);
+  const background = bgOn
+    ? { source_type: "preset", source_id: bgRaw, volume, crossfade_loop: true }
+    : { source_type: null, source_id: null };
+  const toolSound = toolRaw === "off" || toolRaw === "none" ? null : toolRaw;
+  return { background, toolSound, key: `${bgOn ? bgRaw : "off"}@${volume}/${toolSound || "off"}` };
+}
