@@ -355,10 +355,11 @@ async function actionElevenProvision(sb: any, body: any) {
     },
     turn: { turn_timeout: 7, turn_eagerness: "normal" },
   };
-  // Placeholders das dynamic variables: na ligação RECEBIDA ninguém preenche customer_phone
-  // (fica vazio → tools usam system__caller_id); na de SAÍDA o nina-dialer preenche.
+  // Placeholders das dynamic variables: na ligação RECEBIDA ninguém preenche customer_phone.
+  // Vazio a ElevenLabs derruba a chamada ("Missing required dynamic variables in tools") →
+  // placeholder "desconhecido" e as tools caem pro system__caller_id. Na SAÍDA o nina-dialer preenche.
   (conversation_config.agent as any).dynamic_variables = {
-    dynamic_variable_placeholders: { customer_phone: "", customer_name: "", playbook: "descobrir", reason: "" },
+    dynamic_variable_placeholders: { customer_phone: "desconhecido", customer_name: "", playbook: "descobrir", reason: "" },
   };
   let agentId: string | null = (await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID")) || null;
   let r = agentId
