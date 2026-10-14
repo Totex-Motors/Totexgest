@@ -15,6 +15,9 @@
  *                     planilha: (V + coef·V) / prazo), economia mensal do bônus, e a "jogada" de
  *                     antecipar (parcela do mês + a última) em R$ — nunca em % de taxa.
  *  - estoque        → pátio da Cardoso pelo feed Autoconf (id, título, preço, FIPE, url)
+ *  - plano          → saída PRONTA PRA AGENTE (voz ou texto): acha o carro no pátio pelo nome se não
+ *                     vier o valor, simula, e devolve "fala" + "regras" (só reais, nunca taxa).
+ *                     Formato do agente V2 ({ arguments: {...} }) cai aqui por padrão.
  *  - registrar_atendimento → cria o atendimento na fila de retorno da loja (token)
  *  - mudar_atendimento     → status/obs/motivo/toque de um atendimento (token)
  *
@@ -173,7 +176,9 @@ Deno.serve(async (req) => {
   }
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  const body = await req.json().catch(() => ({})) as Record<string, any>;
+  const raw = await req.json().catch(() => ({})) as Record<string, any>;
+  // agente V2 (agent-runner) manda { arguments, session_id, user_id } → vira ação "plano"
+  const body: Record<string, any> = raw.arguments && typeof raw.arguments === "object" ? { action: "plano", ...raw.arguments } : raw;
   const action = String(body.action || "simular");
   try {
     switch (action) {
@@ -186,6 +191,34 @@ Deno.serve(async (req) => {
         const f = await lerFormula(sb);
         return json({ ok: true, ...simular(f, body as any) });
       }
+      case "plano": {
+        let valor = Number(body.valor || body.veiculo || body.preco) || 0;
+        let carro = String(body.carro || "").trim();
+        if (!valor && carro) {
+          const e = await lerEstoque(sb);
+          const q = carro.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\btanque\b/g, "tank").replace(/\b(hora|aurora)\b/g, "ora");
+          const toks = q.split(/\s+/).filter((t) => t.length >= 2);
+          const c0 = e.carros.find((c) => { const t = `${c.titulo} ${c.marca} ${c.modelo}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); return toks.every((k) => t.includes(k)); })
+            || e.carros.find((c) => { const t = `${c.titulo}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); return toks.some((k) => k.length >= 3 && t.includes(k)); });
+          if (c0) { valor = Number(c0.preco) || 0; carro = c0.titulo; }
+        }
+        if (!(valor > 0)) return json({ success: false, message: "Informe o valor do carro, ou o nome dele pra eu achar no pátio da Cardoso." });
+        const f = await lerFormula(sb);
+        const sim = simular(f, { veiculo: valor, entrada: body.entrada, usado: body.carro_na_troca ?? body.usado, prazo: body.prazo, extra: body.extra });
+        const foco = sim.prazos.find((p) => p.destaque) || sim.prazos[0];
+        const fala = (n: number) => `${Math.round(n).toLocaleString("pt-BR")} reais`;
+        const ant: any = sim.antecipacao;
+        return json({
+          success: true, carro: carro || null, valor_carro: valor, entrada: sim.entrada.entrada, carro_na_troca: sim.entrada.usado, financiado: sim.entrada.financiado,
+          plano: { prazo: foco.prazo, parcela: foco.parcela, outros_prazos: sim.prazos.filter((p) => !p.destaque).map((p) => `${p.prazo}x de ${fala(p.parcela)}`).join("; ") },
+          antecipacao: ant ? { ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, elimina_de_prestacoes: ant.prestacoes_eliminadas, ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}) } : null,
+          cupom_campanha: sim.cupom_campanha ? { codigo: sim.cupom_campanha.codigo, titulo: sim.cupom_campanha.titulo, valor: sim.cupom_campanha.valor, economia_mes: sim.cupom_campanha.economia_mes_no_destaque } : null,
+          condicao: sim.condicao ? { nome: (sim.condicao as any).nome, porque: (sim.condicao as any).porque, fim: (sim.condicao as any).fim } : null,
+          fala: `Fica em ${foco.prazo} parcelas de ${fala(foco.parcela)}${ant ? `. E tem a jogada que quase ninguém faz: pagando a do mês junto com a última, a última sai por ${fala(ant.ultima_parcela_hoje)} em vez de ${fala(foco.parcela)}, e somem duas prestações` : ""}.`,
+          regras: "Fale só em reais, nunca em taxa ou porcentagem. É estimativa de pré-atendimento: a Grazi fecha a condição real com os bancos. Mostre o ganho de subir de carro e a jogada de antecipar com décimo terceiro, férias ou PLR, com os números acima.",
+        });
+      }
+
       case "estoque": {
         const e = await lerEstoque(sb);
         const q = String(body.busca || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
