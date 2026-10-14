@@ -163,6 +163,8 @@ async function callEdge(fn: string, body: Record<string, unknown>): Promise<unkn
  * (na 1ª ligação de teste "BMW" trouxe uma F 750 GS antes dos carros). Até 8 carros; a
  * Nina fala 2–3 por vez.
  */
+const brlFala = (n: number) => `${Math.round(Number(n) || 0).toLocaleString("pt-BR")} reais`;
+
 function trimVehicles(result: any, busca: string) {
   const list: any[] = Array.isArray(result?.veiculos) ? result.veiculos : [];
   const querMoto = /\bmoto|motocicleta|scooter\b/i.test(busca);
@@ -342,6 +344,37 @@ Deno.serve(async (req) => {
         return json(out);
       }
 
+      case "simular_plano": {
+        // Plano de parcelas pelo Simulador da Cardoso (porta única simulador-cardoso): parcela por
+        // prazo, economia do bônus e a "jogada" de antecipar com 13º/férias/PLR — tudo em R$.
+        let valor = Number(args.valor || args.veiculo || args.preco) || 0;
+        let carro = String(args.carro || "").trim();
+        if (!valor && carro) {
+          const est = await callEdge("simulador-cardoso", { action: "estoque", busca: normalizeStockSearch(carro), limite: 1 }) as any;
+          const c0 = est?.carros?.[0];
+          if (c0) { valor = Number(c0.preco) || 0; carro = c0.titulo; }
+        }
+        if (!(valor > 0)) return json({ success: false, message: "Informe o valor do carro (ou o nome, pra eu achar no pátio)." });
+        const sim = await callEdge("simulador-cardoso", {
+          action: "simular", veiculo: valor, entrada: args.entrada, usado: args.carro_na_troca ?? args.usado, prazo: args.prazo, extra: args.extra,
+        }) as any;
+        if (!sim?.ok) return json({ success: false, message: `Não consegui simular agora (${sim?.error || "erro"}). Diga que a equipe manda a simulação certinha no WhatsApp.` });
+        const foco = (sim.prazos || []).find((p: any) => p.destaque) || sim.prazos?.[0];
+        const outros = (sim.prazos || []).filter((p: any) => !p.destaque).map((p: any) => `${p.prazo}x de ${brlFala(p.parcela)}`).join("; ");
+        const ant = sim.antecipacao || null;
+        return json({
+          success: true, carro: carro || null, valor_carro: valor, entrada: sim.entrada?.entrada, financiado: sim.entrada?.financiado,
+          plano: { prazo: foco?.prazo, parcela: foco?.parcela, outros_prazos: outros },
+          antecipacao: ant ? {
+            ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, elimina: ant.prestacoes_eliminadas,
+            ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}),
+          } : null,
+          cupom_campanha: sim.cupom_campanha ? { codigo: sim.cupom_campanha.codigo, titulo: sim.cupom_campanha.titulo, valor: sim.cupom_campanha.valor, economia_mes: sim.cupom_campanha.economia_mes_no_destaque } : null,
+          fala: `Fica em ${foco?.prazo} parcelas de ${brlFala(foco?.parcela || 0)}${ant ? `. E tem a jogada: pagando a do mês junto com a última, a última sai por ${brlFala(ant.ultima_parcela_hoje)} em vez de ${brlFala(foco?.parcela || 0)}` : ""}.`,
+          regras: "Fale só em reais, nunca em taxa ou porcentagem. Diga que é estimativa de pré-atendimento e que a Grazi fecha a condição real com os bancos. Mostre o ganho de subir de carro e a jogada de antecipar com décimo terceiro, férias ou PLR.",
+        });
+      }
+
       case "agendar_visita": {
         if (!phone) return json({ success: false, message: "Sem telefone do chamador — não dá pra agendar." });
         const ctx = await ensureCallerContext(sb, phone, args.nome_cliente || null);
@@ -359,7 +392,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
+        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "simular_plano", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
     }
   } catch (e) {
     console.error(`[voice-tools] ${tool} err:`, (e as Error).message);
