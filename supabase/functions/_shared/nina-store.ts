@@ -141,7 +141,7 @@ export function spokenCarName(raw: string | null | undefined): string | null {
 /**
  * Como a voz da LIGAÇÃO é gerada (2026-10-14). A Carla soava diferente da prévia da biblioteca:
  * o agente usava o modelo "flash" (mais rápido, timbre mais pobre) com latência agressiva.
- * Config: VOICE_CALL_TTS_MODEL (eleven_turbo_v2_5 | eleven_flash_v2_5 | eleven_multilingual_v2),
+ * Config: VOICE_CALL_TTS_MODEL (eleven_v4_turbo | eleven_v3_conversational | eleven_turbo_v2_5 | eleven_flash_v2_5 | eleven_multilingual_v2),
  * VOICE_CALL_STABILITY, VOICE_CALL_SIMILARITY, VOICE_CALL_SPEED (0.7–1.2), VOICE_CALL_LATENCY (0–4,
  * menor = melhor qualidade). Aplicado por syncNinaAgent/voice-agent-setup.
  */
@@ -151,7 +151,9 @@ export async function getNinaVoiceTts(sb: SupabaseClient, fallback: { stability?
     const v = Number(await getIntegrationKey(sb, k));
     return Number.isFinite(v) && v >= min && v <= max ? v : def;
   };
-  const model = String((await getIntegrationKey(sb, "VOICE_CALL_TTS_MODEL")) || "eleven_turbo_v2_5").trim();
+  // Testado em 14/10 com o Marco: flash (timbre pobre), turbo v2.5 (enroscou), multilingual v2
+  // (atraso: 20 s sem entender o cliente) e v4 turbo ("agora ficou top"). Padrão: eleven_v4_turbo.
+  const model = String((await getIntegrationKey(sb, "VOICE_CALL_TTS_MODEL")) || "eleven_v4_turbo").trim();
   const out = {
     model_id: model,
     stability: await num("VOICE_CALL_STABILITY", fallback.stability ?? 0.45, 0, 1),

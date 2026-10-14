@@ -163,6 +163,12 @@ presets `office2`, `restaurant`, `city`, `typing`, `elevator1-4`; `off` desliga)
 `VOICE_BACKGROUND_VOLUME` (padrão `0.08`, faixa 0.01–1) e `VOICE_TOOL_SOUND` (padrão
 `typing`; `off` desliga). Aplicado pelo `syncNinaAgent` quando a chave muda.
 
+Voz da ligação (14/10): modelo `eleven_v4_turbo` (config `VOICE_CALL_TTS_MODEL`; flash soava
+pobre, turbo v2.5 enroscava, multilingual v2 atrasava 20 s), `VOICE_CALL_STABILITY` 0.45,
+`VOICE_CALL_SIMILARITY` 0.8, `VOICE_CALL_SPEED` 1.05, `VOICE_CALL_LATENCY` 1. Som de fundo e
+teclado (`VOICE_BACKGROUND_SOUND`/`VOICE_TOOL_SOUND`) ficaram `off`: na linha de telefone viram chiado.
+Nome do carro como se fala (`spokenCarName`): "BMW 330", "GWM Tank 300".
+
 Prompt v3 (14/10): `docs/nina/PROMPT-V3.md` = `_shared/nina-prompt.ts`. Fonte da verdade: config
 `VOICE_AGENT_PROMPT` (tela), vazia = padrão do código. `syncNinaAgent` reaplica no agente quando muda.
 Propostas: 80 / 85 / até 90 da FIPE (`NINA_PROPOSTA_*_PCT`), sempre "detalhe sai na avaliação presencial".
