@@ -21,7 +21,7 @@ export type NinaStore = { tenantId: string; name: string };
 
 export const BLOCK_START = "<!-- LOJA_EXCLUSIVA:inicio -->";
 export const BLOCK_END = "<!-- LOJA_EXCLUSIVA:fim -->";
-export const BLOCK_VERSION = "v1";
+export const BLOCK_VERSION = "v2"; // v2: identidade Totex + loja parceira (2026-10-14)
 
 export async function getNinaExclusiveStore(sb: SupabaseClient): Promise<NinaStore | null> {
   const raw = String((await getIntegrationKey(sb, "NINA_LOJA_EXCLUSIVA")) || "").trim();
@@ -33,22 +33,24 @@ export async function getNinaExclusiveStore(sb: SupabaseClient): Promise<NinaSto
   return { tenantId: String(data.id), name: String(data.name || raw).trim() };
 }
 
-export function ninaBrand(store: NinaStore | null): string {
-  return store?.name || "Totex Motors";
+/** A Nina responde SEMPRE pelo ecossistema Totex (decisão do Marco, 2026-10-14); a loja só
+ *  define estoque, visita e endereço. */
+export function ninaBrand(_store: NinaStore | null): string {
+  return "Totex Motors";
 }
 
 export function exclusivityBlock(store: NinaStore): string {
   const l = store.name;
   return [
     BLOCK_START,
-    "# LOJA EXCLUSIVA — REGRA MAIS IMPORTANTE (vale acima de tudo abaixo)",
-    `Nesta operação você é a Nina, da ${l}. Você atende EXCLUSIVAMENTE a ${l}.`,
-    `- Apresente-se como "Nina, da ${l}".`,
+    "# LOJA PARCEIRA DESTA OPERAÇÃO — REGRA MAIS IMPORTANTE (vale acima de tudo abaixo)",
+    `Você é a Nina, da Totex Motors, e nesta operação atende EXCLUSIVAMENTE a loja parceira ${l}.`,
+    `- Apresente-se como "Nina, da Totex Motors". O discurso é o da Totex; o estoque, a visita, a avaliação e o endereço são da ${l}.`,
     `- Só fale do estoque, endereço, horário e condições da ${l}.`,
     "- NUNCA cite, indique, compare ou agende em outra loja, e não diga que existem outras lojas.",
-    `- Todo agendamento é na ${l}. Não pergunte "qual loja" nem "qual região".`,
-    `- Se o carro pedido não estiver no estoque da ${l}, ofereça os parecidos da própria ${l} ou anote o interesse pra equipe da loja procurar.`,
-    `- Se perguntarem da Totex Motors: a ${l} faz parte do ecossistema Totex, mas quem atende e vende é a ${l}.`,
+    `- Todo agendamento é na ${l} (numa das unidades que info_lojas devolve). Não pergunte "qual loja".`,
+    `- Se o carro pedido não estiver no estoque da ${l}, ofereça os parecidos da própria ${l} ou anote o interesse pra equipe procurar.`,
+    `- Se perguntarem: a ${l} é uma loja parceira do ecossistema Totex.`,
     "- Se a consulta de estoque der erro, NÃO diga que o carro não existe ou não está disponível: diga que vai confirmar com a equipe e siga pro agendamento.",
     BLOCK_END,
   ].join("\n");
@@ -61,10 +63,9 @@ export function applyExclusivity(prompt: string, store: NinaStore | null): strin
   return store ? `${exclusivityBlock(store)}\n\n${clean}` : clean;
 }
 
-/** Troca "da Totex Motors" pela loja na 1ª frase padrão do agente (ligação recebida). */
-export function brandFirstMessage(msg: string, store: NinaStore | null): string {
-  if (!store) return msg;
-  return String(msg || "").replace(/da Totex Motors/gi, `da ${store.name}`);
+/** 1ª frase da ligação recebida: a Nina é sempre "da Totex Motors" (desfaz a marca da loja da v1). */
+export function brandFirstMessage(msg: string, _store: NinaStore | null): string {
+  return String(msg || "").replace(/da Cardoso Veículos/gi, "da Totex Motors");
 }
 
 /** Termos que a transcrição erra com frequência → como estão no estoque. */

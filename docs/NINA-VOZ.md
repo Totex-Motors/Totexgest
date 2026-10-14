@@ -148,7 +148,7 @@ voz clonada "Marcão" em vez da Carla), ficaram duas chaves na tabela `config`:
 
 | Chave | Valor hoje | Efeito |
 |---|---|---|
-| `NINA_LOJA_EXCLUSIVA` | tenant da Cardoso Veículos | "Nina, da Cardoso Veículos"; regra no topo do prompt; `consultar_estoque` preso ao `tenant_id` da loja, `agendar_visita` e `info_lojas` só nela; dossiê com alternativas só dela. Vazia = ecossistema todo. |
+| `NINA_LOJA_EXCLUSIVA` | tenant da Cardoso Veículos | Nina é sempre "da Totex Motors" (decisão do Marco, 14/10); a loja parceira entra como regra no topo do prompt; `consultar_estoque` preso ao `tenant_id` da loja, `agendar_visita` e `info_lojas` só nela; dossiê com alternativas só dela. Vazia = ecossistema todo. |
 | `VOICE_CALL_VOICE_ID` | Carla (`mPDAoQyGzxBSkE0OAOKw`) | Voz da LIGAÇÃO. Sem ela, usa a voz da nota de voz do `agente-stand`. |
 
 Quem aplica no agente da ElevenLabs: `nina-dialer` (`syncNinaAgent`, a cada 2 min pelo cron,
@@ -162,6 +162,10 @@ mesmo com a Nina em silêncio). Chaves: `VOICE_BACKGROUND_SOUND` (padrão `offic
 presets `office2`, `restaurant`, `city`, `typing`, `elevator1-4`; `off` desliga),
 `VOICE_BACKGROUND_VOLUME` (padrão `0.08`, faixa 0.01–1) e `VOICE_TOOL_SOUND` (padrão
 `typing`; `off` desliga). Aplicado pelo `syncNinaAgent` quando a chave muda.
+
+Prompt v3 (14/10): `docs/nina/PROMPT-V3.md` = `_shared/nina-prompt.ts`. Fonte da verdade: config
+`VOICE_AGENT_PROMPT` (tela), vazia = padrão do código. `syncNinaAgent` reaplica no agente quando muda.
+Propostas: 80 / 85 / até 90 da FIPE (`NINA_PROPOSTA_*_PCT`), sempre "detalhe sai na avaliação presencial".
 
 Outros ajustes: busca "Tanque" → "Tank" (transcrição do GWM Tank 300); se a consulta de
 estoque falhar, a Nina não diz que o carro não existe.

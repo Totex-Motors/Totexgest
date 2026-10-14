@@ -129,12 +129,14 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     const rapida = await pct(sb, "NINA_PROPOSTA_RAPIDA_PCT", 80);
     const troca = await pct(sb, "NINA_PROPOSTA_TROCA_PCT", 85);
     const interMin = await pct(sb, "NINA_PROPOSTA_INTERMEDIACAO_MIN_PCT", 90);
-    const interMax = await pct(sb, "NINA_PROPOSTA_INTERMEDIACAO_MAX_PCT", 95);
+    const interMax = await pct(sb, "NINA_PROPOSTA_INTERMEDIACAO_MAX_PCT", 90); // Marco (2026-10-14): "até 90%"
+    const interFaixa = interMin < interMax ? `${brl(v * interMin / 100)} a ${brl(v * interMax / 100)}` : `até ${brl(v * interMax / 100)}`;
+    const interPct = interMin < interMax ? `${interMin}% a ${interMax}%` : `até ${interMax}%`;
     const v = fipe.valor_num;
     propostas.push(
       { nome: "Proposta rápida", valor: brl(v * rapida / 100), valor_num: Math.round(v * rapida / 100), como_funciona: "Compra imediata: a Totex confirma com as lojas do ecossistema e o cliente vende em poucos dias, sem anunciar nem receber desconhecido em casa." },
       { nome: "Proposta de troca", valor: brl(v * troca / 100), valor_num: Math.round(v * troca / 100), como_funciona: "Valorização maior quando o carro entra na troca por um dos carros das lojas do ecossistema." },
-      { nome: "Intermediação Totex", valor: `${brl(v * interMin / 100)} a ${brl(v * interMax / 100)}`, valor_num: Math.round(v * interMax / 100), como_funciona: `O maior valor: a Totex conecta o dono ao comprador (que pode estar no mesmo shopping), com curadoria e segurança, chegando a ${interMin}% a ${interMax}% da FIPE conforme o carro.` },
+      { nome: "Intermediação Totex", valor: interFaixa, valor_num: Math.round(v * interMax / 100), como_funciona: `O maior valor: a Totex conecta o dono ao comprador (que pode estar no mesmo shopping), com curadoria e segurança, chegando ${interPct} da FIPE conforme o carro. O valor certo depende do detalhe do carro e sai na avaliação presencial.` },
     );
   }
 
