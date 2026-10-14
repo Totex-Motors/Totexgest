@@ -178,7 +178,8 @@ export async function tryHandleViaAgentPlatformCloud(args: {
 
   // 6. Envia resposta via Cloud API em bolhas curtas, com delay (mais natural).
   //    Remove antes o raciocínio interno (<thinking>) que vaza no texto antes de uma tool.
-  const cleaned = stripThinking(fullText);
+  // pré-fala da tool + resposta final chegam coladas ("você!Os mais em conta") — separa.
+  const cleaned = stripThinking(fullText).replace(/([.!?])(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g, "$1 ");
   // Não repete o fallback em sequência (alimentava loop com outro robô): se o
   // agente não gerou texto e a última msg nossa já foi o fallback, fica quieto.
   if (!cleaned && await lastOutboundWasFallback(supabase, leadId, FALLBACK_TEXT)) {
