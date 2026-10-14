@@ -73,7 +73,7 @@ export const DEFAULT_VOICE_REPLY: VoiceReplyConfig = {
 };
 
 const OPENAI_DEFAULT_VOICE = "nova";
-const ELEVEN_MODELS = new Set(["eleven_multilingual_v2", "eleven_v3", "eleven_turbo_v2_5", "eleven_flash_v2_5"]);
+const ELEVEN_MODELS = new Set(["eleven_multilingual_v2", "eleven_v3", "eleven_v3_conversational", "eleven_v4", "eleven_v4_turbo", "eleven_turbo_v2_5", "eleven_flash_v2_5"]);
 
 function clamp01(v: unknown, def: number): number {
   const n = Number(v);
@@ -146,8 +146,13 @@ export function planReplySegments(cfg: VoiceReplyConfig | null, inboundType: str
   if (!paras.length) return null;
 
   const segs: ReplySegment[] = [];
-  for (const para of paras) {
-    const spoken = shouldReplyWithVoice(cfg, "audio", para) && prepareTextForSpeech(para).length >= 2;
+  for (let i = 0; i < paras.length; i++) {
+    const para = paras[i];
+    const next = paras[i + 1];
+    // "Os mais em conta são:" seguido de ficha/lista → vai em TEXTO junto com a lista (falado
+    // sozinho sai truncado: "...são empatados em trezentos mil:").
+    const introduzLista = /[:：]\s*$/.test(para) && !!next && !shouldReplyWithVoice(cfg, "audio", next);
+    const spoken = !introduzLista && shouldReplyWithVoice(cfg, "audio", para) && prepareTextForSpeech(para).length >= 2;
     const last = segs[segs.length - 1];
     if (spoken) {
       if (last && last.kind === "voice" && (last.text + "\n\n" + para).length <= cfg.max_chars) {
@@ -165,10 +170,44 @@ export function planReplySegments(cfg: VoiceReplyConfig | null, inboundType: str
 }
 
 /** Texto limpo pra fala: sem markdown, sem emoji, sem "[Áudio]" de sistema. */
+/** Inteiro em palavras (pt-BR), até 999 milhões. "349980" → "trezentos e quarenta e nove mil novecentos e oitenta". */
+export function numberToWordsPt(n: number): string {
+  n = Math.floor(Math.abs(n));
+  if (n === 0) return "zero";
+  const u = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+  const d = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+  const c = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+  const tresDigitos = (x: number): string => {
+    if (x === 100) return "cem";
+    const parts: string[] = [];
+    const ce = Math.floor(x / 100), r = x % 100;
+    if (ce) parts.push(c[ce]);
+    if (r < 20) { if (r) parts.push(u[r]); }
+    else { parts.push(d[Math.floor(r / 10)] + (r % 10 ? " e " + u[r % 10] : "")); }
+    return parts.join(" e ");
+  };
+  const mi = Math.floor(n / 1_000_000), mil = Math.floor((n % 1_000_000) / 1000), resto = n % 1000;
+  const out: string[] = [];
+  if (mi) out.push(mi === 1 ? "um milhão" : `${tresDigitos(mi)} milhões`);
+  if (mil) out.push(mil === 1 ? "mil" : `${tresDigitos(mil)} mil`);
+  if (resto) out.push((out.length && (resto < 100 || resto % 100 === 0) ? "e " : "") + tresDigitos(resto));
+  return out.join(" ");
+}
+
 export function prepareTextForSpeech(text: string): string {
   return String(text || "")
     .replace(/<(thinking|thought|reasoning)>[\s\S]*?<\/\1>/gi, "")
     .replace(/[*_~`]+/g, "")
+    // frases coladas ("você!Os mais") — vinda de pré-fala + resposta final sem separador
+    .replace(/([.!?])(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g, "$1 ")
+    // dinheiro e milhares por extenso: "R$ 349.980" → "trezentos e ... reais"; "67.832 km" → "... quilômetros"
+    .replace(/R\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?/g, (_m, i: string, cents?: string) => {
+      const v = Number(i.replace(/\./g, ""));
+      return `${numberToWordsPt(v)} ${v === 1 ? "real" : "reais"}${cents && Number(cents) ? ` e ${numberToWordsPt(Number(cents))} centavos` : ""}`;
+    })
+    .replace(/\b(\d{1,3}(?:\.\d{3})+)\s*(km|quilômetros|quilometros)\b/gi, (_m, i: string) => `${numberToWordsPt(Number(i.replace(/\./g, "")))} quilômetros`)
+    .replace(/\b(\d{1,3}(?:\.\d{3})+)\b/g, (_m, i: string) => numberToWordsPt(Number(i.replace(/\./g, ""))))
+    .replace(/\s*[:：]\s*$/, ".")
     .replace(/^\s*#+\s*/gm, "")
     .replace(/\[[^\]]*\]\([^)]*\)/g, (m) => m.replace(/\[([^\]]*)\]\([^)]*\)/, "$1"))
     .replace(/[\u{1F300}-\u{1FAFF}\u{1F000}-\u{1F2FF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "")
