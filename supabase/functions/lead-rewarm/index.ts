@@ -72,6 +72,18 @@ async function candidatos(sb: any, momento: Momento, limite: number) {
   return (data || []) as Array<{ lead_id: string; phone: string; name: string | null; janela_aberta: boolean; created_at: string }>;
 }
 
+/**
+ * Lead pulado (sem carro/intenção, template pendente) sai da fila por 3 dias
+ * (reaquecimento_candidatos lê metadata.reaquecimento.pulado_em). Sem isso os mesmos 3 leads
+ * voltavam toda rodada e travavam a vaga dos outros (14/10, 2ª hora: 0 enviados em 5 rodadas).
+ */
+async function pular(sb: any, leadId: string, motivo: string): Promise<string> {
+  const { data: l } = await sb.from("leads").select("metadata").eq("id", leadId).maybeSingle();
+  const md = (l?.metadata || {}) as Record<string, any>;
+  await sb.from("leads").update({ metadata: { ...md, reaquecimento: { ...(md.reaquecimento || {}), pulado_em: new Date().toISOString(), pulado_motivo: motivo } } }).eq("id", leadId);
+  return motivo;
+}
+
 async function abrir(sb: any, lead: { lead_id: string; phone: string; name: string | null; janela_aberta: boolean }, momento: Momento) {
   const brief = await buildLeadBrief(sb, lead.lead_id).catch(() => null);
   // nome só se for nome mesmo: perfil "😎" virou "Oi, 😎!" na 1ª rodada (14/10)
@@ -105,7 +117,7 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     template = "reaquecimento_vender"; params = [nome || "tudo bem", quem, carroCliente];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Já tenho uma referência de valor pro seu ${carroCliente}, bem acima do que loja costuma pagar. Quer que eu te passe?`;
   } else {
-    return { skipped: "sem carro nem intenção pra abrir com uma conta" };
+    return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma conta") };
   }
 
   let sent: { ok: boolean; via: string; detail?: string };
@@ -113,7 +125,7 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     const r = await callEdge("send-whatsapp-cloud", { action: "send_text", phone: lead.phone, text: texto, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
     sent = { ok: r.ok && !r.data?.error, via: "texto", detail: r.data?.error };
   } else {
-    if (!(await templateAprovado(sb, template))) return { skipped: `template ${template} ainda não aprovado` };
+    if (!(await templateAprovado(sb, template))) return { skipped: await pular(sb, lead.lead_id, `template ${template} ainda não aprovado`) };
     const r = await callEdge("send-whatsapp-cloud", { action: "send_template", phone: lead.phone, template_name: template, template_params: params, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
     sent = { ok: r.ok && !r.data?.error, via: `template:${template}`, detail: r.data?.error };
   }
