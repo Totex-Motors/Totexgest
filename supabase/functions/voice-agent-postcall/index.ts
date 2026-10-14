@@ -80,6 +80,32 @@ function transcriptToRows(transcript: any[]): { role: string; text: string; at_s
     }));
 }
 
+
+/** Traduz o resumo pra português do Brasil (claude-haiku). Mantém nomes, carros e números. */
+async function toPtBr(sb: any, tenantId: string | null, text: string | null): Promise<string | null> {
+  if (!text) return null;
+  if (!/\b(the|and|with|customer|user|vehicle|conversation|inquired|options)\b/i.test(text)) return text; // já está em português
+  const key = await getIntegrationKey(sb, "ANTHROPIC_API_KEY", tenantId || undefined);
+  if (!key) return text;
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001", max_tokens: 600,
+        system: "Traduza o resumo de ligação para português do Brasil, natural e direto, em terceira pessoa. Mantenha nomes de pessoas, carros e números. Devolva SÓ o texto traduzido, sem aspas nem comentários.",
+        messages: [{ role: "user", content: text }],
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    const out = Array.isArray(j?.content) ? j.content.map((c: any) => c?.text || "").join("").trim() : "";
+    return out || text;
+  } catch (e) {
+    console.warn("[voice-agent-postcall] tradução falhou:", (e as Error).message);
+    return text;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: true, fn: "voice-agent-postcall" });
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -129,7 +155,9 @@ Deno.serve(async (req) => {
   const endedAt = new Date(startedAt.getTime() + duration * 1000);
   const rows = transcriptToRows(data.transcript);
   const transcription = rows.map((r) => `${r.role === "agent" ? "Nina" : "Cliente"}: ${r.text}`).join("\n");
-  const summary = analysis.transcript_summary || null;
+  // A ElevenLabs resume em INGLÊS (mesmo com language=pt) — o card do lead mostrava
+  // "The user, Marcos, contacted Nina…". Traduz pra pt-BR com a Anthropic; sem chave/erro, fica o original.
+  const summary = await toPtBr(sb, tenantId, analysis.transcript_summary || null);
   const successful = analysis.call_successful || null;
 
   const { data: inst } = await sb.from("whatsapp_instances").select("phone_number").eq("provider", "meta_cloud").limit(1).maybeSingle();
