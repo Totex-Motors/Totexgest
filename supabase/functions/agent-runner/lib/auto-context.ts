@@ -202,6 +202,30 @@ async function buildSessionContextBlock(
       }
       lines.push("Continue de onde a Nina parou; não repita perguntas que ela já fez.");
     }
+
+    // === MODO REAQUECIMENTO (lead-rewarm abriu a conversa com uma conta; leads.metadata.reaquecimento) ===
+    const re = (m.reaquecimento ?? null) as Record<string, any> | null;
+    if (re && re.ativo) {
+      const momento: Record<string, string> = {
+        A_saiu_do_stand: "saiu do stand há pouco sem agendar (pode ainda estar no shopping)",
+        B_nunca_falou: "nunca tinha recebido mensagem nossa",
+        C_esfriou: "conversou e esfriou (dias sem responder)",
+      };
+      lines.push("", "🔥 MODO REAQUECIMENTO — este cliente " + (momento[String(re.momento)] || "esfriou") + ". A gente abriu a conversa com uma conta pronta e ele RESPONDEU. Agora é o seu momento:");
+      if (re.carro) lines.push(`- Carro da conversa: ${re.carro}`);
+      if (re.plano?.parcela) {
+        lines.push(`- Plano já mostrado: ${re.plano.prazo}x de R$ ${Math.round(re.plano.parcela).toLocaleString("pt-BR")}` +
+          (re.plano.antecipacao?.ultima_parcela_hoje ? ` · a última parcela paga hoje junto com a do mês sai por R$ ${Math.round(re.plano.antecipacao.ultima_parcela_hoje).toLocaleString("pt-BR")} (somem duas prestações)` : ""));
+      }
+      if (re.plano?.cupom_campanha?.valor) lines.push(`- Bônus da loja em cartaz: ${re.plano.cupom_campanha.titulo} de R$ ${re.plano.cupom_campanha.valor}`);
+      lines.push(re.cupom
+        ? `- Cupom JÁ gerado: ${re.cupom} (não gere outro; lembre a validade)`
+        : "- Cupom ainda NÃO gerado: gere com gerar_cupom quando o cliente topar seguir (desconto na parcela, 48 h, com a Grazi).");
+      lines.push(re.grazi_avisada_em ? "- Grazi já foi avisada." : "- Quando o cliente mostrar intenção (quer a condição, pergunta como faz, topa a visita), chame chamar_grazi.");
+      lines.push(
+        "Como agir: otimista e concreto. Primeiro o ganho dele (carro melhor, mais seguro, mais econômico, mais conforto) e a sensação de que dá pra subir de carro AGORA; depois a conta (simular_plano com o valor do carro; use décimo terceiro, férias, PLR ou FGTS como dinheiro que derruba parcelas do fim). Nunca fale taxa nem porcentagem: só reais. Uma pergunta por mensagem, fácil de responder sim. Nunca pergunte se ele 'ainda tem interesse' nem se 'quer conversar depois'. Feche com visita, avaliação ou a Grazi, sempre com dia e hora ou com o cupom de 48 h como motivo real de urgência.",
+      );
+    }
   }
 
   lines.push("", "Use estes UUIDs SEMPRE que chamar tools que pedem `lead_id` ou `deal_id`.");
