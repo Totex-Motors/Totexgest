@@ -85,6 +85,35 @@ async function lerEstoque(sb: any): Promise<{ carros: any[]; de: string }> {
   return estoqueCache;
 }
 
+/**
+ * Acha o carro no pátio pelo nome (2026-10-14, 1ª rodada do reaquecimento): "Nissan VERSA SR
+ * 1.6 16V Flex Aut." casava com o GWM Tank 300 (1º do feed) porque "16V" e "Aut." batem em
+ * qualquer carro — e o cliente recebeu "Versa por 10.399 reais por mês". Agora: tokens de
+ * versão/motor/câmbio/ano são ruído; a marca conta ponto mas não basta; precisa bater pelo
+ * menos uma palavra de MODELO; ganha quem bate mais tokens. Sem modelo batendo = não achou.
+ */
+const norm = (s: unknown) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const RUIDO = /^(\d+([.,]\d+)?|\d+v|20\d\d|flex|aut\.?|automatico|automatica|manual|mec|turbo|tb|awd|4x4|4x2|hibrido|eletrico|diesel|gasolina|cvt|tiptronic|at|mt|gnv|\d+p|\dp|sedan|seda|hatch|suv|cab|dupla|simples)$/;
+const MARCAS = new Set(["nissan", "gwm", "byd", "bmw", "audi", "toyota", "honda", "hyundai", "chevrolet", "fiat", "volkswagen", "vw", "jeep", "renault", "peugeot", "citroen", "ford", "kia", "mercedes", "mercedes-benz", "volvo", "land", "rover", "mitsubishi", "caoa", "chery", "jac", "mini", "porsche", "ram", "subaru", "suzuki", "lexus", "jaguar", "dodge", "troller", "omoda", "jaecoo", "haval", "neta", "seres", "zeekr", "tesla"]);
+export function acharCarro(carros: any[], texto: string): { carro: any; exato: boolean } | null {
+  const q = norm(texto).replace(/\btanque\b/g, "tank").replace(/\b(hora|aurora)\b/g, "ora").replace(/[()\[\],;:]/g, " ");
+  const toks = [...new Set(q.split(/\s+/).map((t) => t.replace(/\.$/, "")).filter((t) => t.length >= 2 && !RUIDO.test(t)))];
+  const modelo = toks.filter((t) => !MARCAS.has(t));
+  if (!toks.length) return null;
+  let best: { carro: any; score: number; modeloHit: boolean } | null = null;
+  for (const c of carros) {
+    const t = ` ${norm(`${c.titulo} ${c.marca} ${c.modelo}`)} `;
+    const bate = (k: string) => new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(t); // começo de palavra
+    const hits = toks.filter(bate);
+    const modeloHit = modelo.some(bate);
+    if (!modeloHit) continue;
+    const score = hits.length;
+    if (!best || score > best.score) best = { carro: c, score, modeloHit };
+  }
+  if (!best) return null;
+  return { carro: best.carro, exato: best.score === toks.length };
+}
+
 // ---- a fórmula da planilha (igual ao index.html) ----
 const parcelaDe = (v: number, p: number, c: number) => (p > 0 ? (v + c * v) / p : 0);
 /** taxa mensal equivalente (Price) — USO INTERNO pra conta da antecipação; nunca sai pro cliente */
@@ -194,22 +223,21 @@ Deno.serve(async (req) => {
       case "plano": {
         let valor = Number(body.valor || body.veiculo || body.preco) || 0;
         let carro = String(body.carro || "").trim();
+        const pedido = carro;
+        let exato: boolean | null = null;
         if (!valor && carro) {
           const e = await lerEstoque(sb);
-          const q = carro.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\btanque\b/g, "tank").replace(/\b(hora|aurora)\b/g, "ora");
-          const toks = q.split(/\s+/).filter((t) => t.length >= 2);
-          const c0 = e.carros.find((c) => { const t = `${c.titulo} ${c.marca} ${c.modelo}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); return toks.every((k) => t.includes(k)); })
-            || e.carros.find((c) => { const t = `${c.titulo}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); return toks.some((k) => k.length >= 3 && t.includes(k)); });
-          if (c0) { valor = Number(c0.preco) || 0; carro = c0.titulo; }
+          const m = acharCarro(e.carros, carro);
+          if (m) { valor = Number(m.carro.preco) || 0; carro = m.carro.titulo; exato = m.exato; }
         }
-        if (!(valor > 0)) return json({ success: false, message: "Informe o valor do carro, ou o nome dele pra eu achar no pátio da Cardoso." });
+        if (!(valor > 0)) return json({ success: false, message: pedido ? `Não achei "${pedido}" no pátio da Cardoso agora. Confirme marca e modelo, ou me passe o valor do carro.` : "Informe o valor do carro, ou o nome dele pra eu achar no pátio da Cardoso." });
         const f = await lerFormula(sb);
         const sim = simular(f, { veiculo: valor, entrada: body.entrada, usado: body.carro_na_troca ?? body.usado, prazo: body.prazo, extra: body.extra });
         const foco = sim.prazos.find((p) => p.destaque) || sim.prazos[0];
         const fala = (n: number) => `${Math.round(n).toLocaleString("pt-BR")} reais`;
         const ant: any = sim.antecipacao;
         return json({
-          success: true, carro: carro || null, valor_carro: valor, entrada: sim.entrada.entrada, carro_na_troca: sim.entrada.usado, financiado: sim.entrada.financiado,
+          success: true, carro: carro || null, carro_pedido: pedido || null, match_exato: exato, valor_carro: valor, entrada: sim.entrada.entrada, carro_na_troca: sim.entrada.usado, financiado: sim.entrada.financiado,
           plano: { prazo: foco.prazo, parcela: foco.parcela, outros_prazos: sim.prazos.filter((p) => !p.destaque).map((p) => `${p.prazo}x de ${fala(p.parcela)}`).join("; ") },
           antecipacao: ant ? { ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, elimina_de_prestacoes: ant.prestacoes_eliminadas, ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}) } : null,
           cupom_campanha: sim.cupom_campanha ? { codigo: sim.cupom_campanha.codigo, titulo: sim.cupom_campanha.titulo, valor: sim.cupom_campanha.valor, economia_mes: sim.cupom_campanha.economia_mes_no_destaque } : null,

@@ -218,6 +218,7 @@ async function buildSessionContextBlock(
           (re.plano.antecipacao?.ultima_parcela_hoje ? ` · a última parcela paga hoje junto com a do mês sai por R$ ${Math.round(re.plano.antecipacao.ultima_parcela_hoje).toLocaleString("pt-BR")} (somem duas prestações)` : ""));
       }
       if (re.plano?.cupom_campanha?.valor) lines.push(`- Bônus da loja em cartaz: ${re.plano.cupom_campanha.titulo} de R$ ${re.plano.cupom_campanha.valor}`);
+      if (re.correcao) lines.push(`- ⚠️ CORREÇÃO: ${re.correcao}`);
       lines.push(re.cupom
         ? `- Cupom JÁ gerado: ${re.cupom} (não gere outro; lembre a validade)`
         : "- Cupom ainda NÃO gerado: gere com gerar_cupom quando o cliente topar seguir (desconto na parcela, 48 h, com a Grazi).");

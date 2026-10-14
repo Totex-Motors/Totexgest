@@ -74,16 +74,22 @@ async function candidatos(sb: any, momento: Momento, limite: number) {
 
 async function abrir(sb: any, lead: { lead_id: string; phone: string; name: string | null; janela_aberta: boolean }, momento: Momento) {
   const brief = await buildLeadBrief(sb, lead.lead_id).catch(() => null);
-  const nome = brief?.primeiro_nome || "";
+  // nome só se for nome mesmo: perfil "😎" virou "Oi, 😎!" na 1ª rodada (14/10)
+  const nomeBruto = String(brief?.primeiro_nome || "").trim();
+  const nome = /\p{L}{2,}/u.test(nomeBruto) && !/\d/.test(nomeBruto) ? nomeBruto : "";
   const playbook = brief?.playbook || "descobrir";
-  const carroInteresse = brief?.carro_interesse_fala || brief?.carro_interesse || null;
+  let carroInteresse = brief?.carro_interesse_fala || brief?.carro_interesse || null;
   const carroCliente = brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || null;
 
-  // plano pelo simulador (só quando tem carro de interesse com preço)
+  // plano pelo simulador (só quando tem carro de interesse com preço). Se o pátio só tem um
+  // parecido (match aproximado), a mensagem cita o carro que foi CONTADO, não o que o lead viu.
   let plano: any = null;
   if (playbook === "comprar" && carroInteresse) {
     const r = await callEdge("simulador-cardoso", { action: "plano", carro: brief?.carro_interesse || carroInteresse });
-    if (r.ok && r.data?.success) plano = r.data;
+    if (r.ok && r.data?.success) {
+      plano = r.data;
+      if (plano.match_exato === false && plano.carro) carroInteresse = spokenCarName(plano.carro) || carroInteresse;
+    }
   }
 
   // escolhe modelo/texto
