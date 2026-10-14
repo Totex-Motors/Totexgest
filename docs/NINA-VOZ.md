@@ -212,3 +212,40 @@ estoque falhar, a Nina não diz que o carro não existe.
 - Ligação **de saída** pela IA (precisa permissão do cliente na conversa + cobrança por minuto da Meta).
 - Gravação de áudio da ligação (o pós-chamada traz transcrição; áudio só com webhook `post_call_audio`).
 - Transferir pra humano no meio da ligação (ElevenLabs tem "transfer to number"; depende do SIP de saída da WaVoIP).
+
+## 2f. Depois da ligação: cadastro automático, avaliação e aprendizado (2026-10-14)
+
+Pedido do Marco depois da ligação do Gabriel (14/10): "ela não cadastrou o carro de
+interesse, nem o perfil de compra, nem o carro da troca", "duplicou o agendamento",
+"perdeu o foco da Toro quando ele falou por cima", "a Nina tem que aprender sempre".
+
+- **Interrupção**: `agent.disable_first_message_interruptions = true` (a abertura sai inteira),
+  `asr.keywords` com nomes de carro (`NINA_ASR_KEYWORDS` em `_shared/nina-store.ts`) e regra 7
+  do prompt (retomar o ponto que ficou pela metade). O dossiê (`lead-brief.ts`) junta os
+  **leads-irmãos** (mesmo telefone: lead da Totex + cópia distribuída pra loja) e lê
+  `trade_in_vehicles`, então a 1ª frase cita o carro do totem.
+- **Cadastro pós-ligação** (`_shared/call-facts.ts`, chamado por `voice-agent-postcall`): a
+  transcrição vira `metadata.vehicle`/`vehicles` (vínculo no estoque via `consultar-estoque`),
+  `veiculo_interesse_texto`, perfil de compra (`faixa_preco_*`, `precisa_financiar`,
+  `tem_veiculo_troca`, `entrada_disponivel`, `forma_pagamento`), `trade_in_vehicles` (carro na
+  troca), `leads.instagram` e `nao_contatar`, no lead e nos irmãos. Só preenche o que está vazio
+  (ou o carro de interesse mais recente). Telefone da ligação de SAÍDA vem da fila
+  (`nina_call_queue.conversation_id`): o `system__caller_id` era o nosso número e a ligação ia
+  parar no lead "TotexMotors/Autotech".
+- **Instagram**: tool `enviar_instagram_totex` manda o link (config `INSTAGRAM_TOTEX_URL`, padrão
+  instagram.com/totexmotors) pelo WhatsApp oficial, 1x por 30 dias; `anotar_conversa.instagram`
+  grava o @ do cliente. Regra no prompt: convidar depois de combinar a visita, só com clima bom.
+- **Agendamento único**: `agendar-visita` é idempotente (mesmo cliente + mesmo horário + aberto →
+  devolve o existente e avisa a Nina pra não chamar de novo). Prompt: "chame UMA vez".
+- **Inteligência IA automática**: `generate-lead-intelligence` salva em
+  `leads.ai_conversation_insights.full_intelligence` (+ `data_sources`, `generated_at`,
+  `ai_last_analysis_at`, `sales_score`), lê as ligações da Nina, roda sozinha depois de cada
+  ligação (postcall) e de hora em hora (cron `lead-intelligence-batch`, `{batch:true}`, leads com
+  interação depois da última análise). Score novo dispara `lead_score_changed` em
+  `process-automation-rules` (regras em Configurações › Comercial › Automações).
+- **Aprendizado** (`_shared/nina-learnings.ts`): depois de cada ligação o "treinador" (Claude)
+  dá nota 0–10, acertos, erros (ficam em `call_history.metadata.avaliacao`) e propõe até 3 lições
+  como regra curta → `nina_learnings` (status `pendente`; repetida só soma `vezes`). Tela
+  Nina — Ligações › **5. O que a Nina aprendeu**: aprovar/rejeitar (`nina_learning_set_status`).
+  Lições aprovadas entram no fim do prompt (bloco `<!-- LICOES -->`, máx. `NINA_MAX_LICOES` = 20)
+  pelo `syncNinaAgent` em até 2 min. Nada entra no prompt sem aprovação humana.
