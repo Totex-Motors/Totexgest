@@ -51,3 +51,15 @@ END $$;
 DROP TRIGGER IF EXISTS trg_nina_auto_enqueue ON public.leads;
 CREATE TRIGGER trg_nina_auto_enqueue AFTER INSERT OR UPDATE OF source, utm_source ON public.leads
   FOR EACH ROW EXECUTE FUNCTION public.trg_nina_auto_enqueue();
+
+-- Cron do discador: o pg_net cortava em 5 s (padrão) e a ligação de SAÍDA leva mais que
+-- isso (sincroniza agente + permissão da Meta + ElevenLabs). Gabriel ficou "queued" sem
+-- a Nina ligar (14/10 10h). 60 s.
+SELECT cron.alter_job(jobid, command := $c$ SELECT net.http_post(
+       url := (SELECT value FROM config WHERE key = 'SUPABASE_PROJECT_URL') || '/functions/v1/nina-dialer',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+                                     'x-voice-token', coalesce((SELECT value FROM config WHERE key = 'VOICE_AGENT_TOKEN'), '')),
+       body := '{"source":"cron"}'::jsonb,
+       timeout_milliseconds := 60000
+     ); $c$)
+  FROM cron.job WHERE jobname = 'nina-dialer';
