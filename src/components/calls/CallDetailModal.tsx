@@ -34,6 +34,7 @@ import {
   X,
   FileDown,
   NotebookPen,
+  BookOpen,
 } from "lucide-react";
 import {
   Dialog,
