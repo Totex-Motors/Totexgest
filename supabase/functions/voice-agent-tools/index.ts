@@ -291,8 +291,28 @@ Deno.serve(async (req) => {
         const excl = await getNinaExclusiveStore(sb);
         if (excl) { rest.tenant_id = excl.tenantId; rest.loja = excl.name; }
         // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
-        const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
-        return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
+        const run = (busca: string) => callEdge("consultar-estoque", { arguments: { ...rest, busca, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
+        const pedido = String(rest.busca || rest.modelo || "").trim();
+        let result: any = await run(pedido);
+        let usada = pedido;
+        // 0 resultado → escada de buscas mais largas (a transcrição erra nome/versão/ano):
+        // sem ano/versão → só o modelo → só a marca. Nunca "não tem" sem ter tentado.
+        if (pedido && !(Array.isArray(result?.veiculos) && result.veiculos.length) && !result?.error) {
+          const toks = pedido.split(/\s+/).filter(Boolean);
+          const semAno = toks.filter((t) => !/^(19|20)\d{2}$/.test(t) && !/^(gt|gl|glx|sport|premium|comfort|plus|line|top|exl|lx|ex|xei|gli|xli|hybrid|híbrido|hibrido|elétrico|eletrico|turbo|aut|automático|manual)$/i.test(t));
+          const tentativas = [...new Set([semAno.join(" "), semAno.slice(1).join(" "), semAno.slice(0, 2).join(" "), toks[0]].filter((t) => t && t !== pedido))];
+          for (const t of tentativas) {
+            const r = await run(t);
+            if (Array.isArray(r?.veiculos) && r.veiculos.length) { result = r; usada = t; break; }
+          }
+        }
+        const out = trimVehicles(result, pedido);
+        if (usada !== pedido && out.total > 0) {
+          out.dica = `Não achei exatamente "${pedido}"; busquei por "${usada}" e encontrei estes. Diga que achou opções parecidas e confirme com o cliente. ` + out.dica;
+        } else if (out.total === 0 && !result?.error) {
+          out.dica = `Nada com "${pedido}". Pode ter sido erro de entendimento do nome: confirme marca e modelo com o cliente (soletrar ajuda) antes de dizer que não tem, e tente de novo.`;
+        }
+        return json(out);
       }
 
       case "agendar_visita": {
