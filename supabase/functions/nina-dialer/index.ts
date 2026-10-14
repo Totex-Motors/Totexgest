@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
   await sb.from("nina_call_queue").update({ status: "calling", attempts, last_attempt_at: new Date().toISOString(), playbook: brief?.playbook || row.playbook }).eq("id", row.id);
   const firstMessage = firstMessageFor(brief?.playbook || row.playbook, nome, {
     promotora: brief?.promotora ? brief.promotora.split(/\s+/)[0] : null, local: brief?.local_captacao || null,
-    carro: brief?.carro_do_cliente?.descricao || brief?.carro_interesse || null, loja: brief?.loja_referencia || null,
+    carro: brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || brief?.carro_interesse_fala || brief?.carro_interesse || null, loja: brief?.loja_referencia || null,
     disponivel: brief?.carro_interesse_disponivel ?? null,
     marca: ninaBrand(store),
   });

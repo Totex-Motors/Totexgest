@@ -31,7 +31,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief, appendAgentNote } from "../_shared/lead-brief.ts";
-import { getNinaExclusiveStore, normalizeStockSearch } from "../_shared/nina-store.ts";
+import { getNinaExclusiveStore, normalizeStockSearch, spokenCarName } from "../_shared/nina-store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -168,7 +168,7 @@ function trimVehicles(result: any, busca: string) {
   const querMoto = /\bmoto|motocicleta|scooter\b/i.test(busca);
   const semMoto = querMoto ? list : list.filter((v) => !/moto/i.test(String(v.tipo || "")));
   const veiculos = semMoto.slice(0, 8).map((v: any) => ({
-    titulo: v.titulo, ano: v.ano, preco: v.preco, km: v.km, cor: v.cor, cambio: v.cambio,
+    titulo: v.titulo, titulo_falado: spokenCarName(v.titulo), ano: v.ano, preco: v.preco, km: v.km, cor: v.cor, cambio: v.cambio,
     cidade: v.cidade, loja: v.loja, vehicle_id: v.vehicle_id,
   }));
   const motosRemovidas = list.length - semMoto.length;
@@ -177,7 +177,8 @@ function trimVehicles(result: any, busca: string) {
     mostrando: veiculos.length,
     veiculos,
     dica: [
-      veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez (modelo, ano, preço, loja) e pergunte qual interessa." : null,
+      "Ao falar, use titulo_falado (marca e modelo, sem versão, cilindrada ou siglas).",
+      veiculos.length > 2 ? "Fale só 2 ou 3 opções por vez (modelo, ano, preço, unidade) e pergunte qual interessa." : null,
       result?.observacao || null,
       motosRemovidas > 0 ? `${motosRemovidas} moto(s) ficaram de fora; só mencione se o cliente quiser moto.` : null,
       result?.error

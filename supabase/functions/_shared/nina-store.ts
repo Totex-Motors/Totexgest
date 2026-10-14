@@ -109,3 +109,31 @@ export async function getNinaSounds(sb: SupabaseClient): Promise<NinaSounds> {
   const toolSound = toolRaw === "off" || toolRaw === "none" ? null : toolRaw;
   return { background, toolSound, key: `${bgOn ? bgRaw : "off"}@${volume}/${toolSound || "off"}` };
 }
+
+/**
+ * Nome do carro DO JEITO QUE SE FALA (2026-10-14): a voz lia "BMW 330e M Sport 2.0 16V Aut."
+ * soletrando versão, cilindrada e letras coladas em número. Fica marca + modelo, números
+ * separados de letras ("330e" → "330 e"), sem siglas/cilindrada/câmbio/parênteses e sem
+ * palavra repetida ("GWM Tank Tank 300" → "GWM Tank 300"). O nome COMPLETO continua
+ * existindo pra buscar no estoque.
+ */
+export function spokenCarName(raw: string | null | undefined): string | null {
+  let s = String(raw || "").replace(/\([^)]*\)/g, " ").trim();
+  if (!s) return null;
+  s = s.replace(/\b\d+[.,]\d+\b/g, " ")                                  // 2.0, 1.5
+       .replace(/\b\d+v\b/gi, " ")                                          // 16V
+       .replace(/\b(aut|automatico|automático|manual|flex|turbo|tb|awd|4x4|4x2|diesel|gasolina|hibrido|híbrido|eletrico|elétrico|cvt|tiptronic|tip)\b\.?/gi, " ")
+       .replace(/[.,;:]+/g, " ")
+       .replace(/\s+/g, " ").trim();
+  const toks = s.split(" ").filter(Boolean);
+  if (!toks.length) return null;
+  // marca + modelo: para no 1º token com número ("330e" vira "330"); senão até 3 palavras
+  const out: string[] = [toks[0]];
+  for (const t of toks.slice(1)) {
+    if (out[out.length - 1].toLowerCase() === t.toLowerCase()) continue;
+    if (/\d/.test(t)) { out.push(t.replace(/[a-z]+$/i, "")); break; }
+    out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out.join(" ") || null;
+}

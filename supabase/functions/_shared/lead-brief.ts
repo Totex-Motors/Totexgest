@@ -16,7 +16,7 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "./config.ts";
-import { getNinaExclusiveStore } from "./nina-store.ts";
+import { getNinaExclusiveStore, spokenCarName } from "./nina-store.ts";
 
 export type Playbook = "vender" | "trocar" | "comprar" | "descobrir";
 
@@ -106,6 +106,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
   if (sv && (sv.brand || sv.model)) {
     carroDoCliente = {
       descricao: [sv.brand, sv.model, sv.version].filter(Boolean).join(" "),
+      fala: spokenCarName([sv.brand, sv.model].filter(Boolean).join(" ")),
       ano: sv.year_model ?? null, km: sv.km ?? null, financiado: sv.has_financing ?? null,
       expectativa: sv.expected_price ? brl(Number(sv.expected_price)) : null,
     };
@@ -192,7 +193,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
           });
           const est2 = await r2.json().catch(() => ({}));
           for (const v of (Array.isArray(est2?.veiculos) ? est2.veiculos : []).filter((v: any) => !/moto/i.test(String(v.tipo || ""))).slice(0, 3)) {
-            alternativas.push(`${v.titulo}${v.ano ? ` ${v.ano}` : ""}${v.preco ? ` por ${v.preco}` : ""}${v.loja ? ` na ${v.loja}` : ""}`);
+            alternativas.push(`${spokenCarName(v.titulo) || v.titulo}${v.ano ? ` ${v.ano}` : ""}${v.preco ? ` por ${v.preco}` : ""}${v.loja ? ` na ${v.loja}` : ""}`);
           }
         }
       }
@@ -203,7 +204,19 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
   const { data: ag } = await sb.from("company_activities").select("name, scheduled_at")
     .eq("lead_id", leadId).eq("task_type", "meeting").gte("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true }).limit(1).maybeSingle();
-  const agendamento = ag ? `${ag.name} em ${new Date(ag.scheduled_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : null;
+  // Agendamento DO JEITO QUE SE FALA ("avaliação do Corolla, quarta-feira, 14 de outubro, às 15 horas"),
+  // não o nome bruto da tarefa ("Agendamento: Avaliação do carro — Marco (Corolla 2021) em qua., 14/10, 15:00").
+  let agendamento: string | null = null;
+  if (ag) {
+    const nm = String(ag.name || "");
+    const tipo = (nm.match(/Agendamento:\s*([^—(]+)/)?.[1] || nm).trim().toLowerCase().replace(/^avaliação do carro$/, "avaliação");
+    const carroAg = spokenCarName(nm.match(/\(([^)]*)\)/)?.[1] || "");
+    const d = new Date(ag.scheduled_at);
+    const dia = d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "numeric", month: "long" });
+    const h = Number(d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "numeric", hour12: false }));
+    const m = Number(d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", minute: "numeric" }));
+    agendamento = `${tipo}${carroAg ? ` do ${carroAg}` : ""}, ${dia}, às ${h}${m ? ` e ${m}` : " horas"}`;
+  }
   const { data: inter } = await sb.from("intermediations").select("status, asking_price").eq("owner_lead_id", leadId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const intermediacao = inter ? `Intermediação já aberta (status ${inter.status}${inter.asking_price ? `, pedida ${brl(Number(inter.asking_price))}` : ""})` : null;
 
@@ -223,15 +236,16 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
   const nome = isRealName(lead.name) ? lead.name : null;
   const orient = [
     nome ? `Cumprimente pelo primeiro nome (${firstName(nome)}).` : "Cliente sem nome: pergunte o nome de forma natural.",
+    "Ao falar de carro use o nome falado (campos _fala / titulo_falado): só marca e modelo. O nome completo é só pra buscar no estoque.",
     `Playbook: ${playbook.toUpperCase()} — ${intencaoTexto}.`,
-    carroDoCliente ? `Já sabemos o carro: ${carroDoCliente.descricao}${carroDoCliente.ano ? ` ${carroDoCliente.ano}` : ""}. Não pergunte de novo.` : null,
+    carroDoCliente ? `Já sabemos o carro: ${carroDoCliente.fala || carroDoCliente.descricao}${carroDoCliente.ano ? ` ${carroDoCliente.ano}` : ""}. Não pergunte de novo.` : null,
     fipe ? `Temos a ${fipe.referencia}: ${fipe.valor}. As três propostas estão calculadas — apresente a lógica, não despeje os três números de uma vez.` : (playbook !== "comprar" && playbook !== "descobrir" ? "Sem FIPE ainda: diga que a avaliação sai em minutos e ofereça agendar." : null),
     carroInteresse
       ? (disponivel === false
-          ? `Interesse: ${carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""} — JÁ SAIU do estoque. Não diga que está disponível: avise com naturalidade que ele já foi e ofereça${alternativas.length ? `: ${alternativas.join("; ")}` : " opções parecidas (consultar_estoque)"}.`
-          : `Interesse: ${carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""}${disponivel ? " (ainda disponível)" : ""}. Fale desse carro primeiro.`)
+          ? `Interesse: ${spokenCarName(carroInteresse) || carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""} — JÁ SAIU do estoque. Não diga que está disponível: avise com naturalidade que ele já foi e ofereça${alternativas.length ? `: ${alternativas.join("; ")}` : " opções parecidas (consultar_estoque)"}.`
+          : `Interesse: ${spokenCarName(carroInteresse) || carroInteresse}${lojaRef ? ` na ${lojaRef}` : ""}${disponivel ? " (ainda disponível)" : ""}. Fale desse carro primeiro.`)
       : null,
-    agendamento ? `JÁ TEM agendamento: ${agendamento}. Confirme em vez de marcar outro.` : null,
+    agendamento ? `JÁ TEM agendamento (${agendamento}). Não abra a ligação com isso nem leia como ficha: siga o motivo da conversa e, quando fizer sentido, confirme em uma frase leve ("sua avaliação de quarta continua de pé?") em vez de marcar outro.` : null,
     ultimaLigacao ? `Já conversou com a Nina em ${ultimaLigacao.quando}. Continue de onde parou.` : null,
   ].filter(Boolean).join(" ");
 
@@ -242,7 +256,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     cidade: [lead.city_name, lead.state].filter(Boolean).join("/") || null,
     playbook, intencao_texto: intencaoTexto, origem, promotora, local_captacao: local,
     carro_do_cliente: carroDoCliente, fipe, propostas,
-    carro_interesse: carroInteresse, carro_interesse_disponivel: disponivel, alternativas, loja_referencia: lojaRef,
+    carro_interesse: carroInteresse, carro_interesse_fala: spokenCarName(carroInteresse), carro_interesse_disponivel: disponivel, alternativas, loja_referencia: lojaRef,
     temperatura: sq.temperatura || null,
     observacoes_promotora: sq.observacao || null,
     agendamento_existente: agendamento, intermediacao,
