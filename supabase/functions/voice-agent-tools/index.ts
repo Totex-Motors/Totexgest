@@ -300,7 +300,13 @@ Deno.serve(async (req) => {
         if (pedido && !(Array.isArray(result?.veiculos) && result.veiculos.length) && !result?.error) {
           const toks = pedido.split(/\s+/).filter(Boolean);
           const semAno = toks.filter((t) => !/^(19|20)\d{2}$/.test(t) && !/^(gt|gl|glx|sport|premium|comfort|plus|line|top|exl|lx|ex|xei|gli|xli|hybrid|híbrido|hibrido|elétrico|eletrico|turbo|aut|automático|manual)$/i.test(t));
-          const tentativas = [...new Set([semAno.join(" "), semAno.slice(1).join(" "), semAno.slice(0, 2).join(" "), toks[0]].filter((t) => t && t !== pedido))];
+          // ordem: sem ano/versão → marca + modelo → só a marca → só o modelo (nunca um número sozinho:
+          // "320" no site casava com Yaris e Porsche pelo preço/km)
+          const modelo = semAno.slice(1).join(" ");
+          const tentativas = [...new Set([
+            semAno.join(" "), semAno.slice(0, 2).join(" "), toks[0],
+            /[a-z]{3,}/i.test(modelo) ? modelo : "",
+          ].filter((t) => t && t !== pedido))];
           for (const t of tentativas) {
             const r = await run(t);
             if (Array.isArray(r?.veiculos) && r.veiculos.length) { result = r; usada = t; break; }
