@@ -20,7 +20,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
-import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
+import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -62,7 +63,12 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
   const voiceId = String((await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "").trim();
   const store = await getNinaExclusiveStore(sb);
   const sounds = await getNinaSounds(sb);
-  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1", sounds.key].join("|");
+  // prompt: config VOICE_AGENT_PROMPT (tela) ou o padrão do código (v3); versão antiga sem playbook é ignorada
+  const stored = String((await getIntegrationKey(sb, "VOICE_AGENT_PROMPT")) || "").trim();
+  const basePrompt = stored.includes("# PLAYBOOK") ? stored : NINA_PROMPT;
+  const promptHash = String(basePrompt.length) + ":" + basePrompt.slice(0, 80).replace(/\s+/g, " ");
+  const tts = await getNinaVoiceTts(sb);
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1", sounds.key, promptHash, tts.key].join("|");
   if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
 
   const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
@@ -73,7 +79,7 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
   const conversation_config: Record<string, unknown> = {
     agent: {
       first_message: brandFirstMessage(String(ag.first_message || ""), store),
-      prompt: { prompt: applyExclusivity(String(pr.prompt || ""), store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
+      prompt: { prompt: applyExclusivity(basePrompt, store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
       // customer_phone vazio derruba a ligação RECEBIDA ("Missing required dynamic variables in
       // tools") — placeholder não-vazio; voice-agent-tools ignora o que não for telefone.
       dynamic_variables: {
@@ -85,7 +91,8 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
       },
     },
   };
-  if (voiceId) conversation_config.tts = { voice_id: voiceId };
+  // voz da ligação: modelo e ajuste fino (config VOICE_CALL_*) — flash soava diferente da Carla
+  conversation_config.tts = { ...(voiceId ? { voice_id: voiceId } : {}), model_id: tts.model_id, stability: tts.stability, similarity_boost: tts.similarity_boost, speed: tts.speed, optimize_streaming_latency: tts.optimize_streaming_latency };
   // clima de escritório (som de fundo bem baixo) — config VOICE_BACKGROUND_SOUND/VOLUME
   conversation_config.conversation = { background_sound: sounds.background };
   const r = await fetch(`${ELEVEN}/convai/agents/${agentId}`, {
@@ -249,7 +256,7 @@ Deno.serve(async (req) => {
   await sb.from("nina_call_queue").update({ status: "calling", attempts, last_attempt_at: new Date().toISOString(), playbook: brief?.playbook || row.playbook }).eq("id", row.id);
   const firstMessage = firstMessageFor(brief?.playbook || row.playbook, nome, {
     promotora: brief?.promotora ? brief.promotora.split(/\s+/)[0] : null, local: brief?.local_captacao || null,
-    carro: brief?.carro_do_cliente?.descricao || brief?.carro_interesse || null, loja: store ? null : (brief?.loja_referencia || null),
+    carro: brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || brief?.carro_interesse_fala || brief?.carro_interesse || null, loja: brief?.loja_referencia || null,
     disponivel: brief?.carro_interesse_disponivel ?? null,
     marca: ninaBrand(store),
   });
