@@ -24,7 +24,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, invalidateIntegrationKeyCache } from "../_shared/config.ts";
-import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
 import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -258,6 +258,7 @@ async function actionElevenProvision(sb: any, body: any) {
   const voiceId = String(body.voice_id || (await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || vr.voice || "").trim();
   if (!voiceId) return json({ error: "Sem Voice ID: cadastre a voz na aba Humanização do agente (Responder por áudio) ou informe voice_id." }, 400);
   const tune = { stability: 0.4, similarity: 0.85, speed: 1.0, ...(vr.eleven || {}) };
+  const callTts = await getNinaVoiceTts(sb, { stability: Number(tune.stability), similarity: Number(tune.similarity), speed: Number(tune.speed) });
 
   const log: string[] = [];
 
@@ -303,8 +304,8 @@ async function actionElevenProvision(sb: any, body: any) {
     },
     tts: {
       voice_id: voiceId,
-      model_id: "eleven_flash_v2_5",
-      stability: Number(tune.stability), similarity_boost: Number(tune.similarity), speed: Number(tune.speed),
+      // modelo e ajuste fino da LIGAÇÃO (config VOICE_CALL_*; padrão turbo v2.5 — flash soava diferente da Carla)
+      ...(({ key: _k, ...rest }) => rest)(callTts),
     },
     turn: { turn_timeout: 7, turn_eagerness: "normal" },
     // clima de escritório: som de fundo bem baixo (config VOICE_BACKGROUND_SOUND/VOLUME)

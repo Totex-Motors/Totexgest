@@ -137,3 +137,27 @@ export function spokenCarName(raw: string | null | undefined): string | null {
   }
   return out.join(" ") || null;
 }
+
+/**
+ * Como a voz da LIGAÇÃO é gerada (2026-10-14). A Carla soava diferente da prévia da biblioteca:
+ * o agente usava o modelo "flash" (mais rápido, timbre mais pobre) com latência agressiva.
+ * Config: VOICE_CALL_TTS_MODEL (eleven_turbo_v2_5 | eleven_flash_v2_5 | eleven_multilingual_v2),
+ * VOICE_CALL_STABILITY, VOICE_CALL_SIMILARITY, VOICE_CALL_SPEED (0.7–1.2), VOICE_CALL_LATENCY (0–4,
+ * menor = melhor qualidade). Aplicado por syncNinaAgent/voice-agent-setup.
+ */
+export type NinaVoiceTts = { model_id: string; stability: number; similarity_boost: number; speed: number; optimize_streaming_latency: number; key: string };
+export async function getNinaVoiceTts(sb: SupabaseClient, fallback: { stability?: number; similarity?: number; speed?: number } = {}): Promise<NinaVoiceTts> {
+  const num = async (k: string, def: number, min: number, max: number) => {
+    const v = Number(await getIntegrationKey(sb, k));
+    return Number.isFinite(v) && v >= min && v <= max ? v : def;
+  };
+  const model = String((await getIntegrationKey(sb, "VOICE_CALL_TTS_MODEL")) || "eleven_turbo_v2_5").trim();
+  const out = {
+    model_id: model,
+    stability: await num("VOICE_CALL_STABILITY", fallback.stability ?? 0.45, 0, 1),
+    similarity_boost: await num("VOICE_CALL_SIMILARITY", fallback.similarity ?? 0.8, 0, 1),
+    speed: await num("VOICE_CALL_SPEED", fallback.speed ?? 1.05, 0.7, 1.2),
+    optimize_streaming_latency: Math.round(await num("VOICE_CALL_LATENCY", 1, 0, 4)),
+  };
+  return { ...out, key: `${out.model_id}/${out.stability}/${out.similarity_boost}/${out.speed}/${out.optimize_streaming_latency}` };
+}
