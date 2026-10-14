@@ -141,6 +141,13 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
       reaquecimento: {
         ativo: true, momento, playbook, iniciado_em: new Date().toISOString(), via: sent.via,
         carro: carroInteresse || carroCliente || null, plano: plano ? { prazo: plano.plano.prazo, parcela: plano.plano.parcela, antecipacao: plano.antecipacao, cupom_campanha: plano.cupom_campanha } : null,
+        // o agente de texto precisa SABER o que a abertura já disse (14/10: depois do "pode mandar" ele
+        // perguntava "como posso te chamar?" e "é troca ou compra?" — tudo que a mensagem já assumia)
+        nome: nome || null, carro_cliente: carroCliente || null,
+        fipe: brief?.fipe?.valor || null,
+        proposta_troca: (brief?.propostas || []).find((p: any) => /troca/i.test(p.nome))?.valor || null,
+        proposta_rapida: (brief?.propostas || []).find((p: any) => /r[áa]pida/i.test(p.nome))?.valor || null,
+        abertura: texto,
         historico: [...hist, { em: new Date().toISOString(), momento, via: sent.via }].slice(-10),
       },
     },

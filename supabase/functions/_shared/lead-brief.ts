@@ -188,7 +188,14 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
       .eq("channel", "whatsapp").contains("working_memory", { customer_phone: phone })
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     const wm = (sess?.working_memory || {}) as Record<string, any>;
-    carroInteresse = carroInteresse || wm.carro || wm.vehicle || null;
+    // wm.vehicle pode ser OBJETO (do intake do stand) — virava "[object Object]" no reaquecimento (14/10)
+    const wmCar = (v: unknown): string | null => {
+      if (!v) return null;
+      if (typeof v === "string") return v;
+      const o = v as Record<string, any>;
+      return [o.titulo || o.title || o.description, !o.titulo && !o.title && !o.description ? [o.brand || o.marca, o.model || o.modelo, o.version || o.versao, o.year || o.ano].filter(Boolean).join(" ") : null].filter(Boolean)[0] || null;
+    };
+    carroInteresse = carroInteresse || wmCar(wm.carro) || wmCar(wm.vehicle) || null;
     lojaRef = lojaRef || wm.owner_label || wm.loja || null;
   }
 

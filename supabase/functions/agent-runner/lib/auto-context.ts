@@ -212,6 +212,13 @@ async function buildSessionContextBlock(
         C_esfriou: "conversou e esfriou (dias sem responder)",
       };
       lines.push("", "🔥 MODO REAQUECIMENTO — este cliente " + (momento[String(re.momento)] || "esfriou") + ". A gente abriu a conversa com uma conta pronta e ele RESPONDEU. Agora é o seu momento:");
+      if (re.abertura) lines.push(`- A mensagem que ELE recebeu e respondeu foi: "${re.abertura}"`);
+      lines.push(
+        "- ⛔ NÃO pergunte o nome dele" + (re.nome ? ` (é ${re.nome})` : "") + ", NÃO pergunte se é troca ou compra, NÃO pergunte qual carro ele tem" + (re.carro_cliente ? ` (é o ${re.carro_cliente})` : "") + ". A abertura já disse tudo isso; perguntar de novo soa robô. Se ele disse 'pode mandar' / 'sim', a PRÓXIMA mensagem É a conta, não outra pergunta.",
+      );
+      if (re.carro_cliente) lines.push(`- Carro DELE (entra na troca/venda): ${re.carro_cliente}${re.fipe ? ` · FIPE ${re.fipe}` : ""}${re.proposta_troca ? ` · vale na troca até ${re.proposta_troca}` : ""}${re.proposta_rapida ? ` · proposta rápida ${re.proposta_rapida}` : ""}`);
+      if (re.playbook === "trocar") lines.push("- Como mandar a conta na TROCA: 1) diga quanto o carro dele vale na troca (o valor acima; se não tiver, diga que a avaliação sai em minutos na loja) e 2) pergunte qual carro ele viu ou quer; com o carro, chame simular_plano passando o valor do carro e carro_na_troca = valor do dele, e mostre a parcela em reais + a jogada do décimo terceiro. Se ele JÁ citou o carro que viu, pule a pergunta e vá direto pro simular_plano.");
+      if (re.playbook === "vender") lines.push("- Como mandar a conta na VENDA: mande a referência de valor (proposta rápida e intermediação Totex, do dossiê) e feche com a avaliação presencial com dia e hora.");
       if (re.carro) lines.push(`- Carro da conversa: ${re.carro}`);
       if (re.plano?.parcela) {
         lines.push(`- Plano já mostrado: ${re.plano.prazo}x de R$ ${Math.round(re.plano.parcela).toLocaleString("pt-BR")}` +
