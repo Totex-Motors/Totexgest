@@ -20,8 +20,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
-import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
+import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND, NINA_ASR_KEYWORDS } from "../_shared/nina-store.ts";
 import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
+import { withLessons } from "../_shared/nina-learnings.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -66,9 +67,11 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
   // prompt: config VOICE_AGENT_PROMPT (tela) ou o padrão do código (v3); versão antiga sem playbook é ignorada
   const stored = String((await getIntegrationKey(sb, "VOICE_AGENT_PROMPT")) || "").trim();
   const basePrompt = stored.includes("# PLAYBOOK") ? stored : NINA_PROMPT;
-  const promptHash = String(basePrompt.length) + ":" + basePrompt.slice(0, 80).replace(/\s+/g, " ");
+  // lições aprovadas pela equipe (nina_learnings) entram no fim do prompt
+  const withL = await withLessons(sb, basePrompt);
+  const promptHash = String(basePrompt.length) + ":" + basePrompt.slice(0, 80).replace(/\s+/g, " ") + ":" + withL.hash;
   const tts = await getNinaVoiceTts(sb);
-  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1", sounds.key, promptHash, tts.key].join("|");
+  const hash = [agentId, voiceId, store?.tenantId || "", store?.name || "", BLOCK_VERSION, "ov1", "dv1", "tv1", "ai1", sounds.key, promptHash, tts.key].join("|");
   if (!force && (await getIntegrationKey(sb, "VOICE_ELEVEN_SYNC_HASH")) === hash) return { ok: true, detail: "em dia" };
 
   const g = await fetch(`${ELEVEN}/convai/agents/${agentId}`, { headers: { "xi-api-key": elevenKey } });
@@ -79,7 +82,9 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
   const conversation_config: Record<string, unknown> = {
     agent: {
       first_message: brandFirstMessage(String(ag.first_message || ""), store),
-      prompt: { prompt: applyExclusivity(basePrompt, store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
+      // a 1ª frase sai inteira mesmo que o cliente fale por cima (Gabriel, 14/10: perdeu a Toro)
+      disable_first_message_interruptions: true,
+      prompt: { prompt: applyExclusivity(withL.prompt, store), llm: pr.llm, tool_ids: pr.tool_ids, temperature: pr.temperature },
       // customer_phone vazio derruba a ligação RECEBIDA ("Missing required dynamic variables in
       // tools") — placeholder não-vazio; voice-agent-tools ignora o que não for telefone.
       dynamic_variables: {
@@ -95,6 +100,8 @@ async function syncNinaAgent(sb: any, elevenKey: string, agentId: string, force 
   conversation_config.tts = { ...(voiceId ? { voice_id: voiceId } : {}), model_id: tts.model_id, stability: tts.stability, similarity_boost: tts.similarity_boost, speed: tts.speed, optimize_streaming_latency: tts.optimize_streaming_latency };
   // clima de escritório (som de fundo bem baixo) — config VOICE_BACKGROUND_SOUND/VOLUME
   conversation_config.conversation = { background_sound: sounds.background };
+  // nomes de carro que a transcrição erra ("Hora"→Ora, "Nivos"→Nivus)
+  conversation_config.asr = { ...((agent?.conversation_config?.asr as Record<string, unknown>) || {}), keywords: NINA_ASR_KEYWORDS };
   const r = await fetch(`${ELEVEN}/convai/agents/${agentId}`, {
     method: "PATCH",
     headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },

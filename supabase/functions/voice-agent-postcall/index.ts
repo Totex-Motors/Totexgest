@@ -16,6 +16,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { getNinaExclusiveStore, ninaBrand } from "../_shared/nina-store.ts";
+import { extractCallFacts, applyCallFacts } from "../_shared/call-facts.ts";
+import { reviewCall } from "../_shared/nina-learnings.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -135,11 +137,23 @@ Deno.serve(async (req) => {
   const { data: dup } = await sb.from("call_history").select("id").contains("metadata", { conversation_id: conversationId }).limit(1).maybeSingle();
   if (dup) return json({ ok: true, duplicate: true, call_id: dup.id });
 
-  const phone = extractCallerPhone(data);
   const tenantId = (await getIntegrationKey(sb, "VOICE_AGENT_TENANT_ID")) || HQ_TENANT;
 
-  let leadId: string | null = null;
-  if (phone) {
+  // Telefone do CLIENTE. Na ligação de SAÍDA o system__caller_id é o NOSSO número (14/10: a
+  // ligação do Gabriel foi parar no lead "TotexMotors/Autotech"). A fila sabe quem é o cliente;
+  // e nunca aceitamos o nosso próprio número como lead.
+  const { data: nossos } = await sb.from("whatsapp_instances").select("phone_number").eq("provider", "meta_cloud");
+  const ourNumbers = new Set((nossos || []).map((i: any) => normalizePhone(i.phone_number)).filter(Boolean));
+  const { data: queued } = await sb.from("nina_call_queue").select("phone, lead_id").eq("conversation_id", conversationId).maybeSingle();
+  let phone = normalizePhone(queued?.phone || "");
+  let leadId: string | null = queued?.lead_id || null;
+  if (!phone) {
+    const dv = data?.conversation_initiation_client_data?.dynamic_variables || {};
+    const candidates = [dv.system__called_number, dv.customer_phone, dv.system__caller_id, extractCallerPhone(data)];
+    for (const c of candidates) { const p = normalizePhone(c); if (p.length >= 10 && !ourNumbers.has(p)) { phone = p; break; } }
+  }
+
+  if (phone && !leadId) {
     const { data: r, error } = await sb.rpc("find_or_create_lead", {
       p_tenant: tenantId, p_phone: phone, p_name: null, p_source: "ligacao_ia", p_email: null,
       p_utm_source: "whatsapp_call", p_metadata: { origin: "nina-voz" }, p_lead_kind: "buyer",
@@ -222,8 +236,43 @@ Deno.serve(async (req) => {
   // ── Fase B: fecha a tentativa da fila (ligação de SAÍDA) ──
   await settleQueue(sb, conversationId, outcome, duration, phone, leadId, summary);
 
-  console.log(`[voice-postcall] ligação gravada ${call.id} lead=${leadId || "-"} ${duration}s conv=${conversationId} outcome=${outcome}`);
-  return json({ ok: true, call_id: call.id, lead_id: leadId, duration, outcome });
+  // ── CADASTRO + APRENDIZADO (14/10, pedido do Marco) ──
+  // 1. a transcrição vira cadastro: carro de interesse, perfil de compra, carro da troca, Instagram
+  // 2. o treinador avalia a ligação e propõe lições (pendentes de aprovação)
+  // 3. a Inteligência IA do lead roda sozinha e fica salva no card
+  let cadastro: string[] = [];
+  let avaliacao: Record<string, unknown> | null = null;
+  if (leadId && duration >= 15 && transcription) {
+    const { data: lx } = await sb.from("leads").select("name, metadata").eq("id", leadId).maybeSingle();
+    const mdx = ((lx?.metadata as Record<string, any>) || {});
+    const contexto = [
+      lx?.name ? `nome=${lx.name}` : null,
+      mdx.veiculo_interesse_texto ? `carro de interesse no CRM=${mdx.veiculo_interesse_texto}` : null,
+      mdx.vehicle?.description ? `veículo vinculado=${mdx.vehicle.description}` : null,
+      `origem=${mdx.origin ? JSON.stringify(mdx.origin).slice(0, 120) : "?"}`,
+    ].filter(Boolean).join("; ");
+    const store = await getNinaExclusiveStore(sb).catch(() => null);
+    try {
+      const facts = await extractCallFacts(sb, tenantId, transcription, contexto);
+      if (facts) cadastro = await applyCallFacts(sb, leadId, facts, { storeTenantId: store?.tenantId || null });
+    } catch (e) { console.warn("[voice-postcall] cadastro:", (e as Error).message); }
+    try {
+      const review = await reviewCall(sb, tenantId, call.id, transcription, contexto);
+      if (review) {
+        avaliacao = { ...review, em: new Date().toISOString() };
+        await sb.from("call_history").update({ metadata: { ...(call as any).metadata, source: "nina-voz", provider: "elevenlabs", conversation_id: conversationId, avaliacao, cadastro } }).eq("id", call.id);
+      }
+    } catch (e) { console.warn("[voice-postcall] avaliação:", (e as Error).message); }
+    // Inteligência IA do lead (salva no card) — dispara e não espera
+    fetch(`${SUPABASE_URL}/functions/v1/generate-lead-intelligence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      body: JSON.stringify({ lead_id: leadId, origem: "nina-voz" }),
+    }).catch((e) => console.warn("[voice-postcall] inteligência:", (e as Error).message));
+  }
+
+  console.log(`[voice-postcall] ligação gravada ${call.id} lead=${leadId || "-"} ${duration}s conv=${conversationId} outcome=${outcome} cadastro=${cadastro.join(",") || "-"} nota=${(avaliacao as any)?.nota ?? "-"}`);
+  return json({ ok: true, call_id: call.id, lead_id: leadId, duration, outcome, cadastro, nota: (avaliacao as any)?.nota ?? null });
 });
 
 /**

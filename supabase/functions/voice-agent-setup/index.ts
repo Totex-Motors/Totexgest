@@ -53,6 +53,9 @@ const TOOLS_URL = `${SUPABASE_URL}/functions/v1/voice-agent-tools`;
 
 // ───────────────────────────── defaults da Nina ─────────────────────────────
 const DEFAULT_FIRST_MESSAGE = "Oi! Aqui é a Nina, da Totex Motors. Com quem eu falo?";
+import { NINA_ASR_KEYWORDS } from "../_shared/nina-store.ts";
+import { withLessons } from "../_shared/nina-learnings.ts";
+
 const DEFAULT_PROMPT = NINA_PROMPT; // v3 — docs/nina/PROMPT-V3.md
 
 /**
@@ -124,8 +127,15 @@ const TOOL_DEFS: ToolDef[] = [
       proximo_passo: { type: "string", description: "O que ficou combinado, com dia/hora se houver (ex.: 'retornar quinta 10h', 'visita sábado 11h na Cardoso')." },
       temperatura: { type: "string", enum: ["quente", "morno", "frio"], description: "Chance de fechar nas próximas semanas." },
       interesse: { type: "string", description: "Carro ou tipo de carro de interesse, se mudou ou ficou claro na ligação." },
+      instagram: { type: "string", description: "O @ do Instagram do cliente, se ele disse (ex.: @fulano)." },
     },
     required: ["resumo"],
+  },
+  {
+    name: "enviar_instagram_totex",
+    description: "Manda no WhatsApp do cliente o link do Instagram da Totex Motors (quem segue participa de brindes e sorteios). Chame UMA vez, no fim da ligação, depois de combinar visita ou retorno e só se o clima estiver bom. Não chame em ligação de reclamação ou quando o cliente pediu pra não ser contatado.",
+    properties: {},
+    required: [],
   },
   {
     name: "horario_atual",
@@ -313,13 +323,18 @@ async function actionElevenProvision(sb: any, body: any) {
     agent: {
       first_message: firstMessage,
       language: "pt",
-      prompt: { prompt, llm: String(body.llm || "gpt-4.1-mini"), tool_ids: Object.values(toolIds), temperature: 0.4 },
+      // A 1ª frase não pode ser cortada: o Gabriel (14/10) falou por cima e a Nina perdeu o motivo
+      // da ligação (a Toro). O cliente é ouvido logo depois; a abertura sai inteira.
+      disable_first_message_interruptions: true,
+      prompt: { prompt: (await withLessons(sb, prompt)).prompt, llm: String(body.llm || "gpt-4.1-mini"), tool_ids: Object.values(toolIds), temperature: 0.4 },
     },
     tts: {
       voice_id: voiceId,
       // modelo e ajuste fino da LIGAÇÃO (config VOICE_CALL_*; padrão turbo v2.5 — flash soava diferente da Carla)
       ...(({ key: _k, ...rest }) => rest)(callTts),
     },
+    // nomes de carro que a transcrição erra ("Hora"→Ora, "Nivos"→Nivus) — _shared/nina-store.ts
+    asr: { keywords: NINA_ASR_KEYWORDS },
     turn: { turn_timeout: 7, turn_eagerness: "normal" },
     // clima de escritório: som de fundo bem baixo (config VOICE_BACKGROUND_SOUND/VOLUME)
     conversation: { background_sound: sounds.background },

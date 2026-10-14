@@ -82,6 +82,27 @@ export function normalizeStockSearch(s: string): string {
 }
 
 /**
+ * Palavras-chave pro reconhecimento de voz da ElevenLabs (conversation_config.asr.keywords):
+ * nomes de carro que a transcrição mais erra ("Hora"→Ora, "Tanque"→Tank, "Nivos"→Nivus).
+ * Lista curta e estável: marcas e modelos que passam pelo pátio das lojas parceiras.
+ */
+export const NINA_ASR_KEYWORDS = [
+  "Totex", "Cardoso", "Tamboré", "Carapicuíba", "Alphaville", "FIPE",
+  "GWM", "Tank", "Ora", "Haval", "Jolion", "BYD", "Dolphin", "Seal", "Song", "Yuan", "King",
+  "Toyota", "Corolla", "Cross", "Yaris", "Hilux", "SW4", "RAV4",
+  "Volkswagen", "Nivus", "T-Cross", "Taos", "Tiguan", "Polo", "Virtus", "Jetta", "Golf", "Saveiro", "Amarok",
+  "Chevrolet", "Onix", "Tracker", "Cruze", "Equinox", "Montana", "S10", "Spin",
+  "Fiat", "Toro", "Pulse", "Fastback", "Argo", "Cronos", "Strada", "Mobi",
+  "Jeep", "Renegade", "Compass", "Commander",
+  "Honda", "Civic", "HR-V", "City", "Fit", "WR-V", "ZR-V",
+  "Hyundai", "HB20", "Creta", "Tucson", "Kia", "Sportage", "Seltos", "Stonic",
+  "Nissan", "Kicks", "Versa", "Sentra", "Renault", "Kwid", "Duster", "Oroch", "Captur",
+  "Peugeot", "Citroën", "Cactus", "Aircross", "BMW", "Audi", "Mercedes", "Volvo", "Land Rover", "Evoque",
+  "Mitsubishi", "Outlander", "Eclipse", "Pajero", "L200", "Ford", "Ranger", "Bronco", "Territory", "RAM", "Rampage",
+  "Caoa", "Chery", "Tiggo", "Omoda", "Jaecoo", "Porsche", "Macan", "Cayenne", "Mini", "Cooper",
+];
+
+/**
  * Clima de escritório na ligação (2026-10-13, pedido do Marco):
  *  - som de fundo da ElevenLabs (conversation.background_sound, presets office1/office2/
  *    restaurant/city/typing/elevator1-4) — config VOICE_BACKGROUND_SOUND (padrão office1;

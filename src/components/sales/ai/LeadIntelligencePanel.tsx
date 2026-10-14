@@ -107,7 +107,9 @@ export function LeadIntelligencePanel({
   const [intelligence, setIntelligence] = useState<LeadIntelligence | null>(
     initialIntelligence || null
   );
-  const [dataSources, setDataSources] = useState<string[]>([]);
+  // resultado salvo no card (generate-lead-intelligence persiste em ai_conversation_insights)
+  const [dataSources, setDataSources] = useState<string[]>(Array.isArray((rawInsights as any)?.data_sources) ? (rawInsights as any).data_sources : []);
+  const [generatedAt, setGeneratedAt] = useState<string | null>((rawInsights as any)?.generated_at || lastAnalysisAt || null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleGenerate = async () => {
@@ -123,6 +125,7 @@ export function LeadIntelligencePanel({
 
       setIntelligence(data.intelligence);
       setDataSources(data.data_sources || []);
+      setGeneratedAt(data.generated_at || new Date().toISOString());
 
       queryClient.invalidateQueries({ queryKey: ["sales-lead", leadId] });
 
@@ -278,9 +281,11 @@ export function LeadIntelligencePanel({
             Atualizar
           </Button>
         </div>
-        {dataSources.length > 0 && (
+        {(dataSources.length > 0 || generatedAt) && (
           <p className="text-xs text-muted-foreground">
-            Fontes: {dataSources.join(" | ")}
+            {generatedAt && <>Gerada em {new Date(generatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} (automática após ligação e a cada hora com interação nova)</>}
+            {generatedAt && dataSources.length > 0 && " · "}
+            {dataSources.length > 0 && <>Fontes: {dataSources.join(" | ")}</>}
           </p>
         )}
       </CardHeader>

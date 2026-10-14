@@ -82,18 +82,46 @@ Deno.serve(async (req) => {
       client_contact_method: "whatsapp", ai_generated: true, source_type: "agent", metadata,
     };
 
+    // IDEMPOTENTE (14/10: a Nina chamou 2x e o Gabriel ficou com 4 tarefas): mesmo cliente,
+    // mesmo horário e agendamento aberto no tenant → reaproveita em vez de criar outro.
+    const jaExiste = async (tenantId: string): Promise<string | null> => {
+      let q = sb.from("company_activities").select("id, lead_id, metadata")
+        .eq("tenant_id", tenantId).eq("task_type", "meeting").eq("scheduled_at", inicio.toISOString())
+        .not("status", "in", "(cancelled,canceled,completed)").limit(5);
+      q = leadId && tenantId === session.tenant_id ? q.eq("lead_id", leadId) : q.contains("metadata", { tipo: "agendamento", cliente_telefone: phone || "" });
+      const { data } = await q;
+      const hit = (data || []).find((r: any) => (r.metadata || {}).tipo === "agendamento" && (!phone || (r.metadata || {}).cliente_telefone === phone));
+      return hit?.id || null;
+    };
+
     const ids: string[] = [];
-    const ins = await sb.from("company_activities")
-      .insert({ ...base, tenant_id: session.tenant_id, lead_id: leadId }).select("id").single();
-    if (ins.error) return json({ success: false, message: `Não consegui registrar: ${ins.error.message}` });
-    ids.push(ins.data.id);
+    let duplicado = false;
+    const existente = await jaExiste(session.tenant_id);
+    if (existente) { ids.push(existente); duplicado = true; }
+    else {
+      const ins = await sb.from("company_activities")
+        .insert({ ...base, tenant_id: session.tenant_id, lead_id: leadId }).select("id").single();
+      if (ins.error) return json({ success: false, message: `Não consegui registrar: ${ins.error.message}` });
+      ids.push(ins.data.id);
+    }
 
     if (ownerTenantId && ownerTenantId !== session.tenant_id && phone) {
-      const { data: ol } = await sb.from("leads").select("id").eq("tenant_id", ownerTenantId)
-        .eq("phone", phone).limit(1).maybeSingle();
-      const r = await sb.from("company_activities")
-        .insert({ ...base, tenant_id: ownerTenantId, lead_id: ol?.id || null }).select("id").single();
-      if (!r.error) ids.push(r.data.id);
+      const ex2 = await jaExiste(ownerTenantId);
+      if (ex2) ids.push(ex2);
+      else {
+        const { data: ol } = await sb.from("leads").select("id").eq("tenant_id", ownerTenantId)
+          .eq("phone", phone).limit(1).maybeSingle();
+        const r = await sb.from("company_activities")
+          .insert({ ...base, tenant_id: ownerTenantId, lead_id: ol?.id || null }).select("id").single();
+        if (!r.error) ids.push(r.data.id);
+      }
+    }
+
+    if (duplicado) {
+      return json({
+        success: true, agendamento_ids: ids, duplicado: true, equipe_avisada: true, cliente_confirmado: true,
+        message: `Esse agendamento JÁ ESTAVA registrado (${tipoLabel[tipo]} em ${hora}${ownerName ? ` na ${ownerName}` : ""}). Não registrei de novo. Não chame esta ferramenta outra vez para o mesmo horário.`,
+      });
     }
 
     // aviso no grupo interno autorizado (nunca número particular)

@@ -31,14 +31,85 @@ function extractJson(text: string): Record<string, unknown> | null {
   try { return JSON.parse(t.slice(first, last + 1)); } catch { return null; }
 }
 
+/**
+ * SALVA no card (14/10, pedido do Marco: "tive que atualizar 2 vezes e não fica salvo"):
+ * leads.ai_conversation_insights.full_intelligence + data_sources + generated_at, e
+ * ai_last_analysis_at. Mantém as outras chaves da coluna (sales-copilot etc.).
+ * Depois dispara as automações do pipeline (trigger lead_score_changed) com o score novo.
+ */
+async function persistIntelligence(sb: any, lead: any, intelligence: Record<string, unknown>, dataSources: string[], origem: string) {
+  const prev = (lead.ai_conversation_insights || {}) as Record<string, unknown>;
+  const prevScore = Number((prev.full_intelligence as any)?.score_sugerido ?? lead.sales_score ?? 0) || 0;
+  const score = Number((intelligence as any).score_sugerido);
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    ai_conversation_insights: { ...prev, full_intelligence: intelligence, data_sources: dataSources, generated_at: now, generated_by: origem },
+    ai_last_analysis_at: now,
+  };
+  if (Number.isFinite(score) && score >= 0 && score <= 100) {
+    patch.sales_score = Math.round(score);
+    patch.sales_score_reason = String((intelligence as any)?.perfil?.resumo || "").slice(0, 400) || null;
+  }
+  const { error } = await sb.from("leads").update(patch).eq("id", lead.id);
+  if (error) console.warn(LOG, "persist", error.message);
+
+  // automações cabíveis (regras em Configurações › Comercial › Automações, trigger lead_score_changed)
+  if (Number.isFinite(score) && Math.round(score) !== prevScore) {
+    fetch(`${SUPABASE_URL}/functions/v1/process-automation-rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      body: JSON.stringify({ trigger_type: "lead_score_changed", lead_id: lead.id, lead_score: Math.round(score), previous_lead_score: prevScore, temperatura: (intelligence as any)?.perfil?.temperatura || null }),
+    }).catch((e) => console.warn(LOG, "automações", (e as Error).message));
+  }
+}
+
+/** Lote (cron de hora em hora): leads com interação DEPOIS da última análise e pelo menos 2 msgs recebidas. */
+async function pickBatch(sb: any, limite: number): Promise<string[]> {
+  const { data } = await sb.from("leads").select("id, ai_last_analysis_at, last_interaction_at")
+    .not("last_interaction_at", "is", null)
+    .gte("last_interaction_at", new Date(Date.now() - 3 * 86400_000).toISOString())
+    .order("last_interaction_at", { ascending: false }).limit(limite * 6);
+  const out: string[] = [];
+  for (const l of (data || []) as any[]) {
+    if (l.ai_last_analysis_at && new Date(l.ai_last_analysis_at) >= new Date(l.last_interaction_at)) continue;
+    const { count } = await sb.from("whatsapp_messages").select("id", { count: "exact", head: true }).eq("lead_id", l.id).eq("is_from_me", false);
+    const { count: calls } = await sb.from("call_history").select("id", { count: "exact", head: true }).eq("lead_id", l.id).gt("duration_seconds", 15);
+    if ((count || 0) >= 2 || (calls || 0) >= 1) out.push(l.id);
+    if (out.length >= limite) break;
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const { lead_id, contact_id } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+    // lote automático (cron) — service role, ou o token das ferramentas da Nina (x-voice-token,
+    // config VOICE_AGENT_TOKEN; o cron passa a anon key no Bearer só pra atravessar o gateway)
+    if (body.batch === true) {
+      const auth = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      const tok = String(req.headers.get("x-voice-token") || "");
+      const expected = await getIntegrationKey(sb, "VOICE_AGENT_TOKEN");
+      if (!(auth && auth === SERVICE_KEY) && !(tok && expected && tok === expected)) return json({ error: "unauthorized" }, 401);
+      const ids = await pickBatch(sb, Math.max(1, Math.min(40, Number(body.limite) || 15)));
+      const done: string[] = []; const failed: string[] = [];
+      for (const id of ids) {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-lead-intelligence`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ lead_id: id, origem: "cron" }),
+        }).catch(() => null);
+        (r && r.ok ? done : failed).push(id);
+      }
+      console.log(LOG, `lote: ${done.length} ok, ${failed.length} falhas`);
+      return json({ ok: true, analisados: done.length, falhas: failed.length, ids: done });
+    }
+
+    const { lead_id, contact_id } = body;
     const leadId = lead_id || contact_id;
     if (!leadId) return json({ error: "lead_id é obrigatório" }, 400);
-
-    const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const origem = String(body.origem || "painel");
 
     const { data: lead, error: leadErr } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
     if (leadErr || !lead) return json({ error: "Lead não encontrado" }, 404);
@@ -46,12 +117,14 @@ Deno.serve(async (req) => {
     const anthropicKey = await getIntegrationKey(sb, "ANTHROPIC_API_KEY", lead.tenant_id);
     if (!anthropicKey) return json({ error: "ANTHROPIC_API_KEY não configurada (Configurações → API Keys)" }, 400);
 
-    const [{ data: msgs }, { data: acts }, { data: deals }, { data: igConvs }, { data: igEng }] = await Promise.all([
+    const [{ data: msgs }, { data: acts }, { data: deals }, { data: igConvs }, { data: igEng }, { data: calls }] = await Promise.all([
       sb.from("whatsapp_messages").select("content, is_from_me, created_at, sender_name").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(40),
       sb.from("company_activities").select("name, task_type, status, due_datetime, date").eq("lead_id", leadId).order("date", { ascending: false }).limit(30),
       sb.from("deals").select("title, status, original_price, negotiated_price, payment_method, notes, created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(10),
       sb.from("instagram_conversations").select("id, participant_username, participant_name, qualification_tier, qualification_reason, total_messages, last_message_at").eq("lead_id", leadId).limit(5),
       sb.from("instagram_engagement").select("total_dms, total_comments, total_story_replies, engagement_score, last_interaction_at").eq("lead_id", leadId).maybeSingle(),
+      // ligações da Nina (voz): resumo + transcrição (a mais recente inteira)
+      sb.from("call_history").select("ai_summary, transcription, duration_seconds, call_outcome, started_at").eq("lead_id", leadId).gt("duration_seconds", 10).order("started_at", { ascending: false }).limit(3),
     ]);
 
     // Instagram: mensagens/comentários das conversas ligadas a este lead
@@ -69,7 +142,10 @@ Deno.serve(async (req) => {
     if ((igMsgs.length ?? 0) > 0) dataSources.push(`${igMsgs.length} interações de Instagram`);
     if ((acts?.length ?? 0) > 0) dataSources.push(`${acts!.length} atividades`);
     if ((deals?.length ?? 0) > 0) dataSources.push(`${deals!.length} deals`);
+    if ((calls?.length ?? 0) > 0) dataSources.push(`${calls!.length} ligação(ões) da Nina`);
     dataSources.push("cadastro do lead");
+    const ligacoes = (calls ?? []).map((c: any, i: number) =>
+      `[${String(c.started_at || "").slice(0, 16)} · ${c.duration_seconds}s · ${c.call_outcome || ""}] ${c.ai_summary || ""}${i === 0 && c.transcription ? `\nTRANSCRIÇÃO:\n${String(c.transcription).slice(0, 6000)}` : ""}`).join("\n\n");
 
     const conversa = (msgs ?? []).slice().reverse()
       .map((m: Record<string, unknown>) => `${m.is_from_me ? "NÓS" : (m.sender_name || "LEAD")}: ${String(m.content ?? "").slice(0, 500)}`)
@@ -101,6 +177,7 @@ Deno.serve(async (req) => {
       `ATIVIDADES:\n${JSON.stringify(acts ?? [])}\n\n` +
       `DEALS:\n${JSON.stringify(deals ?? [])}\n\n` +
       `INSTAGRAM (perfil, qualificação e conversa):\n${instagram}\n\n` +
+      `LIGAÇÕES DA NINA (voz):\n${ligacoes || "(nenhuma)"}\n\n` +
       `CONVERSA DE WHATSAPP (mais antiga → mais recente):\n${conversa || "(sem mensagens)"}`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -117,7 +194,8 @@ Deno.serve(async (req) => {
     const intelligence = extractJson(String(data?.content?.[0]?.text ?? ""));
     if (!intelligence) return json({ error: "A IA não retornou um resultado válido. Tente de novo." }, 502);
 
-    return json({ intelligence, data_sources: dataSources });
+    await persistIntelligence(sb, lead, intelligence, dataSources, origem);
+    return json({ intelligence, data_sources: dataSources, generated_at: new Date().toISOString() });
   } catch (e) {
     console.error(LOG, "erro", (e as Error)?.message);
     return json({ error: (e as Error)?.message || "Erro inesperado" }, 500);
