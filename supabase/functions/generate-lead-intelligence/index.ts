@@ -180,18 +180,31 @@ Deno.serve(async (req) => {
       `LIGAÇÕES DA NINA (voz):\n${ligacoes || "(nenhuma)"}\n\n` +
       `CONVERSA DE WHATSAPP (mais antiga → mais recente):\n${conversa || "(sem mensagens)"}`;
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2500, system, messages: [{ role: "user", content: userMsg }] }),
-    });
-    if (!res.ok) {
-      const raw = await res.text();
-      console.error(LOG, "anthropic", res.status, raw.slice(0, 300));
-      return json({ error: "Erro ao gerar inteligência (IA)", details: raw.slice(0, 200) }, 502);
+    // 14/10: com a transcrição da ligação no input o JSON passou a vir cortado em 2500 tokens
+    // ("A IA não retornou um resultado válido" — lote da hora com 3 falhas). 4000 tokens + 1 retry.
+    let intelligence: Record<string, unknown> | null = null;
+    let lastRaw = "";
+    for (let tentativa = 1; tentativa <= 2 && !intelligence; tentativa++) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: MODEL, max_tokens: 4000,
+          system: system + (tentativa > 1 ? "\nIMPORTANTE: responda SÓ o JSON, compacto, sem markdown, listas com no máximo 4 itens e textos curtos." : ""),
+          messages: [{ role: "user", content: userMsg }],
+        }),
+      });
+      if (!res.ok) {
+        const raw = await res.text();
+        console.error(LOG, "anthropic", res.status, raw.slice(0, 300));
+        if (tentativa === 2) return json({ error: "Erro ao gerar inteligência (IA)", details: raw.slice(0, 200) }, 502);
+        continue;
+      }
+      const data = await res.json();
+      lastRaw = String(data?.content?.[0]?.text ?? "");
+      intelligence = extractJson(lastRaw);
+      if (!intelligence) console.warn(LOG, `JSON inválido (tentativa ${tentativa}, stop=${data?.stop_reason}):`, lastRaw.slice(0, 200));
     }
-    const data = await res.json();
-    const intelligence = extractJson(String(data?.content?.[0]?.text ?? ""));
     if (!intelligence) return json({ error: "A IA não retornou um resultado válido. Tente de novo." }, 502);
 
     await persistIntelligence(sb, lead, intelligence, dataSources, origem);
