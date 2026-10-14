@@ -308,7 +308,22 @@ Deno.serve(async (req) => {
         }
         const out = trimVehicles(result, pedido);
         if (usada !== pedido && out.total > 0) {
-          out.dica = `Não achei exatamente "${pedido}"; busquei por "${usada}" e encontrei estes. Diga que achou opções parecidas e confirme com o cliente. ` + out.dica;
+          // ordena pelo nome mais parecido com o que o cliente disse ("Hora" ≈ "Ora") e pede confirmação
+          const nrm = (x: string) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const dist = (a: string, b: string): number => {
+            const m = a.length, n = b.length; const d: number[][] = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+            for (let j = 1; j <= n; j++) d[0][j] = j;
+            for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            return d[m][n];
+          };
+          const alvo = nrm(pedido).split(/\s+/).filter((t) => t.length >= 3 && !/^(19|20)\d{2}$/.test(t));
+          const score = (v: any) => Math.min(...nrm(String(v.titulo_falado || v.titulo)).split(/\s+/).flatMap((w) => alvo.map((a) => dist(a, w))), 99);
+          out.veiculos.sort((a: any, b: any) => score(a) - score(b));
+          const melhor = out.veiculos[0];
+          const parecido = melhor && score(melhor) <= 2;
+          out.dica = (parecido
+            ? `Não achei "${pedido}" com esse nome, mas parece ser o ${melhor.titulo_falado}${melhor.ano ? ` ${melhor.ano}` : ""}. Antes de seguir, CONFIRME com o cliente em uma frase: "você quer dizer o ${melhor.titulo_falado}?". Se ele confirmar, siga com esse carro. `
+            : `Não achei exatamente "${pedido}"; busquei por "${usada}" e encontrei estes. Diga que achou opções parecidas e confirme com o cliente qual é. `) + out.dica;
         } else if (out.total === 0 && !result?.error) {
           out.dica = `Nada com "${pedido}". Pode ter sido erro de entendimento do nome: confirme marca e modelo com o cliente (soletrar ajuda) antes de dizer que não tem, e tente de novo.`;
         }
