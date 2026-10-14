@@ -291,8 +291,64 @@ Deno.serve(async (req) => {
         const excl = await getNinaExclusiveStore(sb);
         if (excl) { rest.tenant_id = excl.tenantId; rest.loja = excl.name; }
         // limite 12 (o padrão 6 ordenado por preço deixava o modelo pedido de fora); a voz mostra até 8.
-        const result = await callEdge("consultar-estoque", { arguments: { ...rest, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
-        return json(trimVehicles(result, String(rest.busca || rest.modelo || "")));
+        const run = (busca: string) => callEdge("consultar-estoque", { arguments: { ...rest, busca, limite: 12 }, session_id: ctx?.sessionId || null, user_id: null });
+        const pedido = String(rest.busca || rest.modelo || "").trim();
+        let result: any = await run(pedido);
+        let usada = pedido;
+        // 0 resultado → escada de buscas mais largas (a transcrição erra nome/versão/ano):
+        // sem ano/versão → só o modelo → só a marca. Nunca "não tem" sem ter tentado.
+        if (pedido && !(Array.isArray(result?.veiculos) && result.veiculos.length) && !result?.error) {
+          const toks = pedido.split(/\s+/).filter(Boolean);
+          const semAno = toks.filter((t) => !/^(19|20)\d{2}$/.test(t) && !/^(gt|gl|glx|sport|premium|comfort|plus|line|top|exl|lx|ex|xei|gli|xli|hybrid|híbrido|hibrido|elétrico|eletrico|turbo|aut|automático|manual)$/i.test(t));
+          // ordem: sem ano/versão → marca + modelo → só a marca → só o modelo (nunca um número sozinho:
+          // "320" no site casava com Yaris e Porsche pelo preço/km)
+          const modelo = semAno.slice(1).join(" ");
+          const tentativas = [...new Set([
+            semAno.join(" "), semAno.slice(0, 2).join(" "), toks[0],
+            /[a-z]{3,}/i.test(modelo) ? modelo : "",
+          ].filter((t) => t && t !== pedido))];
+          for (const t of tentativas) {
+            const r = await run(t);
+            if (Array.isArray(r?.veiculos) && r.veiculos.length) { result = r; usada = t; break; }
+          }
+        }
+        const out = trimVehicles(result, pedido);
+        if (usada !== pedido && out.total > 0) {
+          // ordena pelo nome mais parecido com o que o cliente disse ("Hora" ≈ "Ora") e pede confirmação
+          const nrm = (x: string) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const dist = (a: string, b: string): number => {
+            const m = a.length, n = b.length; const d: number[][] = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+            for (let j = 1; j <= n; j++) d[0][j] = j;
+            for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            return d[m][n];
+          };
+          const alvo = nrm(pedido).split(/\s+/).filter((t) => t.length >= 3 && !/^(19|20)\d{2}$/.test(t));
+          // distância só do que NÃO bateu exato (a marca "toyota" bate em todos e não diz nada):
+          // "Toyota Corola" → Corolla (1) antes de Yaris (5)
+          const score = (v: any) => {
+            const ws = nrm(String(v.titulo_falado || v.titulo)).split(/\s+/).filter(Boolean);
+            const ds = alvo.map((a) => Math.min(...ws.map((w) => dist(a, w)), 99)).filter((d) => d > 0);
+            return ds.length ? Math.min(...ds) : 0;
+          };
+          out.veiculos.sort((a: any, b: any) => score(a) - score(b));
+          const melhor = out.veiculos[0];
+          const parecido = melhor && score(melhor) <= 2;
+          out.dica = (parecido
+            ? `Não achei "${pedido}" com esse nome, mas parece ser o ${melhor.titulo_falado}${melhor.ano ? ` ${melhor.ano}` : ""}. Antes de seguir, CONFIRME com o cliente em uma frase: "você quer dizer o ${melhor.titulo_falado}?". Se ele confirmar, siga com esse carro. `
+            : `Não achei exatamente "${pedido}"; busquei por "${usada}" e encontrei estes. Diga que achou opções parecidas e confirme com o cliente qual é. `) + out.dica;
+        } else if (out.total === 0 && !result?.error) {
+          out.dica = `Nada com "${pedido}". Pode ter sido erro de entendimento do nome: confirme marca e modelo com o cliente (soletrar ajuda) antes de dizer que não tem, e tente de novo.`;
+        }
+        return json(out);
+      }
+
+      case "simular_plano": {
+        // Plano de parcelas pelo Simulador da Cardoso (porta única simulador-cardoso, ação "plano":
+        // acha o carro no pátio pelo nome, simula e devolve fala + regras — só reais, nunca taxa).
+        const { caller_phone: _c1, customer_phone: _c2, phone: _c3, system__caller_id: _c4, called_phone: _c5, system__called_number: _c6, nome_cliente: _c7, ...a } = args;
+        const sim = await callEdge("simulador-cardoso", { action: "plano", ...a }) as any;
+        if (sim?.success === false || sim?.error) return json({ success: false, message: `Não consegui simular agora (${sim?.message || sim?.error || "erro"}). Diga que a equipe manda a simulação certinha no WhatsApp.` });
+        return json(sim);
       }
 
       case "agendar_visita": {
@@ -312,7 +368,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
+        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "simular_plano", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
     }
   } catch (e) {
     console.error(`[voice-tools] ${tool} err:`, (e as Error).message);

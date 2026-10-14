@@ -256,3 +256,6 @@ verify_jwt = false
 # Nina liga (Fase B): discador chamado pelo pg_cron (header x-voice-token = config VOICE_AGENT_TOKEN).
 [functions.nina-dialer]
 verify_jwt = false
+
+[functions.simulador-cardoso]
+verify_jwt = false

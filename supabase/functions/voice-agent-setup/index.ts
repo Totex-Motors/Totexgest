@@ -85,6 +85,19 @@ const TOOL_DEFS: ToolDef[] = [
     required: ["busca"],
   },
   {
+    name: "simular_plano",
+    description: "Plano de parcelas pelo Simulador da Cardoso: parcela por prazo, quanto o bônus tira da parcela e a jogada de antecipar (pagar a parcela do mês junto com a última, ou usar décimo terceiro, férias ou PLR pra eliminar parcelas do fim). Use quando o cliente perguntar de parcela, financiamento ou 'cabe no bolso'. Fale só em reais, nunca em taxa. Passe o valor do carro (do consultar_estoque) ou o nome dele.",
+    properties: {
+      valor: { type: "number", description: "Preço do carro em reais, só número (vem do consultar_estoque)." },
+      carro: { type: "string", description: "Nome do carro, se não tiver o valor (ex.: 'GWM Ora 03')." },
+      entrada: { type: "number", description: "Entrada em reais, se o cliente falou. Sem isso, usa 20%." },
+      carro_na_troca: { type: "number", description: "Valor estimado do carro do cliente na troca, em reais, se houver." },
+      extra: { type: "number", description: "Dinheiro que entra de vez em quando (décimo terceiro, férias, PLR, FGTS), em reais, pra mostrar a antecipação." },
+      prazo: { type: "number", description: "Prazo em meses, se o cliente escolheu (24, 36, 48 ou 60)." },
+    },
+    required: [],
+  },
+  {
     name: "agendar_visita",
     description: "Agenda visita, test drive ou avaliação na loja. Só chame depois de confirmar dia, hora, loja e carro com o cliente em voz alta. Use horario_atual antes para calcular a data.",
     properties: {

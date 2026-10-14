@@ -70,7 +70,10 @@ export function brandFirstMessage(msg: string, _store: NinaStore | null): string
 
 /** Termos que a transcrição erra com frequência → como estão no estoque. */
 const ALIASES: Array<[RegExp, string]> = [
-  [/\btanque\b/gi, "Tank"], // GWM Tank 300 — a transcrição escreve "Tanque 300"
+  [/\btanque\b/gi, "Tank"],          // GWM Tank 300 — a transcrição escreve "Tanque 300"
+  [/\b(hora|aurora)\b/gi, "Ora"],     // GWM Ora — a transcrição escreve "GWM Hora" (ligação do Glaucio, 13/10)
+  [/\bora\s*0?3\b/gi, "Ora 03"],
+  [/\bravel\b/gi, "Haval"],
 ];
 export function normalizeStockSearch(s: string): string {
   let out = String(s || "");
