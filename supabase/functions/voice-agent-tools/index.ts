@@ -317,7 +317,13 @@ Deno.serve(async (req) => {
             return d[m][n];
           };
           const alvo = nrm(pedido).split(/\s+/).filter((t) => t.length >= 3 && !/^(19|20)\d{2}$/.test(t));
-          const score = (v: any) => Math.min(...nrm(String(v.titulo_falado || v.titulo)).split(/\s+/).flatMap((w) => alvo.map((a) => dist(a, w))), 99);
+          // distância só do que NÃO bateu exato (a marca "toyota" bate em todos e não diz nada):
+          // "Toyota Corola" → Corolla (1) antes de Yaris (5)
+          const score = (v: any) => {
+            const ws = nrm(String(v.titulo_falado || v.titulo)).split(/\s+/).filter(Boolean);
+            const ds = alvo.map((a) => Math.min(...ws.map((w) => dist(a, w)), 99)).filter((d) => d > 0);
+            return ds.length ? Math.min(...ds) : 0;
+          };
           out.veiculos.sort((a: any, b: any) => score(a) - score(b));
           const melhor = out.veiculos[0];
           const parecido = melhor && score(melhor) <= 2;
