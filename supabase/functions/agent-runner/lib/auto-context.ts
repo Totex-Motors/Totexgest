@@ -222,7 +222,7 @@ async function buildSessionContextBlock(
       if (re.carro) lines.push(`- Carro da conversa: ${re.carro}`);
       if (re.plano?.parcela) {
         lines.push(`- Plano já mostrado: ${re.plano.prazo}x de R$ ${Math.round(re.plano.parcela).toLocaleString("pt-BR")}` +
-          (re.plano.antecipacao?.ultima_parcela_hoje ? ` · a última parcela paga hoje junto com a do mês sai por R$ ${Math.round(re.plano.antecipacao.ultima_parcela_hoje).toLocaleString("pt-BR")} (somem duas prestações)` : ""));
+          (re.plano.antecipacao?.ultima_parcela_hoje ? ` · a última parcela paga hoje junto com a do mês sai por R$ ${Math.round(re.plano.antecipacao.ultima_parcela_hoje).toLocaleString("pt-BR")} (some uma parcela do fim)` : ""));
       }
       if (re.plano?.cupom_campanha?.valor) lines.push(`- Bônus da loja em cartaz: ${re.plano.cupom_campanha.titulo} de R$ ${re.plano.cupom_campanha.valor}`);
       if (re.correcao) lines.push(`- ⚠️ CORREÇÃO: ${re.correcao}`);

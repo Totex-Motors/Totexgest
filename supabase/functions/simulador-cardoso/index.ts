@@ -161,7 +161,8 @@ function simular(f: Formula, a: { veiculo: number; entrada?: number; usado?: num
       parcela_normal: r2(foco.parcela),
       ultima_parcela_hoje: r2(ultimaHoje),
       desembolso_mes_mais_ultima: r2(foco.parcela + ultimaHoje),
-      prestacoes_eliminadas: r2(foco.parcela * 2),
+      parcelas_que_somem: 1, // paga a do mês (que já vence) + a última trazida a valor presente → some UMA parcela do fim
+      economia_vs_pagar_no_fim: r2(foco.parcela - ultimaHoje),
       economia_ultima: r2(foco.parcela - ultimaHoje),
       quitacao_total_hoje: r2(vpTotal),
       juros_futuros_que_somem: r2(foco.parcela * foco.prazo - vpTotal),
@@ -239,10 +240,10 @@ Deno.serve(async (req) => {
         return json({
           success: true, carro: carro || null, carro_pedido: pedido || null, match_exato: exato, valor_carro: valor, entrada: sim.entrada.entrada, carro_na_troca: sim.entrada.usado, financiado: sim.entrada.financiado,
           plano: { prazo: foco.prazo, parcela: foco.parcela, outros_prazos: sim.prazos.filter((p) => !p.destaque).map((p) => `${p.prazo}x de ${fala(p.parcela)}`).join("; ") },
-          antecipacao: ant ? { ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, elimina_de_prestacoes: ant.prestacoes_eliminadas, ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}) } : null,
+          antecipacao: ant ? { ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, parcelas_que_somem: ant.parcelas_que_somem, economia_vs_pagar_no_fim: ant.economia_vs_pagar_no_fim, ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}) } : null,
           cupom_campanha: sim.cupom_campanha ? { codigo: sim.cupom_campanha.codigo, titulo: sim.cupom_campanha.titulo, valor: sim.cupom_campanha.valor, economia_mes: sim.cupom_campanha.economia_mes_no_destaque } : null,
           condicao: sim.condicao ? { nome: (sim.condicao as any).nome, porque: (sim.condicao as any).porque, fim: (sim.condicao as any).fim } : null,
-          fala: `Fica em ${foco.prazo} parcelas de ${fala(foco.parcela)}${ant ? `. E tem a jogada que quase ninguém faz: pagando a do mês junto com a última, a última sai por ${fala(ant.ultima_parcela_hoje)} em vez de ${fala(foco.parcela)}, e somem duas prestações` : ""}.`,
+          fala: `Fica em ${foco.prazo} parcelas de ${fala(foco.parcela)}${ant ? `. E tem a jogada que quase ninguém faz: pagando a do mês junto com a última, a última sai por ${fala(ant.ultima_parcela_hoje)} em vez de ${fala(foco.parcela)}, e some uma parcela do fim` : ""}.`,
           regras: "Fale só em reais, nunca em taxa ou porcentagem. É estimativa de pré-atendimento: a Grazi fecha a condição real com os bancos. Mostre o ganho de subir de carro e a jogada de antecipar com décimo terceiro, férias ou PLR, com os números acima.",
         });
       }
