@@ -77,7 +77,7 @@ export async function enviarCuriosidade(sb: SupabaseClient, row: QueueRow, step:
   const { nome, assunto: a } = await assunto(sb, row.lead_id);
   const texto = step === 1
     ? `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a ${quem}, da Totex Motors. Tentei te ligar sobre ${a} e não consegui. Descobri um detalhe que muda a conta e acho que você vai querer saber antes de decidir. Posso te contar por aqui?`
-    : `${nome ? `${nome}, ` : ""}é a ${quem} de novo, da Totex Motors. Separei o número sobre ${a} que mais surpreende quem vê: a parcela com o décimo terceiro derrubando as últimas. Te mando em uma linha?`;
+    : `Oi de novo${nome ? `, ${nome}` : ""}! É a ${quem}, da Totex Motors. Separei o número sobre ${a} que mais surpreende quem vê: a parcela com o décimo terceiro derrubando as últimas. Te mando em uma linha?`;
   const tenantId = row.tenant_id || HQ_TENANT;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY };
   const aberta = await janelaAberta(sb, row.lead_id, row.phone);
