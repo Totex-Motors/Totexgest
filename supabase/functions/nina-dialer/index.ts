@@ -272,11 +272,37 @@ Deno.serve(async (req) => {
     }
     if (!canAsk) return fail("expired", `sem permissão e sem poder pedir (${status})`);
     // pede permissão (free-form: precisa da janela de 24h aberta — o lead acabou de falar com a gente)
-    const assunto = row.playbook === "vender" ? "a venda do seu carro" : row.playbook === "trocar" ? "a troca do seu carro" : row.playbook === "comprar" ? (brief?.carro_interesse ? `o ${brief.carro_interesse}` : "o carro que você viu") : "o seu carro";
-    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da ${ninaBrand(store)}. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
+    // O MOTIVO vai numa mensagem antes do pedido (decisão do Marco, 15/10, caso Soraya): na troca e na
+    // venda o cliente precisa sentir que o carro DELE interessa — "é pra entender melhor as condições
+    // do seu HR-V, ele nos interessa muito". Sem valor, sem faixa (trava): isso é na ligação/avaliação.
+    const pb = brief?.playbook || row.playbook || "descobrir";
+    const carroDele = brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || null;
+    const carroVisto = brief?.carro_interesse_fala || brief?.carro_interesse || null;
+    const marca = ninaBrand(store);
+    const oi = nome ? `Oi, ${nome}! ` : "Oi! ";
+    let motivo: string | null = null;
+    let assunto: string;
+    if (pb === "trocar") {
+      assunto = carroDele ? `o seu ${carroDele}` : "a troca do seu carro";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito${carroVisto ? ` e pode encaixar direitinho na troca pelo ${carroVisto}` : " na troca"}. São dois minutos: ano, quilometragem, como ele está, e eu já te digo como ele entra no negócio. 😊`;
+    } else if (pb === "vender") {
+      assunto = carroDele ? `o seu ${carroDele}` : "a venda do seu carro";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito. Em dois minutos eu te explico como funciona a venda pela Totex e o que faz ele valer mais. 😊`;
+    } else if (pb === "comprar") {
+      assunto = carroVisto ? `o ${carroVisto}` : "o carro que você viu";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra te passar as condições do ${carroVisto || "carro que você viu"} e combinar o melhor dia pra você ver ele de perto. Rapidinho, dois minutos. 😊`;
+    } else {
+      assunto = "o seu carro";
+    }
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY };
+    if (motivo) {
+      const m = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, { method: "POST", headers, body: JSON.stringify({ action: "send_text", phone: row.phone, text: motivo, lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }) });
+      if (!m.ok) log(`motivo da ligação não enviado (${m.status})`);
+    }
+    const texto = motivo ? `Posso te ligar? É só tocar em permitir. 😊` : `${oi}Aqui é a Nina, da ${marca}. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      headers,
       body: JSON.stringify({ action: "send_call_permission", phone: row.phone, text: texto, lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }),
     });
     const data = await res.json().catch(() => ({}));
