@@ -237,6 +237,11 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // nenhum tenant → tenant da instância oficial (master, 1º contato / IA central).
   const last8 = cleanPhone.slice(-8);
   let routedTenantId = tenantId;
+
+  // Botão do WhatsApp do site: o clique criou um lead SEM telefone ("Cliente (não identificado)");
+  // a mensagem é a 1ª vez que o número aparece → funde o clique com este número ANTES do roteamento.
+  try { await absorbMarketplaceClick(supabase, cleanPhone, contactName, content); } catch (e) { console.error("[Cloud Webhook] clique do site:", (e as Error).message); }
+
   const { data: lead } = await supabase
     .from("leads")
     .select("id, tenant_id")
@@ -368,6 +373,81 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
 // Casa o nome de uma loja citada no texto com um tenant que participa da
 // distribuição (tem destino de handoff ATIVO em tenant_lead_destinations).
 // Prefere o match mais longo (evita casar "Totex" quando o texto diz "PG Motors").
+// ==================== CLIQUE NO BOTÃO DO WHATSAPP DO SITE (2026-10-15) ====================
+// O marketplace cria, no clique do botão, um lead sem telefone ("Cliente (não identificado)",
+// source 'marketplace', metadata.vehicle + deal) — o WhatsApp não entrega o número de quem
+// clica, só de quem manda mensagem. Quando a mensagem chega ("vi o X da loja Y no site da
+// TotexMotors", opcionalmente com "ref ABCD1234" = 8 primeiros caracteres do id do lead):
+//  - ref presente → casa exato (48 h); sem ref → o órfão mais recente (2 h) com o mesmo carro;
+//  - se o número JÁ tem lead na loja do órfão → carro/loja/deal vão pra ele e o órfão some;
+//  - senão → o órfão GANHA o telefone e o nome do WhatsApp e vira o lead da conversa
+//    (é o mais recente daquele telefone → o roteamento cai na loja certa).
+// Órfão que nunca recebe mensagem: marketplace_cliques_sem_contato() (cron diário) tira do funil.
+async function absorbMarketplaceClick(supabase: any, phone: string, contactName: string | null, text: string): Promise<void> {
+  const t = String(text || "");
+  const ref = t.match(/\bref\.?\s*[:#]?\s*([0-9a-f]{6,12})\b/i)?.[1]?.toLowerCase() || null;
+  const m = t.match(/\bvi\s+(?:o|a|um|uma)?\s*(.+?)\s+da\s+loja\s+(.+?)\s+no\s+site/i);
+  if (!ref && !m) return;
+  const norm = (s: unknown) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const NOISE = /^(\d+([.,]\d+)?|\d+v|\d+p|flex|aut\.?|automatico|manual|turbo|tb|awd|4x4|4x2|hibrido|eletrico|diesel|cvt|evolut\.?|\d{4})$/;
+  const carro = m?.[1] || "";
+  const tokens = [...new Set(norm(carro).replace(/[().,]/g, " ").split(/\s+/).filter((k) => k.length >= 3 && !NOISE.test(k)))];
+
+  const since = new Date(Date.now() - (ref ? 48 : 2) * 3600_000).toISOString();
+  const { data: orphans } = await supabase.from("leads").select("id, tenant_id, name, metadata, created_at")
+    .is("phone", null).eq("source", "marketplace").gte("created_at", since)
+    .order("created_at", { ascending: false }).limit(20);
+  const list = (orphans || []) as any[];
+  if (!list.length) return;
+
+  let orphan: any = null;
+  if (ref) orphan = list.find((o) => String(o.id).replace(/-/g, "").toLowerCase().startsWith(ref) || String(o.id).toLowerCase().startsWith(ref)) || null;
+  if (!orphan && tokens.length) {
+    orphan = list.find((o) => {
+      const v = (o.metadata || {}).vehicle || {};
+      const s = norm([v.brand, v.model, v.version, v.description, v.title].filter(Boolean).join(" "));
+      return tokens.filter((k) => s.includes(k)).length >= Math.min(2, tokens.length);
+    }) || null;
+  }
+  if (!orphan) return;
+
+  const now = new Date().toISOString();
+  const omd = (orphan.metadata || {}) as Record<string, any>;
+  const { data: target } = await supabase.from("leads").select("id, name, metadata")
+    .eq("tenant_id", orphan.tenant_id).ilike("phone", `%${phone.slice(-8)}`).neq("id", orphan.id)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+  if (target) {
+    // o número já tem lead nessa loja: o clique vira dado dele
+    const tmd = (target.metadata || {}) as Record<string, any>;
+    const patch: Record<string, any> = { ...tmd, marketplace_click: { lead_id: orphan.id, at: orphan.created_at, fundido_em: now } };
+    if (omd.vehicle) {
+      const vid = String(omd.vehicle.id || "");
+      const rest = (Array.isArray(tmd.vehicles) ? tmd.vehicles : (tmd.vehicle ? [tmd.vehicle] : [])).filter((x: any) => String(x?.id || "") !== vid);
+      patch.vehicle = omd.vehicle; patch.vehicles = [omd.vehicle, ...rest].slice(0, 5);
+      patch.veiculo_interesse_texto = [omd.vehicle.brand, omd.vehicle.model, omd.vehicle.version, omd.vehicle.year].filter(Boolean).join(" ") || tmd.veiculo_interesse_texto;
+    }
+    for (const k of ["store", "marketplace_store_name", "credere_store_name"]) if (omd[k] && !tmd[k]) patch[k] = omd[k];
+    await supabase.from("leads").update({ metadata: patch, last_interaction_at: now }).eq("id", target.id);
+    await supabase.from("deals").update({ lead_id: target.id }).eq("lead_id", orphan.id);
+    const del = await supabase.from("leads").delete().eq("id", orphan.id);
+    if (del.error) {
+      await supabase.from("leads").update({ name: "Clique do site (fundido)", status: "fundido", metadata: { ...omd, fundido_em: target.id } }).eq("id", orphan.id);
+    }
+    console.log(`[Cloud Webhook] clique do site ${orphan.id} fundido no lead ${target.id} (${phone})`);
+  } else {
+    // o clique vira o lead: ganha o telefone e o nome do WhatsApp
+    const placeholder = /n[aã]o identificado|^cliente$/i.test(String(orphan.name || ""));
+    await supabase.from("leads").update({
+      phone,
+      name: placeholder && contactName && !/^\+?\d+$/.test(contactName) ? contactName : orphan.name,
+      last_interaction_at: now,
+      metadata: { ...omd, identificado_por: "mensagem_whatsapp", identificado_em: now, ...(ref ? { ref_site: ref } : {}) },
+    }).eq("id", orphan.id);
+    console.log(`[Cloud Webhook] clique do site ${orphan.id} identificado: ${phone}`);
+  }
+}
+
 async function matchStoreTenant(supabase: any, text: string): Promise<string | null> {
   const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   const t = norm(text);
