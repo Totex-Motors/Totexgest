@@ -31,8 +31,21 @@ function fit(s: string, max: number): string {
   return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
 }
 
+/** "VolksWagen Nivus Nivus Highline 1.0 200 TSI Flex Aut." → "VolksWagen Nivus Highline" */
+export function tituloCurto(raw: string): string {
+  const RUIDO = /^(\d+([.,]\d+)?|\d+v|\d+p|flex|aut\.?|automatico|automática|automatico|manual|tsi|tfsi|tb|turbo|cvt|4x2|4x4|awd|hibrido|híbrido|eletrico|elétrico|diesel|\(.*\)|\d{4})$/i;
+  const out: string[] = [];
+  for (const t of String(raw || "").replace(/[()]/g, " ").split(/\s+/).filter(Boolean)) {
+    if (RUIDO.test(t)) continue;
+    if (out.length && out[out.length - 1].toLowerCase() === t.toLowerCase()) continue;
+    out.push(t);
+    if (out.length >= 4) break;
+  }
+  return out.join(" ") || String(raw || "");
+}
+
 export function buildCardSvg(c: CardInput): string {
-  const titulo = fit(c.titulo, 34);
+  const titulo = fit(tituloCurto(c.titulo), 34);
   const sub = fit(c.subtitulo || "", 60);
   const outros = (c.outros || []).filter((o) => o.prazo !== c.prazo).slice(0, 3);
   const temFoto = !!c.fotoDataUri;
