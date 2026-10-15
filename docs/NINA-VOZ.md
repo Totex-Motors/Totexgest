@@ -279,3 +279,16 @@ despedida; "Me chama outro dia" → retomada em 3 dias (9h30); "Continuar" → v
 `retomada_conversa` ({{1}} nome, {{2}} assinatura, {{3}} assunto — `agent.settings.followup_template_*`)
 e `pausa_conversa` (2 vars + QUICK_REPLY). Config: `FOLLOWUP_AUTO_ENABLED`, `FOLLOWUP_1_HOURS`,
 `FOLLOWUP_PAUSA_ENABLED`, `FOLLOWUP_PAUSA_HOURS`.
+
+## 2i. Card da simulação (2026-10-15, ideia do Marco)
+
+Quando o cliente pede parcela, o agente diz "deixa eu rodar aqui no simulador da Cardoso, me dá
+um minutinho" e chama `enviar_simulacao` → edge fn **`simulacao-card`**: números pela porta única
+(`simulador-cardoso` › plano), foto/ano/km pelo `consultar-estoque`, card em SVG → PNG
+(`_shared/simulacao-card.ts`, resvg wasm + Roboto), sobe no bucket privado `whatsapp-media`
+(URL assinada 2 h), espera `SIMULACAO_CARD_DELAY_MS` (6 s) e manda via `send-whatsapp-cloud`
+`send_image` pelo número oficial. Registra em `leads.metadata.simulacoes`. A tool devolve a
+orientação: não repetir números, comentar a jogada do 13º em uma frase, UMA pergunta; depois
+vem o cupom (gerar_cupom) quando houver intenção. Regras: só reais, nunca taxa, nunca valor
+do carro do cliente na troca, sempre "estimativa". Passo 2 (se converter): vídeo curto do
+simulador real gravado no VPS.
