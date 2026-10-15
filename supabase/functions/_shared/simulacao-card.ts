@@ -33,10 +33,12 @@ function fit(s: string, max: number): string {
 
 /** "VolksWagen Nivus Nivus Highline 1.0 200 TSI Flex Aut." → "VolksWagen Nivus Highline" */
 export function tituloCurto(raw: string): string {
-  const RUIDO = /^(\d+([.,]\d+)?|\d+v|\d+p|flex|aut\.?|automatico|automática|automatico|manual|tsi|tfsi|tb|turbo|cvt|4x2|4x4|awd|hibrido|híbrido|eletrico|elétrico|diesel|\(.*\)|\d{4})$/i;
+  const RUIDO = /^(\d+[.,]\d+|\d+v|\d+p|flex|aut\.?|automatico|automática|manual|tsi|tfsi|tb|turbo|cvt|4x2|4x4|awd|hibrido|híbrido|eletrico|elétrico|diesel|(19|20)\d{2})$/i;
   const out: string[] = [];
   for (const t of String(raw || "").replace(/[()]/g, " ").split(/\s+/).filter(Boolean)) {
     if (RUIDO.test(t)) continue;
+    // número puro só se vier logo depois do modelo ("Ora 03", "Tank 300"); "Highline 200 TSI" não
+    if (/^\d+$/.test(t) && out.length !== 2) continue;
     if (out.length && out[out.length - 1].toLowerCase() === t.toLowerCase()) continue;
     out.push(t);
     if (out.length >= 4) break;
