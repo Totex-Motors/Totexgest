@@ -18,6 +18,7 @@
  */
 import { getIntegrationKey } from "../../_shared/config.ts";
 import { uazapiTargetAllowed } from "../../_shared/wa-policy.ts";
+import { assuntoDoLead } from "../../_shared/nina-cadence.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -139,9 +140,15 @@ export async function deliverFollowupWhatsApp(opts: DeliverOpts): Promise<void> 
     let nome = "tudo bem";
     if (leadId) {
       const { data: lead } = await db.from("leads").select("name").eq("id", leadId).maybeSingle();
-      if (lead?.name) nome = String(lead.name).trim().split(/\s+/)[0];
+      if (lead?.name && /\p{L}{2,}/u.test(String(lead.name))) nome = String(lead.name).trim().split(/\s+/)[0];
     }
     templateParams = [nome];
+    // 3 variáveis = retomada_conversa: {{1}} nome, {{2}} assinatura, {{3}} assunto ("o Nivus que você viu")
+    if (paramCount >= 3) {
+      const quem = (await getIntegrationKey(db, "REAQUECIMENTO_ASSINATURA", tenantId)) || "Nina";
+      const { assunto } = await assuntoDoLead(db, leadId ?? null).catch(() => ({ nome: "", assunto: "o carro que você procura" }));
+      templateParams = [nome, quem, assunto];
+    }
   }
 
   console.log(`[wa-delivery] fora da janela 24h → template "${templateName}" pra ${digits}`);

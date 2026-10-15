@@ -38,6 +38,9 @@ async function businessTime(sb: SupabaseClient, ms: number): Promise<string> {
 }
 
 /** "o Nivus que você viu" / "o seu Onix" / "o carro que você procura" — vai no {{3}} do template. */
+export async function assuntoDoLead(sb: SupabaseClient, leadId: string | null): Promise<{ nome: string; assunto: string }> {
+  return assunto(sb, leadId);
+}
 async function assunto(sb: SupabaseClient, leadId: string | null): Promise<{ nome: string; assunto: string }> {
   const brief = leadId ? await buildLeadBrief(sb, leadId).catch(() => null) : null;
   const nome = /\p{L}{2,}/u.test(brief?.primeiro_nome || "") ? String(brief!.primeiro_nome) : "";

@@ -14,6 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { enviarPausa, instrucaoRetomada } from "../_shared/followup-auto.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -97,10 +98,18 @@ serve(async (req) => {
 /** Dispara um lembrete: re-aciona o agente no canal da conversa pra entregar a msg. */
 async function fireReminder(rem: any) {
   const ctx = rem.resume_context || {};
-  const contextMsg =
-    `[SISTEMA] Chegou a hora de um lembrete que VOCÊ agendou pra este usuário. ` +
-    `Entregue AGORA esta mensagem de forma natural, na sua voz (pode adaptar levemente o tom, mas mantenha o conteúdo):\n\n"${rem.message}"\n\n` +
-    `Não chame tools, só mande a mensagem do lembrete.`;
+  // Follow-up AUTOMÁTICO (_shared/followup-auto.ts): passo 3 = mensagem de pausa com botões,
+  // direto pelo número oficial, sem passar pelo modelo.
+  if (ctx.kind === "pausa") {
+    const r = await enviarPausa(supabase, { lead_id: ctx.lead_id, recipient: ctx.recipient, tenant_id: rem.tenant_id ?? null });
+    console.log(`[poller] pausa ${rem.id}: ${r}`);
+    return;
+  }
+  const contextMsg = ctx.kind === "followup_auto"
+    ? instrucaoRetomada(Number(ctx.step || 1))
+    : `[SISTEMA] Chegou a hora de um lembrete que VOCÊ agendou pra este usuário. ` +
+      `Entregue AGORA esta mensagem de forma natural, na sua voz (pode adaptar levemente o tom, mas mantenha o conteúdo):\n\n"${rem.message}"\n\n` +
+      `Não chame tools, só mande a mensagem do lembrete.`;
 
   await fetch(`${SUPABASE_URL}/functions/v1/agent-runner`, {
     method: "POST",
@@ -119,6 +128,7 @@ async function fireReminder(rem: any) {
       context: {
         lead_id: ctx.lead_id, deal_id: ctx.deal_id, instance_id: ctx.instance_id,
         recipient: ctx.recipient, _system_resume: true,
+        ...(ctx.kind === "followup_auto" ? { _followup_step: Number(ctx.step || 1) } : {}),
       },
     }),
   }).then((r) => r.body?.cancel().catch(() => {}));

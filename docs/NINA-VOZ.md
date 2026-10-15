@@ -263,3 +263,19 @@ mensagem, a cadência de ligações segue. Config: `NINA_RETRY_1_MIN`, `NINA_RET
 webhook (inclusive `call_initiation_failure`) e o `nina-dialer` confere na API da ElevenLabs as
 ligações em `calling` há mais de 2 min (ligação não atendida nem sempre gera webhook). A 2ª
 mensagem fica na fila como `queued` + `metadata.step = msg2`.
+
+## 2h. Follow-up automático do agente de TEXTO (2026-10-15, decisão do Marco)
+
+O agente nunca chamava `agendar_lembrete` (0 em 14 dias). Agora o `agent-runner` agenda sozinho
+depois de cada resposta no WhatsApp (`_shared/followup-auto.ts`): **3 h** (dentro de 8h–20h; senão
+9h30 do dia seguinte) → **9h30 do dia seguinte** → **48 h depois a mensagem de PAUSA com botões**
+("Continuar por aqui" / "Me chama outro dia" / "Encerrar por agora"). Cliente respondeu → cancela
+e recomeça. Não agenda se: não contatar, visita marcada, repassado pra loja na sessão, ou o agente
+decidiu não retomar (responde `NAO_ENVIAR` à instrução do poller). Passos 1–2: o modelo escreve
+a retomada com valor novo (`instrucaoRetomada`); passo 3: `enviarPausa` manda os botões direto
+(`send-whatsapp-cloud` action `send_buttons`). Botões: "Encerrar" → `nao_contatar` 30 dias +
+despedida; "Me chama outro dia" → retomada em 3 dias (9h30); "Continuar" → vai pro agente
+(`whatsapp-cloud-webhook` › `handlePausaReply`). Fora da janela de 24 h: templates
+`retomada_conversa` ({{1}} nome, {{2}} assinatura, {{3}} assunto — `agent.settings.followup_template_*`)
+e `pausa_conversa` (2 vars + QUICK_REPLY). Config: `FOLLOWUP_AUTO_ENABLED`, `FOLLOWUP_1_HOURS`,
+`FOLLOWUP_PAUSA_ENABLED`, `FOLLOWUP_PAUSA_HOURS`.

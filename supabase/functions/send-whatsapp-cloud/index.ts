@@ -100,6 +100,12 @@ Deno.serve(async (req) => {
         result = await sendMedia(body, formattedPhone, "audio", cfg, supabase);
         break;
 
+      case "send_buttons":
+        // Botões de resposta rápida (até 3) — mensagem de pausa do follow-up automático.
+        // Free-form: precisa da janela de 24h; fora dela, template com QUICK_REPLY (pausa_conversa).
+        result = await sendButtons(body, formattedPhone, cfg);
+        break;
+
       case "send_call_permission":
         // Pedido de permissão pra LIGAR (Meta: 1 por 24h, 2 por 7 dias; vale 7 dias).
         // Free-form = precisa da janela de 24h aberta; fora dela, template aprovado.
@@ -272,6 +278,29 @@ async function sendText(body: any, phone: string, cfg: CloudApiCfg) {
     data: response.data,
     content: text,
     messageType: "Conversation",
+  };
+}
+
+// ==================== REPLY BUTTONS ====================
+
+async function sendButtons(body: any, phone: string, cfg: CloudApiCfg) {
+  const text = String(body.text || "").slice(0, 1024);
+  const buttons = (Array.isArray(body.buttons) ? body.buttons : []).slice(0, 3)
+    .map((b: any, i: number) => ({ type: "reply", reply: { id: String(b.id || `btn_${i + 1}`).slice(0, 256), title: String(b.title || "").slice(0, 20) } }))
+    .filter((b: any) => b.reply.title);
+  if (!text || !buttons.length) throw new Error("text e buttons (1–3) são obrigatórios");
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: phone,
+    type: "interactive",
+    interactive: { type: "button", body: { text }, action: { buttons } },
+  };
+  const response = await callCloudAPI(payload, cfg);
+  return {
+    ok: response.ok, data: response.data,
+    content: `${text}\n${buttons.map((b: any) => `[${b.reply.title}]`).join(" ")}`,
+    messageType: "interactive", extraMeta: { buttons: buttons.map((b: any) => b.reply) },
   };
 }
 
