@@ -134,7 +134,7 @@ export async function enviarPausa(db: SupabaseClient, ctx: { lead_id?: string | 
   const aberta = !!lastIn?.created_at && Date.now() - new Date(lastIn.created_at).getTime() < 23 * 3600_000;
   const body = aberta
     ? { action: "send_buttons", phone, text: texto, buttons: PAUSA_BOTOES, lead_id: ctx.lead_id, tenant_id: ctx.tenant_id, sent_by: "followup_auto" }
-    : { action: "send_template", phone, template_name: "pausa_conversa", template_params: [nome || "tudo bem", quem], lead_id: ctx.lead_id, tenant_id: ctx.tenant_id, sent_by: "followup_auto" };
+    : { action: "send_template", phone, template_name: "pausa_conversa", template_params: [nome, quem], lead_id: ctx.lead_id, tenant_id: ctx.tenant_id, sent_by: "followup_auto" };
   const r = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, { method: "POST", headers, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j?.error) { log("pausa falhou:", r.status, JSON.stringify(j).slice(0, 200)); return `erro: ${JSON.stringify(j).slice(0, 120)}`; }

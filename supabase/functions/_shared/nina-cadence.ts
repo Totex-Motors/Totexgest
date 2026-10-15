@@ -92,7 +92,8 @@ export async function enviarCuriosidade(sb: SupabaseClient, row: QueueRow, step:
   } else {
     const tpl = step === 1 ? "nina_curiosidade_1" : "nina_curiosidade_2";
     if (!(await templateAprovado(sb, tpl))) { log(`template ${tpl} ainda não aprovado — mensagem ${step} pulada (${row.phone})`); return `template ${tpl} pendente`; }
-    body = { action: "send_template", phone: row.phone, template_name: tpl, template_params: [nome || "tudo bem", quem, a], lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" };
+    // params[0] vazio → send-whatsapp-cloud põe "tudo bem" (passar "tudo bem" vira "Oi, tudo!")
+    body = { action: "send_template", phone: row.phone, template_name: tpl, template_params: [nome, quem, a], lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" };
     via = `template:${tpl}`;
   }
   const r = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, { method: "POST", headers, body: JSON.stringify(body) });
