@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { PhoneCall, Check, X, Loader2, Sparkles, Link2, FlaskConical, ExternalLink } from "lucide-react";
+import { PhoneCall, Check, X, Loader2, Sparkles, Link2, FlaskConical, ExternalLink, GraduationCap } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,6 +17,11 @@ import { cn } from "@/lib/utils";
  * Tudo configurado por botão via edge fn `voice-agent-setup` (só superadmin).
  * Guia: docs/NINA-VOZ.md
  */
+
+interface Learning {
+  id: string; regra: string; categoria: string | null; evidencia: string | null; ultima_evidencia: string | null;
+  vezes: number; status: "pendente" | "aprovada" | "rejeitada"; created_at: string; aprovada_em: string | null;
+}
 
 interface Status {
   keys: Record<string, boolean>;
@@ -111,6 +116,23 @@ export function NinaVozSection() {
     mutationFn: () => callSetup({ action: "test_tools" }),
     onSuccess: (r: any) => toast[r.ok ? "success" : "error"](r.ok ? `Ferramentas OK: ${r.data?.texto || "respondeu"}` : `Falhou (${r.status}): ${r.error || JSON.stringify(r.data)}`),
     onError: (e: Error) => toast.error("Teste", { description: e.message }),
+  });
+
+  // O que a Nina aprendeu: lições propostas pelo treinador depois de cada ligação (nina_learnings)
+  const learnings = useQuery<Learning[]>({
+    queryKey: ["nina-learnings"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("nina_learnings")
+        .select("id, regra, categoria, evidencia, ultima_evidencia, vezes, status, created_at, aprovada_em")
+        .neq("status", "rejeitada").order("status", { ascending: false }).order("vezes", { ascending: false }).order("created_at", { ascending: false }).limit(60);
+      if (error) throw error;
+      return (data || []) as Learning[];
+    },
+  });
+  const setLearning = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "aprovada" | "rejeitada" | "pendente" }) => supabase.rpc("nina_learning_set_status", { p_id: id, p_status: status }).then(({ error }) => { if (error) throw error; }),
+    onSuccess: (_r, v) => { toast.success(v.status === "aprovada" ? "Lição aprovada: entra no prompt da Nina em até 2 min." : v.status === "rejeitada" ? "Lição descartada." : "Lição voltou pra pendente."); qc.invalidateQueries({ queryKey: ["nina-learnings"] }); },
+    onError: (e: Error) => toast.error("Não salvou", { description: e.message }),
   });
 
   if (isLoading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>;
@@ -336,6 +358,42 @@ export function NinaVozSection() {
           <p>Abra a conversa com o número oficial no WhatsApp e toque no ícone de ligar. A Nina atende com a sua voz.</p>
           <p>Ao desligar, a ligação aparece na timeline do lead como "Chamada Recebida" com resumo e transcrição.</p>
           <p>Se o botão de ligar não aparecer no WhatsApp: o número precisa ter limite de 2.000 mensagens/dia e o app da Meta em modo Live.</p>
+        </CardContent>
+      </Card>
+
+      {/* 5. Aprendizado */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><GraduationCap className="h-4 w-4 text-violet-600" /> 5. O que a Nina aprendeu</CardTitle>
+          <CardDescription className="text-xs">
+            Depois de cada ligação, um treinador de IA avalia a conversa (nota e erros ficam no card da ligação) e propõe lições.
+            Aprove as que fazem sentido: elas entram no prompt da Nina em até 2 minutos. Rejeite o resto. Nada entra sem a sua aprovação.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {learnings.isLoading && <p className="text-xs text-muted-foreground">Carregando…</p>}
+          {learnings.error && <p className="text-xs text-red-600">Não carregou: {(learnings.error as Error).message}. A tabela nina_learnings precisa estar aplicada.</p>}
+          {learnings.data && learnings.data.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma lição ainda. Elas aparecem aqui depois das próximas ligações.</p>}
+          {(learnings.data || []).map((l) => (
+            <div key={l.id} className={cn("rounded-md border p-2.5 text-xs space-y-1", l.status === "aprovada" ? "border-emerald-300/60 bg-emerald-500/5" : "border-border")}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <p className="font-medium leading-snug">{l.regra}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {l.categoria && <Badge variant="outline" className="text-[10px] mr-1">{l.categoria}</Badge>}
+                    {l.vezes > 1 ? `apareceu em ${l.vezes} ligações` : "1 ligação"} · {new Date(l.created_at).toLocaleDateString("pt-BR")}
+                    {l.status === "aprovada" && l.aprovada_em && ` · no prompt desde ${new Date(l.aprovada_em).toLocaleDateString("pt-BR")}`}
+                  </p>
+                  {(l.ultima_evidencia || l.evidencia) && <p className="text-[11px] text-muted-foreground italic">“{l.ultima_evidencia || l.evidencia}”</p>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {l.status !== "aprovada" && <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={setLearning.isPending} onClick={() => setLearning.mutate({ id: l.id, status: "aprovada" })}><Check className="h-3 w-3 mr-1" />Aprovar</Button>}
+                  {l.status === "aprovada" && <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" disabled={setLearning.isPending} onClick={() => setLearning.mutate({ id: l.id, status: "pendente" })}>Tirar do prompt</Button>}
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-red-600" disabled={setLearning.isPending} onClick={() => setLearning.mutate({ id: l.id, status: "rejeitada" })}><X className="h-3 w-3 mr-1" />Rejeitar</Button>
+                </div>
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
 

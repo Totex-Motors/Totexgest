@@ -73,9 +73,27 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
     .eq("id", leadId).maybeSingle();
   if (!lead) return null;
 
-  const md = (lead.metadata || {}) as Record<string, any>;
   const sq = (lead.seller_qualification || {}) as Record<string, any>;
   const phone = String(lead.phone || "").replace(/\D/g, "");
+
+  // LEADS-IRMÃOS (14/10): o mesmo cliente existe como lead da Totex e como cópia distribuída pra
+  // loja; o agente de texto escreve numa, a Nina lia a outra e abria a ligação sem o carro
+  // (Gabriel: "vi que você se interessou por um carro com a gente" em vez de "pela Toro").
+  // O dossiê junta o metadata dos irmãos: o do próprio lead manda, o irmão preenche o vazio.
+  const md: Record<string, any> = { ...(lead.metadata || {}) };
+  const siblingIds: string[] = [leadId];
+  if (phone.length >= 10) {
+    const { data: sibs } = await sb.from("leads").select("id, metadata, instagram")
+      .or(`phone.eq.${phone},phone.eq.+${phone}`).neq("id", leadId).order("created_at", { ascending: true }).limit(4);
+    for (const s of (sibs || []) as any[]) {
+      siblingIds.push(s.id);
+      const smd = (s.metadata || {}) as Record<string, any>;
+      for (const k of ["vehicle", "vehicles", "veiculo_interesse_texto", "tem_veiculo_troca", "precisa_financiar", "faixa_preco_min", "faixa_preco_max", "entrada_disponivel", "forma_pagamento", "marketplace_store_name", "captured_by_name", "owner_tenant_id"]) {
+        if ((md[k] === null || md[k] === undefined || md[k] === "") && smd[k] !== null && smd[k] !== undefined && smd[k] !== "") md[k] = smd[k];
+      }
+      if (!md.nina?.notes && smd.nina?.notes) md.nina = { ...(md.nina || {}), notes: smd.nina.notes };
+    }
+  }
 
   // ── origem / promotora / local ──
   let promotora: string | null = md.captured_by_name || null;
@@ -101,7 +119,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
   // ── carro do cliente (quem vende/troca) + FIPE ──
   const { data: sv } = await sb.from("seller_vehicles")
     .select("id, brand, model, version, year_model, km, has_financing, expected_price, status")
-    .eq("lead_id", leadId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    .in("lead_id", siblingIds).order("created_at", { ascending: false }).limit(1).maybeSingle();
   let carroDoCliente: LeadBrief["carro_do_cliente"] = null;
   if (sv && (sv.brand || sv.model)) {
     carroDoCliente = {
@@ -110,6 +128,19 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
       ano: sv.year_model ?? null, km: sv.km ?? null, financiado: sv.has_financing ?? null,
       expectativa: sv.expected_price ? brl(Number(sv.expected_price)) : null,
     };
+  }
+  // carro NA TROCA do comprador (card "Veículo na Troca/Compra" — trade_in_vehicles), em qualquer irmão
+  if (!carroDoCliente) {
+    const { data: ti } = await sb.from("trade_in_vehicles").select("marca, modelo, versao, ano, km, valor_pedido")
+      .in("lead_id", siblingIds).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (ti && (ti.marca || ti.modelo)) {
+      carroDoCliente = {
+        descricao: [ti.marca, ti.modelo, ti.versao].filter(Boolean).join(" "),
+        fala: spokenCarName([ti.marca, ti.modelo].filter(Boolean).join(" ")),
+        ano: ti.ano ?? null, km: ti.km ?? null, financiado: null,
+        expectativa: ti.valor_pedido ? brl(Number(ti.valor_pedido)) : null,
+      };
+    }
   }
   let fipe: LeadBrief["fipe"] = null;
   const { data: snap } = await sb.from("vehicle_fipe_snapshot")
@@ -157,7 +188,14 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
       .eq("channel", "whatsapp").contains("working_memory", { customer_phone: phone })
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     const wm = (sess?.working_memory || {}) as Record<string, any>;
-    carroInteresse = carroInteresse || wm.carro || wm.vehicle || null;
+    // wm.vehicle pode ser OBJETO (do intake do stand) — virava "[object Object]" no reaquecimento (14/10)
+    const wmCar = (v: unknown): string | null => {
+      if (!v) return null;
+      if (typeof v === "string") return v;
+      const o = v as Record<string, any>;
+      return [o.titulo || o.title || o.description, !o.titulo && !o.title && !o.description ? [o.brand || o.marca, o.model || o.modelo, o.version || o.versao, o.year || o.ano].filter(Boolean).join(" ") : null].filter(Boolean)[0] || null;
+    };
+    carroInteresse = carroInteresse || wmCar(wm.carro) || wmCar(wm.vehicle) || null;
     lojaRef = lojaRef || wm.owner_label || wm.loja || null;
   }
 
@@ -202,7 +240,7 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
 
   // ── agendamento existente / intermediação ──
   const { data: ag } = await sb.from("company_activities").select("name, scheduled_at")
-    .eq("lead_id", leadId).eq("task_type", "meeting").gte("scheduled_at", new Date().toISOString())
+    .in("lead_id", siblingIds).eq("task_type", "meeting").gte("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true }).limit(1).maybeSingle();
   // Agendamento DO JEITO QUE SE FALA ("avaliação do Corolla, quarta-feira, 14 de outubro, às 15 horas"),
   // não o nome bruto da tarefa ("Agendamento: Avaliação do carro — Marco (Corolla 2021) em qua., 14/10, 15:00").

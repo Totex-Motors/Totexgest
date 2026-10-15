@@ -274,14 +274,48 @@ Deno.serve(async (req) => {
         if (args.temperatura) extra.temperatura = String(args.temperatura);
         if (args.interesse) extra.interesse = String(args.interesse).slice(0, 200);
         await appendAgentNote(sb, ctx.leadId, "Nina (voz)", resumo + (args.proximo_passo ? ` Próximo passo: ${args.proximo_passo}` : ""), extra);
-        // temperatura/interesse também no lead (o agente de texto e o time leem daqui)
+        // temperatura/interesse/instagram também no lead (o agente de texto e o time leem daqui)
         const patch: Record<string, unknown> = { last_interaction_at: new Date().toISOString() };
         if (args.interesse) {
           const { data: l } = await sb.from("leads").select("metadata").eq("id", ctx.leadId).maybeSingle();
           patch.metadata = { ...((l?.metadata as Record<string, unknown>) || {}), veiculo_interesse_texto: String(args.interesse).slice(0, 200) };
         }
+        const ig = String(args.instagram || "").trim().replace(/^@+/, "").replace(/\s/g, "").slice(0, 60);
+        if (ig) {
+          const { data: l } = await sb.from("leads").select("instagram").eq("id", ctx.leadId).maybeSingle();
+          if (!l?.instagram) patch.instagram = "@" + ig;
+        }
         await sb.from("leads").update(patch).eq("id", ctx.leadId);
         return json({ success: true, message: "Anotado. O time e o agente de WhatsApp vão ver." });
+      }
+
+      case "enviar_instagram_totex": {
+        // Link do Instagram da Totex no WhatsApp do cliente (número OFICIAL, Cloud API — nunca UAZAPI 1:1).
+        if (!phone) return json({ success: false, message: "Sem telefone do cliente." });
+        const ctx = await ensureCallerContext(sb, phone, args.nome_cliente || null);
+        if (!ctx.leadId) return json({ success: false, message: "Lead não encontrado." });
+        const { data: l } = await sb.from("leads").select("name, metadata, tenant_id").eq("id", ctx.leadId).maybeSingle();
+        const md = ((l?.metadata as Record<string, any>) || {});
+        const nina = (md.nina || {}) as Record<string, any>;
+        if (md.nao_contatar) return json({ success: false, message: "Cliente pediu pra não ser contatado. Não envie." });
+        if (nina.instagram_link_sent_at && Date.now() - new Date(nina.instagram_link_sent_at).getTime() < 30 * 86400_000) {
+          return json({ success: true, ja_enviado: true, message: "O link já foi enviado nos últimos dias. Não precisa mandar de novo; só lembre o cliente de seguir." });
+        }
+        const url = (await getIntegrationKey(sb, "INSTAGRAM_TOTEX_URL")) || "https://www.instagram.com/totexmotors";
+        const nome = firstName(l?.name && !/^\+?\d+$/.test(String(l.name)) ? String(l.name) : "");
+        const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da Totex Motors 😊\nSegue a gente no Instagram: ${url}\nQuem segue participa dos brindes e sorteios que a Totex faz pros seguidores. Até a visita!`;
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ action: "send_text", phone, text: texto, lead_id: ctx.leadId, tenant_id: l?.tenant_id || HQ_TENANT, sent_by: "nina_voz" }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data?.error) {
+          console.warn("[voice-tools] instagram link:", r.status, JSON.stringify(data).slice(0, 200));
+          return json({ success: false, message: "Não consegui mandar agora. Diga que vai mandar depois pelo WhatsApp e siga." });
+        }
+        await sb.from("leads").update({ metadata: { ...md, nina: { ...nina, instagram_link_sent_at: new Date().toISOString() } } }).eq("id", ctx.leadId);
+        return json({ success: true, message: "Link enviado no WhatsApp. Diga só 'te mandei o link ali no WhatsApp'." });
       }
 
       case "consultar_estoque": {
@@ -368,7 +402,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "simular_plano", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa"] }, 404);
+        return json({ error: `tool desconhecida: ${tool}`, tools: ["identificar_cliente", "consultar_estoque", "simular_plano", "agendar_visita", "info_lojas", "horario_atual", "anotar_conversa", "enviar_instagram_totex"] }, 404);
     }
   } catch (e) {
     console.error(`[voice-tools] ${tool} err:`, (e as Error).message);

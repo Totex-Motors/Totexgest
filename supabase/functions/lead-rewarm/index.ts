@@ -72,6 +72,40 @@ async function candidatos(sb: any, momento: Momento, limite: number) {
   return (data || []) as Array<{ lead_id: string; phone: string; name: string | null; janela_aberta: boolean; created_at: string }>;
 }
 
+/**
+ * Lead pulado (sem carro/intenção, template pendente) sai da fila por 3 dias
+ * (reaquecimento_candidatos lê metadata.reaquecimento.pulado_em). Sem isso os mesmos 3 leads
+ * voltavam toda rodada e travavam a vaga dos outros (14/10, 2ª hora: 0 enviados em 5 rodadas).
+ */
+async function pular(sb: any, leadId: string, motivo: string): Promise<string> {
+  const { data: l } = await sb.from("leads").select("metadata").eq("id", leadId).maybeSingle();
+  const md = (l?.metadata || {}) as Record<string, any>;
+  await sb.from("leads").update({ metadata: { ...md, reaquecimento: { ...(md.reaquecimento || {}), pulado_em: new Date().toISOString(), pulado_motivo: motivo } } }).eq("id", leadId);
+  return motivo;
+}
+
+/** Sessão do agente de WhatsApp (1 por número + agente, chave `whatsapp:<fone>` — igual ao agent-platform). */
+async function registrarAberturaNaSessao(sb: any, phone: string, texto: string): Promise<void> {
+  const slug = (await getIntegrationKey(sb, "VOICE_AGENT_SLUG")) || "agente-stand";
+  const { data: agent } = await sb.from("agents_registry").select("id").eq("slug", slug).eq("tenant_id", HQ_TENANT).maybeSingle()
+    ?? { data: null };
+  const agentRow = agent || (await sb.from("agents_registry").select("id").eq("slug", slug).limit(1).maybeSingle()).data;
+  if (!agentRow?.id) return;
+  const key = `whatsapp:${phone}`;
+  const { data: existing } = await sb.from("agents_sessions").select("id").eq("agent_id", agentRow.id).eq("channel", "whatsapp")
+    .contains("provider_state", { external_session_key: key }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  let sessionId = existing?.id as string | undefined;
+  if (!sessionId) {
+    const { data: ns } = await sb.from("agents_sessions").insert({
+      tenant_id: HQ_TENANT, agent_id: agentRow.id, channel: "whatsapp", title: `WhatsApp ${phone}`,
+      provider_state: { external_session_key: key, whatsapp_phone: phone, source: "lead-rewarm" },
+    }).select("id").single();
+    sessionId = ns?.id;
+  }
+  if (!sessionId) return;
+  await sb.from("agents_messages").insert({ tenant_id: HQ_TENANT, session_id: sessionId, role: "assistant", content: texto, status: "completed", raw: { source: "lead-rewarm" } });
+}
+
 async function abrir(sb: any, lead: { lead_id: string; phone: string; name: string | null; janela_aberta: boolean }, momento: Momento) {
   const brief = await buildLeadBrief(sb, lead.lead_id).catch(() => null);
   // nome só se for nome mesmo: perfil "😎" virou "Oi, 😎!" na 1ª rodada (14/10)
@@ -79,6 +113,7 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
   const nome = /\p{L}{2,}/u.test(nomeBruto) && !/\d/.test(nomeBruto) ? nomeBruto : "";
   const playbook = brief?.playbook || "descobrir";
   let carroInteresse = brief?.carro_interesse_fala || brief?.carro_interesse || null;
+  if (carroInteresse && !/[a-zá-ú]/i.test(carroInteresse)) carroInteresse = null; // "2022" sozinho não é carro (Havel, 14/10)
   const carroCliente = brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || null;
 
   // plano pelo simulador (só quando tem carro de interesse com preço). Se o pátio só tem um
@@ -105,7 +140,7 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     template = "reaquecimento_vender"; params = [nome || "tudo bem", quem, carroCliente];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Já tenho uma referência de valor pro seu ${carroCliente}, bem acima do que loja costuma pagar. Quer que eu te passe?`;
   } else {
-    return { skipped: "sem carro nem intenção pra abrir com uma conta" };
+    return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma conta") };
   }
 
   let sent: { ok: boolean; via: string; detail?: string };
@@ -113,11 +148,16 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     const r = await callEdge("send-whatsapp-cloud", { action: "send_text", phone: lead.phone, text: texto, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
     sent = { ok: r.ok && !r.data?.error, via: "texto", detail: r.data?.error };
   } else {
-    if (!(await templateAprovado(sb, template))) return { skipped: `template ${template} ainda não aprovado` };
+    if (!(await templateAprovado(sb, template))) return { skipped: await pular(sb, lead.lead_id, `template ${template} ainda não aprovado`) };
     const r = await callEdge("send-whatsapp-cloud", { action: "send_template", phone: lead.phone, template_name: template, template_params: params, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
     sent = { ok: r.ok && !r.data?.error, via: `template:${template}`, detail: r.data?.error };
   }
   if (!sent.ok) return { error: sent.detail || "envio falhou", via: sent.via };
+
+  // A abertura entra no HISTÓRICO da sessão do agente de WhatsApp. Sem isso o agente via a
+  // resposta "Sim" como 1ª mensagem de uma conversa nova e rodava a ABERTURA do prompt
+  // ("como posso te chamar?", "é troca ou compra?") — Havel, 14/10.
+  await registrarAberturaNaSessao(sb, lead.phone, texto).catch((e) => log("sessão:", (e as Error).message));
 
   // marca o lead: o agente entra em MODO REAQUECIMENTO quando ele responder
   const { data: l } = await sb.from("leads").select("metadata").eq("id", lead.lead_id).maybeSingle();
@@ -129,6 +169,13 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
       reaquecimento: {
         ativo: true, momento, playbook, iniciado_em: new Date().toISOString(), via: sent.via,
         carro: carroInteresse || carroCliente || null, plano: plano ? { prazo: plano.plano.prazo, parcela: plano.plano.parcela, antecipacao: plano.antecipacao, cupom_campanha: plano.cupom_campanha } : null,
+        // o agente de texto precisa SABER o que a abertura já disse (14/10: depois do "pode mandar" ele
+        // perguntava "como posso te chamar?" e "é troca ou compra?" — tudo que a mensagem já assumia)
+        nome: nome || null, carro_cliente: carroCliente || null,
+        fipe: brief?.fipe?.valor || null,
+        proposta_troca: (brief?.propostas || []).find((p: any) => /troca/i.test(p.nome))?.valor || null,
+        proposta_rapida: (brief?.propostas || []).find((p: any) => /r[áa]pida/i.test(p.nome))?.valor || null,
+        abertura: texto,
         historico: [...hist, { em: new Date().toISOString(), momento, via: sent.via }].slice(-10),
       },
     },
