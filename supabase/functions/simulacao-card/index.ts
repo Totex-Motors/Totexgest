@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
     const { data: signed } = await sb.storage.from(BUCKET).createSignedUrl(path, 2 * 3600);
     const imageUrl = signed?.signedUrl || null;
 
-    const resumo = `${veic?.titulo || carroTitulo}: ${prazo}x de ${brl0(parcela)} (entrada ${brl0(Number(p.entrada || 0))})${p.antecipacao?.ultima_parcela_hoje ? `; a jogada do décimo terceiro: a última parcela paga hoje sai por ${brl0(Number(p.antecipacao.ultima_parcela_hoje))}` : ""}.`;
+    const resumo = `${veic?.titulo || carroTitulo}: ${prazo}x de ${brl0(parcela)} (entrada ${brl0(Number(p.entrada || 0))})${p.antecipacao?.ultima_parcela_hoje ? `; a jogada da antecipação (13º, férias, PLR ou FGTS): a última parcela antecipada sai por ${brl0(Number(p.antecipacao.ultima_parcela_hoje))}` : ""}.`;
 
     // ── envia (a pausa é proposital) ──
     const enviar = body.enviar !== false && !!phone;
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       success: true, enviada: envio === "enviada", envio, image_url: imageUrl, resumo,
       numeros: { carro: veic?.titulo || carroTitulo, valor_carro: p.valor_carro, entrada: p.entrada, prazo, parcela, outros_prazos: p.plano?.outros_prazos, antecipacao: p.antecipacao, cupom_campanha: p.cupom_campanha },
       message: envio === "enviada"
-        ? `A imagem da simulação JÁ FOI ENVIADA no WhatsApp do cliente (${resumo}). Não repita os números todos: comente em UMA frase a jogada do décimo terceiro ou o ganho dele, e faça UMA pergunta fácil (ex.: "quer que eu veja com entrada menor?" ou "fecha pra você ver ele de perto no sábado?"). Nunca cite taxa. O valor do carro dele na troca sai na avaliação.`
+        ? `A imagem da simulação JÁ FOI ENVIADA no WhatsApp do cliente (${resumo}). Não repita os números todos: comente em UMA frase a jogada da antecipação (13º, férias, PLR ou FGTS derrubando a última parcela) ou o ganho dele, e faça UMA pergunta fácil (ex.: "quer que eu veja com entrada menor?" ou "fecha pra você ver ele de perto no sábado?"). Nunca cite taxa. O valor do carro dele na troca sai na avaliação.`
         : `Simulação pronta (${resumo}), mas não enviei a imagem${phone ? "" : " (sem telefone)"}. Fale os números em reais, sem taxa.`,
     });
   } catch (e) {

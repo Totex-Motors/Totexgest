@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
           antecipacao: ant ? { ultima_parcela_hoje: ant.ultima_parcela_hoje, desembolso_mes_mais_ultima: ant.desembolso_mes_mais_ultima, parcelas_que_somem: ant.parcelas_que_somem, economia_vs_pagar_no_fim: ant.economia_vs_pagar_no_fim, ...(ant.extra ? { extra: ant.extra, parcelas_do_fim_que_o_extra_elimina: ant.parcelas_do_fim_que_o_extra_elimina } : {}) } : null,
           cupom_campanha: sim.cupom_campanha ? { codigo: sim.cupom_campanha.codigo, titulo: sim.cupom_campanha.titulo, valor: sim.cupom_campanha.valor, economia_mes: sim.cupom_campanha.economia_mes_no_destaque } : null,
           condicao: sim.condicao ? { nome: (sim.condicao as any).nome, porque: (sim.condicao as any).porque, fim: (sim.condicao as any).fim } : null,
-          fala: `Fica em ${foco.prazo} parcelas de ${fala(foco.parcela)}${ant ? `. E tem a jogada que quase ninguém faz: pagando a do mês junto com a última, a última sai por ${fala(ant.ultima_parcela_hoje)} em vez de ${fala(foco.parcela)}, e some uma parcela do fim` : ""}.`,
+          fala: `Fica em ${foco.prazo} parcelas de ${fala(foco.parcela)}${ant ? `. E tem a jogada que quase ninguém faz: antecipando a última parcela junto com a do mês, com décimo terceiro, férias, PLR ou FGTS, a última sai por ${fala(ant.ultima_parcela_hoje)} em vez de ${fala(foco.parcela)}, e some uma parcela do fim` : ""}.`,
           regras: "Fale só em reais, nunca em taxa ou porcentagem. É estimativa de pré-atendimento: a Grazi fecha a condição real com os bancos. Mostre o ganho de subir de carro e a jogada de antecipar com décimo terceiro, férias ou PLR, com os números acima.",
         });
       }

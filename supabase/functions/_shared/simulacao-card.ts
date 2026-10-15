@@ -97,8 +97,8 @@ export function buildCardSvg(c: CardInput): string {
   // jogada do 13º
   if (c.ultimaHoje && c.ultimaHoje > 0) {
     parts.push(`<rect x="40" y="${y}" width="${W - 80}" height="156" rx="22" fill="#1e293b" stroke="#334155"/>`);
-    parts.push(`<text x="72" y="${y + 50}" font-size="28" font-weight="700" fill="#fde68a">A jogada do décimo terceiro</text>`);
-    parts.push(`<text x="72" y="${y + 92}" font-size="26" fill="#e2e8f0">Pagando a parcela do mês junto com a última, a última sai por ${esc(brl0(c.ultimaHoje))}</text>`);
+    parts.push(`<text x="72" y="${y + 50}" font-size="28" font-weight="700" fill="#fde68a">A jogada da antecipação (13º, férias, PLR ou FGTS)</text>`);
+    parts.push(`<text x="72" y="${y + 92}" font-size="26" fill="#e2e8f0">Antecipando a última parcela junto com a do mês, ela sai por ${esc(brl0(c.ultimaHoje))}</text>`);
     parts.push(`<text x="72" y="${y + 128}" font-size="26" fill="#e2e8f0">em vez de ${esc(brl0(c.parcela))}, e some uma parcela do fim.</text>`);
     y += 186;
   }
