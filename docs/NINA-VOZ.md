@@ -249,3 +249,17 @@ interesse, nem o perfil de compra, nem o carro da troca", "duplicou o agendament
   Nina — Ligações › **5. O que a Nina aprendeu**: aprovar/rejeitar (`nina_learning_set_status`).
   Lições aprovadas entram no fim do prompt (bloco `<!-- LICOES -->`, máx. `NINA_MAX_LICOES` = 20)
   pelo `syncNinaAgent` em até 2 min. Nada entra no prompt sem aprovação humana.
+
+## 2g. Não atendeu: cadência de retorno (2026-10-15, decisão do Marco)
+
+1ª ligação não atendida → liga de novo em **15 min**. 2ª não atendida → **mensagem de
+curiosidade** no WhatsApp oficial e liga de novo em **1 h**. 3ª não atendida → **2ª mensagem
+3 h depois** e encerra (`no_answer`); o reaquecimento e o agente de texto seguem dali.
+Tudo no horário da Nina (`nina_business_time`). Mensagens: janela de 24 h aberta → texto
+livre; fechada → templates `nina_curiosidade_1` / `nina_curiosidade_2` ({{1}} nome, {{2}}
+assinatura, {{3}} assunto: "o Nivus que você viu" / "o seu Onix"). Template pendente → pula a
+mensagem, a cadência de ligações segue. Config: `NINA_RETRY_1_MIN`, `NINA_RETRY_2_MIN`,
+`NINA_MSG2_HOURS`. Código: `_shared/nina-cadence.ts`; o `voice-agent-postcall` aplica no
+webhook (inclusive `call_initiation_failure`) e o `nina-dialer` confere na API da ElevenLabs as
+ligações em `calling` há mais de 2 min (ligação não atendida nem sempre gera webhook). A 2ª
+mensagem fica na fila como `queued` + `metadata.step = msg2`.
