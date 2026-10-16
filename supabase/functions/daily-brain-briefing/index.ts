@@ -3,6 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 // SEGUNDO CÉREBRO — Briefing matinal automático no grupo de gestão.
 // Chamado por cron (pg_cron → pg_net). Monta a foto da operação, pede um
 // "bom dia" curto pra IA e posta no grupo do cérebro (só-grupo, regra respeitada).
@@ -19,6 +20,7 @@ function json(body: unknown, status = 200) { return new Response(JSON.stringify(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   try {
     const { data: cfg } = await sb.from("config").select("key,value").in("key", ["MCP_BOT_GROUP_JID", "MCP_BOT_INSTANCE_ID"]);

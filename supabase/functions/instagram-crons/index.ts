@@ -20,6 +20,7 @@ import { processIgAgentQueue, processCommentNudges } from "../instagram-webhook/
 import { handleDispatch } from "./dispatch.ts";
 import { handleRefreshToken } from "./refresh-token.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -34,6 +35,7 @@ function json(body: unknown, status = 200) {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
 
   let body: Record<string, unknown> = {};
   try {

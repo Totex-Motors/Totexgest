@@ -3,6 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { isGroupOrChannelJid } from "../_shared/wa-policy.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 // Fase 2 da Torre de Controle: alertas da operação de leads pro time.
 // Disparada por cron. Dois modos (via ?mode= ou body.mode):
 //   - realtime : lead sem 1º contato que estourou o SLA + reconversão sem
@@ -320,6 +321,7 @@ async function deliver(supabase: any, cfg: Row, html: string): Promise<boolean> 
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
 
   const url = new URL(req.url);
   let mode = url.searchParams.get("mode") || "";

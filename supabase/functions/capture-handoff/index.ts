@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 // Captação (promotoras) — Fase 4: avisos do handoff e SLA.
 //
 // Modos (body.mode):
@@ -461,6 +462,7 @@ async function runSummary(sb: any, force = false) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   let body: Row = {};
   try { body = await req.json(); } catch { /* sem body */ }

@@ -262,3 +262,6 @@ verify_jwt = false
 
 [functions.lead-rewarm]
 verify_jwt = false
+
+[functions.simulacao-card]
+verify_jwt = false

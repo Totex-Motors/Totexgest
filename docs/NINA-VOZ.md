@@ -249,3 +249,46 @@ interesse, nem o perfil de compra, nem o carro da troca", "duplicou o agendament
   Nina — Ligações › **5. O que a Nina aprendeu**: aprovar/rejeitar (`nina_learning_set_status`).
   Lições aprovadas entram no fim do prompt (bloco `<!-- LICOES -->`, máx. `NINA_MAX_LICOES` = 20)
   pelo `syncNinaAgent` em até 2 min. Nada entra no prompt sem aprovação humana.
+
+## 2g. Não atendeu: cadência de retorno (2026-10-15, decisão do Marco)
+
+1ª ligação não atendida → liga de novo em **15 min**. 2ª não atendida → **mensagem de
+curiosidade** no WhatsApp oficial e liga de novo em **1 h**. 3ª não atendida → **2ª mensagem
+3 h depois** e encerra (`no_answer`); o reaquecimento e o agente de texto seguem dali.
+Tudo no horário da Nina (`nina_business_time`). Mensagens: janela de 24 h aberta → texto
+livre; fechada → templates `nina_curiosidade_1` / `nina_curiosidade_2` ({{1}} nome, {{2}}
+assinatura, {{3}} assunto: "o Nivus que você viu" / "o seu Onix"). Template pendente → pula a
+mensagem, a cadência de ligações segue. Config: `NINA_RETRY_1_MIN`, `NINA_RETRY_2_MIN`,
+`NINA_MSG2_HOURS`. Código: `_shared/nina-cadence.ts`; o `voice-agent-postcall` aplica no
+webhook (inclusive `call_initiation_failure`) e o `nina-dialer` confere na API da ElevenLabs as
+ligações em `calling` há mais de 2 min (ligação não atendida nem sempre gera webhook). A 2ª
+mensagem fica na fila como `queued` + `metadata.step = msg2`.
+
+## 2h. Follow-up automático do agente de TEXTO (2026-10-15, decisão do Marco)
+
+O agente nunca chamava `agendar_lembrete` (0 em 14 dias). Agora o `agent-runner` agenda sozinho
+depois de cada resposta no WhatsApp (`_shared/followup-auto.ts`): **3 h** (dentro de 8h–20h; senão
+9h30 do dia seguinte) → **9h30 do dia seguinte** → **48 h depois a mensagem de PAUSA com botões**
+("Continuar por aqui" / "Me chama outro dia" / "Encerrar por agora"). Cliente respondeu → cancela
+e recomeça. Não agenda se: não contatar, visita marcada, repassado pra loja na sessão, ou o agente
+decidiu não retomar (responde `NAO_ENVIAR` à instrução do poller). Passos 1–2: o modelo escreve
+a retomada com valor novo (`instrucaoRetomada`); passo 3: `enviarPausa` manda os botões direto
+(`send-whatsapp-cloud` action `send_buttons`). Botões: "Encerrar" → `nao_contatar` 30 dias +
+despedida; "Me chama outro dia" → retomada em 3 dias (9h30); "Continuar" → vai pro agente
+(`whatsapp-cloud-webhook` › `handlePausaReply`). Fora da janela de 24 h: templates
+`retomada_conversa` ({{1}} nome, {{2}} assinatura, {{3}} assunto — `agent.settings.followup_template_*`)
+e `pausa_conversa` (2 vars + QUICK_REPLY). Config: `FOLLOWUP_AUTO_ENABLED`, `FOLLOWUP_1_HOURS`,
+`FOLLOWUP_PAUSA_ENABLED`, `FOLLOWUP_PAUSA_HOURS`.
+
+## 2i. Card da simulação (2026-10-15, ideia do Marco)
+
+Quando o cliente pede parcela, o agente diz "deixa eu rodar aqui no simulador da Cardoso, me dá
+um minutinho" e chama `enviar_simulacao` → edge fn **`simulacao-card`**: números pela porta única
+(`simulador-cardoso` › plano), foto/ano/km pelo `consultar-estoque`, card em SVG → PNG
+(`_shared/simulacao-card.ts`, resvg wasm + Roboto), sobe no bucket privado `whatsapp-media`
+(URL assinada 2 h), espera `SIMULACAO_CARD_DELAY_MS` (6 s) e manda via `send-whatsapp-cloud`
+`send_image` pelo número oficial. Registra em `leads.metadata.simulacoes`. A tool devolve a
+orientação: não repetir números, comentar a jogada do 13º em uma frase, UMA pergunta; depois
+vem o cupom (gerar_cupom) quando houver intenção. Regras: só reais, nunca taxa, nunca valor
+do carro do cliente na troca, sempre "estimativa". Passo 2 (se converter): vídeo curto do
+simulador real gravado no VPS.

@@ -1,11 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+import { requireCaller } from "../_shared/auth.ts";
 /**
  * Renews Google Calendar watches that are expiring within 2 days.
  * Should be called daily via cron.
  */
 serve(async (req) => {
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
