@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, requireIntegrationKey } from "../_shared/config.ts";
 
+import { getCaller, deny, callerCanTouchLead } from "../_shared/auth.ts";
 /**
  * WhatsApp Cloud API — Envio de mensagens
  *
@@ -47,6 +48,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Pente fino 16/10: a anon key (pública no front) passava no gateway e mandava mensagem pelo
+  // número oficial. Agora: service/interno (funções, crons) ou usuário logado — e usuário só
+  // envia pra lead da própria loja (superadmin passa).
+  const caller = await getCaller(req);
+  if (!caller.ok) return deny();
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -55,6 +61,15 @@ Deno.serve(async (req) => {
 
     if (!phone) {
       return jsonRes({ error: "phone required" }, 400);
+    }
+    if (caller.user && !caller.user.superadmin) {
+      if (bodyTenantId && bodyTenantId !== caller.user.tenantId) return deny("tenant de outra loja", 403);
+      if (lead_id && !(await callerCanTouchLead(caller, lead_id))) return deny("lead de outra loja", 403);
+      if (!lead_id) {
+        // sem lead: o número precisa ser de um lead da loja do usuário
+        const { count } = await supabase.from("leads").select("id", { count: "exact", head: true }).eq("tenant_id", caller.user.tenantId).ilike("phone", `%${String(phone).replace(/\D/g, "").slice(-8)}`);
+        if (!count) return deny("número não é de um lead da sua loja", 403);
+      }
     }
 
     // Resolver tenant: tenant_id do body (agente passa) → tenant do lead → global.

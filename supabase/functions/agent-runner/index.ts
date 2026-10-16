@@ -48,10 +48,15 @@ import { resolveHumanization, waitDebounce } from "./lib/humanization/index.ts";
 import { buildAutoContext } from "./lib/auto-context.ts";
 import { scheduleAutoFollowup } from "../_shared/followup-auto.ts";
 
+import { getCaller, deny } from "../_shared/auth.ts";
 const DEFAULT_MAX_TOOL_ITERATIONS = 20; // safety net contra loop infinito (era 8, baixo demais pra agentes que exploram
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return corsResponse();
+  // Pente fino 16/10: só service (webhooks, poller, função→função), interno (crons) ou usuário
+  // logado — e usuário não pode apontar tenant_id de outra loja (superadmin pode).
+  const caller = await getCaller(req);
+  if (!caller.ok) return deny();
 
   if (req.method !== "POST") {
     return jsonError("Method not allowed", 405);
@@ -62,6 +67,9 @@ Deno.serve(async (req: Request) => {
     payload = await req.json();
   } catch {
     return jsonError("Invalid JSON body", 400);
+  }
+  if (caller.user && !caller.user.superadmin && payload.tenant_id && payload.tenant_id !== caller.user.tenantId) {
+    return deny("tenant de outra loja", 403);
   }
 
   if (!payload.agent_slug || !payload.message) {

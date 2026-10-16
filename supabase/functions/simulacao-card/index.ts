@@ -19,6 +19,7 @@ import { getIntegrationKey } from "../_shared/config.ts";
 import { renderCardPng, fotoDataUri, brl0 } from "../_shared/simulacao-card.ts";
 import { getNinaExclusiveStore } from "../_shared/nina-store.ts";
 
+import { getCaller, deny, callerCanTouchLead } from "../_shared/auth.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const HQ_TENANT = "c13681e3-5db9-48d1-9c5c-856e6041d77f";
@@ -34,6 +35,11 @@ async function callEdge(fn: string, body: Record<string, unknown>) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  // Quem chama: service (agent-runner/tool), interno (crons) ou usuário logado (tela).
+  // Usuário só mexe em lead da própria loja; telefone de destino NUNCA vem do body —
+  // sempre do lead/sessão (pente fino 16/10: antes dava pra mandar imagem pra qualquer número).
+  const caller = await getCaller(req);
+  if (!caller.ok) return deny();
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   try {
     const body = await req.json().catch(() => ({}));
@@ -41,8 +47,13 @@ Deno.serve(async (req) => {
 
     // ── quem é o cliente (sessão do agente ou direto) ──
     let leadId: string | null = body.lead_id || null;
-    let phone = digits(body.phone);
+    let phone = "";
     let tenantId: string = body.tenant_id || HQ_TENANT;
+    if (caller.user && !caller.user.superadmin) {
+      if (!leadId) return json({ success: false, message: "lead_id obrigatório" }, 400);
+      if (!(await callerCanTouchLead(caller, leadId))) return deny("lead de outra loja", 403);
+      tenantId = caller.user.tenantId || tenantId;
+    }
     if (body.session_id) {
       const { data: s } = await sb.from("agents_sessions").select("tenant_id, working_memory, provider_state").eq("id", body.session_id).maybeSingle();
       const wm = (s?.working_memory || {}) as Record<string, any>; const ps = (s?.provider_state || {}) as Record<string, any>;
@@ -50,13 +61,15 @@ Deno.serve(async (req) => {
       leadId = leadId || wm.lead_id || null;
       tenantId = s?.tenant_id || tenantId;
     }
-    if (!leadId && phone) {
+    if (!leadId && phone && (caller.service || caller.internal)) {
       const { data: l } = await sb.from("leads").select("id").ilike("phone", `%${phone.slice(-8)}`).order("created_at", { ascending: false }).limit(1).maybeSingle();
       leadId = l?.id || null;
     }
-    const lead = leadId ? (await sb.from("leads").select("id, name, metadata, tenant_id").eq("id", leadId).maybeSingle()).data : null;
+    const lead = leadId ? (await sb.from("leads").select("id, name, metadata, tenant_id, phone").eq("id", leadId).maybeSingle()).data : null;
     const md = ((lead?.metadata as Record<string, any>) || {});
-    if (!phone && lead) { const { data: l2 } = await sb.from("leads").select("phone").eq("id", lead.id).maybeSingle(); phone = digits(l2?.phone); }
+    // destino = telefone do LEAD (o da sessão só vale se for o mesmo cliente)
+    if (lead?.phone) phone = digits(lead.phone);
+    if (!lead) phone = caller.service || caller.internal ? phone : "";
 
     // ── carro: argumento → carro de interesse do lead ──
     const carroPedido = String(a.carro || "").trim() || String(md.veiculo_interesse_texto || "").trim() ||

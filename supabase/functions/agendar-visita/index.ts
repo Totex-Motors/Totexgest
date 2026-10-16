@@ -13,12 +13,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendTemplateViaCloud } from "../_shared/cloud-template.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
 Deno.serve(async (req) => {
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
     const body = await req.json();

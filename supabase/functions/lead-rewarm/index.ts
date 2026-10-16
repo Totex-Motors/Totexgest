@@ -29,6 +29,7 @@ import { buildLeadBrief } from "../_shared/lead-brief.ts";
 import { spokenCarName } from "../_shared/nina-store.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const HQ_TENANT = "c13681e3-5db9-48d1-9c5c-856e6041d77f";
@@ -227,6 +228,7 @@ async function avisarGrazi(sb: any, leadId: string, motivo: string | null) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
   const raw = await req.json().catch(() => ({})) as Record<string, any>;
   const body = raw.arguments && typeof raw.arguments === "object" ? { action: "avisar_grazi", ...raw.arguments, _session: raw.session_id } : raw;

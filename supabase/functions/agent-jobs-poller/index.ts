@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { enviarPausa, instrucaoRetomada } from "../_shared/followup-auto.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -24,6 +25,7 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  { const __denied = await requireCaller(req, { allowUser: false }); if (__denied) return __denied; }
 
   // 1. Marca timeouts primeiro
   let timedOut = 0;

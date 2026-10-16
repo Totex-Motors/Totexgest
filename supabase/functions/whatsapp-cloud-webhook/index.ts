@@ -59,7 +59,24 @@ Deno.serve(async (req) => {
   // ========== WEBHOOK EVENTS (POST) ==========
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const body = await req.json();
+    // Assinatura da Meta (X-Hub-Signature-256 = HMAC-SHA256 do corpo com o App Secret).
+    // Com META_APP_SECRET configurado (Integrações), corpo sem assinatura válida é recusado:
+    // sem isso qualquer um podia "injetar" mensagem recebida e fazer o agente responder.
+    // Sem o secret configurado, só avisa no log (pra não derrubar o inbound).
+    const rawBody = await req.text();
+    const appSecret = await getIntegrationKey(supabase, "META_APP_SECRET");
+    if (appSecret) {
+      const sig = String(req.headers.get("x-hub-signature-256") || "").replace(/^sha256=/, "").toLowerCase();
+      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const mac = Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)))).map((b) => b.toString(16).padStart(2, "0")).join("");
+      let same = sig.length === mac.length; let diff = 0;
+      for (let i = 0; i < mac.length && same; i++) diff |= mac.charCodeAt(i) ^ sig.charCodeAt(i);
+      if (!same || diff !== 0) { console.warn("[Cloud Webhook] assinatura da Meta inválida — ignorado"); return new Response("invalid signature", { status: 401 }); }
+    } else if (!req.headers.get("x-hub-signature-256")) {
+      console.warn("[Cloud Webhook] META_APP_SECRET não configurado: webhook aceito sem verificar assinatura");
+    }
+    let body: any;
+    try { body = JSON.parse(rawBody); } catch { return new Response("invalid json", { status: 400 }); }
 
     // Meta envelopa em object.entry[].changes[].value
     const entries = body.entry || [];
@@ -320,7 +337,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       if (targetTenant && targetTenant !== tenantId) {
         await fetch(`${SUPABASE_URL}/functions/v1/distribuir-lead`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
           body: JSON.stringify({ lead_id: finalLeadId, target_tenant_id: targetTenant, motivo: content.slice(0, 160) }),
         });
       }
