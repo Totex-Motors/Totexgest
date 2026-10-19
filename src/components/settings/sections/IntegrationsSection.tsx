@@ -32,7 +32,7 @@ interface IntegrationDef {
   description: string;
   placeholder: string;
   docsUrl?: string;
-  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "signature" | "vehicle" | "other";
+  category: "ai" | "whatsapp" | "telephony" | "payment" | "email" | "marketplace" | "signature" | "vehicle" | "social" | "other";
   // "tenant" → chave da loja (cada lojista paga a própria), gravada via RPC
   //            set_my_tenant_integration_key. "global" → infra central da Totex
   //            (Google OAuth, webhook secret do marketplace), gravada em `config`.
@@ -234,6 +234,28 @@ const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://painel.puxaplaca.app",
     category: "vehicle",
   },
+  // Redes sociais (Zernio) — Instagram continua direto na Meta; Zernio só pras outras redes
+  {
+    key: "ZERNIO_API_KEY",
+    label: "Zernio — API Key",
+    description:
+      "Publica o carrossel do Studio no Facebook, TikTok e outras redes (Instagram continua direto na Meta). Plano grátis cobre 2 contas conectadas. Crie a chave em zernio.com › Dashboard › API keys.",
+    placeholder: "zrn_...",
+    docsUrl: "https://zernio.com/dashboard/api-keys",
+    category: "social",
+    scope: "global",
+  },
+  {
+    key: "ZERNIO_WEBHOOK_SECRET",
+    label: "Zernio — Webhook Secret",
+    description:
+      "Senha que VOCÊ inventa. Cadastre o webhook em zernio.com › Dashboard › Webhooks apontando pra URL abaixo, com este mesmo secret, e marque os eventos post.* e account.disconnected. URL: " +
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zernio-webhook`,
+    placeholder: "ex: totex-zernio-2026-xyz",
+    docsUrl: "https://docs.zernio.com/webhooks",
+    category: "social",
+    scope: "global",
+  },
   // Google
   {
     key: "GOOGLE_CLIENT_ID",
@@ -262,6 +284,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   marketplace: "Marketplace",
   signature: "Assinatura eletrônica (Clicksign)",
   vehicle: "Consulta de placa",
+  social: "Redes sociais (Zernio)",
   other: "Google & Outros",
 };
 

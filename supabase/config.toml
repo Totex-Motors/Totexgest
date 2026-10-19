@@ -265,3 +265,10 @@ verify_jwt = false
 
 [functions.simulacao-card]
 verify_jwt = false
+
+# Zernio (publicação do Studio em outras redes). zernio-webhook valida HMAC X-Zernio-Signature.
+[functions.zernio-publish]
+verify_jwt = false
+
+[functions.zernio-webhook]
+verify_jwt = false
