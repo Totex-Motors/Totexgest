@@ -5,6 +5,7 @@ import {
   CommissionSummaryCard,
   CommissionsTable,
   CommissionRulesTable,
+  EarningsSimulatorButton,
 } from "@/components/sales/commissions";
 import { DollarSign, Settings, List } from "lucide-react";
 
@@ -14,12 +15,15 @@ const Commissions = () => {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <DollarSign className="h-6 w-6 text-primary shrink-0" />
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Comissões</h1>
-            <p className="text-sm text-muted-foreground">Gerencie comissões e regras de pagamento</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <DollarSign className="h-6 w-6 text-primary shrink-0" />
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">Comissões</h1>
+              <p className="text-sm text-muted-foreground">Gerencie comissões e regras de pagamento</p>
+            </div>
           </div>
+          <EarningsSimulatorButton />
         </div>
 
         {/* Summary Cards */}
