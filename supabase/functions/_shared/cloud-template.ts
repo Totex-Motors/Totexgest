@@ -17,12 +17,13 @@ export async function sendTemplateViaCloud(opts: {
   language?: string;
 }): Promise<boolean> {
   const base = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const phone = String(opts.phone || "").replace(/\D/g, "");
   if (!base || !phone || !opts.templateName) return false;
   try {
     const res = await fetch(`${base}/functions/v1/send-whatsapp-cloud`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
       body: JSON.stringify({
         action: "send_template",
         phone,

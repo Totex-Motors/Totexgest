@@ -177,6 +177,8 @@ export async function buildLeadBrief(sb: SupabaseClient, leadId: string, opts: {
   let playbook: Playbook = "descobrir";
   if (intent.includes("troc") || intent === "trade_in") playbook = "trocar";
   else if (intent.includes("vend") || intent.includes("sell") || lead.lead_kind === "seller") playbook = "vender";
+  // comprador que JÁ disse que tem carro na troca (perfil de compra ou card da troca) → é troca (Soraya, 15/10)
+  else if (lead.lead_kind === "buyer" && (md.tem_veiculo_troca === true || !!carroDoCliente)) playbook = "trocar";
   else if (lead.lead_kind === "buyer" && (md.vehicle || md.veiculo_interesse_texto || src.startsWith("stand") || src.startsWith("totem") || src === "marketplace")) playbook = "comprar";
   const intencaoTexto = { vender: "quer VENDER o carro", trocar: "quer TROCAR o carro por outro", comprar: "quer COMPRAR um carro", descobrir: "intenção ainda não registrada — descobrir na conversa" }[playbook];
 

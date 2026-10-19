@@ -14,6 +14,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getTenantIdFromRequest } from "../_shared/tenant.ts";
 import { getConnectedAccount, resolveAccountFromEvent } from "../instagram-webhook/meta-campaign.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const GRAPH = "https://graph.facebook.com/v20.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +42,7 @@ function buildMetaMessage(messageType: string, message: string, mediaUrl?: strin
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
 
   try {
     const supabase = createClient(

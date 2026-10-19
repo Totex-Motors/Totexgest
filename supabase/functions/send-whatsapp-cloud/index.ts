@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, requireIntegrationKey } from "../_shared/config.ts";
 
+import { getCaller, deny, callerCanTouchLead } from "../_shared/auth.ts";
 /**
  * WhatsApp Cloud API — Envio de mensagens
  *
@@ -47,6 +48,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Pente fino 16/10: a anon key (pública no front) passava no gateway e mandava mensagem pelo
+  // número oficial. Agora: service/interno (funções, crons) ou usuário logado — e usuário só
+  // envia pra lead da própria loja (superadmin passa).
+  const caller = await getCaller(req);
+  if (!caller.ok) return deny();
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -55,6 +61,15 @@ Deno.serve(async (req) => {
 
     if (!phone) {
       return jsonRes({ error: "phone required" }, 400);
+    }
+    if (caller.user && !caller.user.superadmin) {
+      if (bodyTenantId && bodyTenantId !== caller.user.tenantId) return deny("tenant de outra loja", 403);
+      if (lead_id && !(await callerCanTouchLead(caller, lead_id))) return deny("lead de outra loja", 403);
+      if (!lead_id) {
+        // sem lead: o número precisa ser de um lead da loja do usuário
+        const { count } = await supabase.from("leads").select("id", { count: "exact", head: true }).eq("tenant_id", caller.user.tenantId).ilike("phone", `%${String(phone).replace(/\D/g, "").slice(-8)}`);
+        if (!count) return deny("número não é de um lead da sua loja", 403);
+      }
     }
 
     // Resolver tenant: tenant_id do body (agente passa) → tenant do lead → global.
@@ -98,6 +113,12 @@ Deno.serve(async (req) => {
 
       case "send_audio":
         result = await sendMedia(body, formattedPhone, "audio", cfg, supabase);
+        break;
+
+      case "send_buttons":
+        // Botões de resposta rápida (até 3) — mensagem de pausa do follow-up automático.
+        // Free-form: precisa da janela de 24h; fora dela, template com QUICK_REPLY (pausa_conversa).
+        result = await sendButtons(body, formattedPhone, cfg);
         break;
 
       case "send_call_permission":
@@ -272,6 +293,29 @@ async function sendText(body: any, phone: string, cfg: CloudApiCfg) {
     data: response.data,
     content: text,
     messageType: "Conversation",
+  };
+}
+
+// ==================== REPLY BUTTONS ====================
+
+async function sendButtons(body: any, phone: string, cfg: CloudApiCfg) {
+  const text = String(body.text || "").slice(0, 1024);
+  const buttons = (Array.isArray(body.buttons) ? body.buttons : []).slice(0, 3)
+    .map((b: any, i: number) => ({ type: "reply", reply: { id: String(b.id || `btn_${i + 1}`).slice(0, 256), title: String(b.title || "").slice(0, 20) } }))
+    .filter((b: any) => b.reply.title);
+  if (!text || !buttons.length) throw new Error("text e buttons (1–3) são obrigatórios");
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: phone,
+    type: "interactive",
+    interactive: { type: "button", body: { text }, action: { buttons } },
+  };
+  const response = await callCloudAPI(payload, cfg);
+  return {
+    ok: response.ok, data: response.data,
+    content: `${text}\n${buttons.map((b: any) => `[${b.reply.title}]`).join(" ")}`,
+    messageType: "interactive", extraMeta: { buttons: buttons.map((b: any) => b.reply) },
   };
 }
 

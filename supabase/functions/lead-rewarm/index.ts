@@ -29,6 +29,7 @@ import { buildLeadBrief } from "../_shared/lead-brief.ts";
 import { spokenCarName } from "../_shared/nina-store.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
+import { requireCaller } from "../_shared/auth.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const HQ_TENANT = "c13681e3-5db9-48d1-9c5c-856e6041d77f";
@@ -131,13 +132,14 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
   let template: string | null = null; let params: string[] = []; let texto = "";
   const quem = (await getIntegrationKey(sb, "REAQUECIMENTO_ASSINATURA")) || "Nina";
   if (playbook === "comprar" && carroInteresse && plano?.plano?.parcela) {
-    template = "reaquecimento_viu_carro"; params = [nome || "tudo bem", quem, carroInteresse, fala(plano.plano.parcela)];
+    // params[0] vazio → send-whatsapp-cloud põe "tudo bem" (passar "tudo bem" virava "Oi, tudo!" — 14/10 23h)
+    template = "reaquecimento_viu_carro"; params = [nome, quem, carroInteresse, fala(plano.plano.parcela)];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Fiz uma conta rápida no ${carroInteresse} que você viu: dá pra ficar em ${fala(plano.plano.parcela)} por mês, e tem um jeito de derrubar as últimas parcelas com o décimo terceiro. Quer que eu te mostre como?`;
   } else if (playbook === "trocar" && carroCliente) {
-    template = "reaquecimento_trocar"; params = [nome || "tudo bem", quem, carroCliente];
+    template = "reaquecimento_trocar"; params = [nome, quem, carroCliente];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. O seu ${carroCliente} entra na troca valendo mais do que numa loja comum, e vi uma opção que encaixa no que você procura. Posso te mandar a conta?`;
   } else if (playbook === "vender" && carroCliente) {
-    template = "reaquecimento_vender"; params = [nome || "tudo bem", quem, carroCliente];
+    template = "reaquecimento_vender"; params = [nome, quem, carroCliente];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Já tenho uma referência de valor pro seu ${carroCliente}, bem acima do que loja costuma pagar. Quer que eu te passe?`;
   } else {
     return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma conta") };
@@ -226,6 +228,7 @@ async function avisarGrazi(sb: any, leadId: string, motivo: string | null) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  { const __denied = await requireCaller(req, { allowUser: true }); if (__denied) return __denied; }
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
   const raw = await req.json().catch(() => ({})) as Record<string, any>;
   const body = raw.arguments && typeof raw.arguments === "object" ? { action: "avisar_grazi", ...raw.arguments, _session: raw.session_id } : raw;

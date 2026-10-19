@@ -72,7 +72,7 @@ const CHECKS: HealthCheck[] = [
     url: `${SUPABASE_URL}/functions/v1/ai-sales-agent`,
     method: "POST",
     body: { action: "process_queue" },
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""}` },
     expectNotContain: "BOOT_ERROR",
   },
 ];

@@ -59,7 +59,24 @@ Deno.serve(async (req) => {
   // ========== WEBHOOK EVENTS (POST) ==========
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const body = await req.json();
+    // Assinatura da Meta (X-Hub-Signature-256 = HMAC-SHA256 do corpo com o App Secret).
+    // Com META_APP_SECRET configurado (Integrações), corpo sem assinatura válida é recusado:
+    // sem isso qualquer um podia "injetar" mensagem recebida e fazer o agente responder.
+    // Sem o secret configurado, só avisa no log (pra não derrubar o inbound).
+    const rawBody = await req.text();
+    const appSecret = await getIntegrationKey(supabase, "META_APP_SECRET");
+    if (appSecret) {
+      const sig = String(req.headers.get("x-hub-signature-256") || "").replace(/^sha256=/, "").toLowerCase();
+      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const mac = Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)))).map((b) => b.toString(16).padStart(2, "0")).join("");
+      let same = sig.length === mac.length; let diff = 0;
+      for (let i = 0; i < mac.length && same; i++) diff |= mac.charCodeAt(i) ^ sig.charCodeAt(i);
+      if (!same || diff !== 0) { console.warn("[Cloud Webhook] assinatura da Meta inválida — ignorado"); return new Response("invalid signature", { status: 401 }); }
+    } else if (!req.headers.get("x-hub-signature-256")) {
+      console.warn("[Cloud Webhook] META_APP_SECRET não configurado: webhook aceito sem verificar assinatura");
+    }
+    let body: any;
+    try { body = JSON.parse(rawBody); } catch { return new Response("invalid json", { status: 400 }); }
 
     // Meta envelopa em object.entry[].changes[].value
     const entries = body.entry || [];
@@ -169,7 +186,9 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       console.log(`[Cloud Webhook] Reaction from ${from}: ${msg.reaction?.emoji}`);
       return;
     case "button":
+      // resposta a template com QUICK_REPLY (ex.: pausa_conversa fora da janela)
       content = msg.button?.text || "[Botão]";
+      if (await handlePausaReply(supabase, from.replace(/\D/g, ""), String(msg.button?.payload || msg.button?.text || ""))) { skipAgents = true; messageType = "pausa_reply"; }
       break;
     case "interactive":
       if (msg.interactive?.type === "call_permission_reply" || msg.interactive?.call_permission_reply) {
@@ -185,6 +204,10 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
         } catch (e) { console.error("[Cloud Webhook] call_permission_reply:", (e as Error).message); }
       } else {
         content = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "[Interativo]";
+        // botões da mensagem de PAUSA (follow-up automático): "Encerrar" e "Me chama outro dia" são
+        // tratados pelo sistema; "Continuar" segue pro agente como texto normal.
+        const bid = String(msg.interactive?.button_reply?.id || "");
+        if (await handlePausaReply(supabase, from.replace(/\D/g, ""), bid || content)) { skipAgents = true; messageType = "pausa_reply"; }
       }
       break;
     default:
@@ -314,7 +337,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       if (targetTenant && targetTenant !== tenantId) {
         await fetch(`${SUPABASE_URL}/functions/v1/distribuir-lead`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
           body: JSON.stringify({ lead_id: finalLeadId, target_tenant_id: targetTenant, motivo: content.slice(0, 160) }),
         });
       }
@@ -373,6 +396,54 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
 // Casa o nome de uma loja citada no texto com um tenant que participa da
 // distribuição (tem destino de handoff ATIVO em tenant_lead_destinations).
 // Prefere o match mais longo (evita casar "Totex" quando o texto diz "PG Motors").
+// ==================== BOTÕES DA MENSAGEM DE PAUSA (follow-up automático, 2026-10-15) ====================
+// "Encerrar por agora" → nao_contatar por 30 dias + despedida curta, sem agente.
+// "Me chama outro dia" → lembrete de retomada em 3 dias (9h30) + confirmação curta, sem agente.
+// "Continuar por aqui" → false: vai pro agente como mensagem normal (ele retoma com valor).
+async function handlePausaReply(supabase: any, phone: string, idOuTitulo: string): Promise<boolean> {
+  const v = String(idOuTitulo || "").toLowerCase();
+  const encerrar = v === "pausa_encerrar" || /encerrar por agora/.test(v);
+  const depois = v === "pausa_depois" || /me chama outro dia/.test(v);
+  if (!encerrar && !depois) return false;
+  const last8 = phone.slice(-8);
+  const { data: lead } = await supabase.from("leads").select("id, tenant_id, name, metadata").ilike("phone", `%${last8}`).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!lead) return false;
+  const md = (lead.metadata || {}) as Record<string, any>;
+  const nome = String(lead.name || "").trim().split(/\s+/)[0];
+  const quem = (await getIntegrationKey(supabase, "REAQUECIMENTO_ASSINATURA")) || "Nina";
+  const sendText = (text: string) => fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+    body: JSON.stringify({ action: "send_text", phone, text, lead_id: lead.id, tenant_id: lead.tenant_id, sent_by: "followup_auto" }),
+  }).catch((e) => console.error("[Cloud Webhook] pausa reply:", (e as Error).message));
+
+  if (encerrar) {
+    const ate = new Date(Date.now() + 30 * 86400_000).toISOString();
+    await supabase.from("leads").update({ metadata: { ...md, nao_contatar: true, nao_contatar_ate: ate, nao_contatar_motivo: "pausa: encerrar por agora", pausa_encerrada_em: new Date().toISOString() } }).eq("id", lead.id);
+    await supabase.from("agent_reminders").update({ status: "cancelled" }).eq("status", "pending").contains("resume_context", { lead_id: lead.id });
+    await sendText(`Combinado${nome && !/^\+?\d+$/.test(nome) ? `, ${nome}` : ""}! Vou deixar quieto por aqui. Quando quiser retomar, é só me chamar que eu continuo de onde paramos. Até mais! 😊`);
+    console.log(`[Cloud Webhook] pausa: ${phone} encerrou (não contatar até ${ate})`);
+    return true;
+  }
+  // "me chama outro dia": retomada em 3 dias, 9h30 (sessão do agente deste número)
+  const { data: sess } = await supabase.from("agents_sessions").select("id, agent_id, tenant_id").eq("channel", "whatsapp")
+    .contains("provider_state", { external_session_key: `whatsapp:${phone}` }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (sess) {
+    const br = new Date(Date.now() - 3 * 3600_000);
+    const fireAt = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate() + 3, 9, 30) + 3 * 3600_000).toISOString();
+    const { data: inst } = await supabase.from("whatsapp_instances").select("id").eq("provider", "meta_cloud").limit(1).maybeSingle();
+    await supabase.from("agent_reminders").update({ status: "cancelled" }).eq("session_id", sess.id).eq("status", "pending").is("repeat_every_minutes", null);
+    await supabase.from("agent_reminders").insert({
+      tenant_id: sess.tenant_id, agent_id: sess.agent_id, session_id: sess.id, channel: "whatsapp", fire_at: fireAt, status: "pending",
+      message: "Cliente pediu pra chamar outro dia (botão da pausa)",
+      resume_context: { kind: "followup_auto", step: 1, lead_id: lead.id, instance_id: inst?.id || null, recipient: phone, user_id: null, pedido_pelo_cliente: true },
+    });
+  }
+  await supabase.from("leads").update({ metadata: { ...md, pausa_retomar_em: new Date(Date.now() + 3 * 86400_000).toISOString() } }).eq("id", lead.id);
+  await sendText(`Perfeito${nome && !/^\+?\d+$/.test(nome) ? `, ${nome}` : ""}! Te chamo daqui a uns dias, então. Se antes disso quiser alguma coisa, é só mandar mensagem. 😊`);
+  console.log(`[Cloud Webhook] pausa: ${phone} pediu pra chamar outro dia`);
+  return true;
+}
+
 // ==================== CLIQUE NO BOTÃO DO WHATSAPP DO SITE (2026-10-15) ====================
 // O marketplace cria, no clique do botão, um lead sem telefone ("Cliente (não identificado)",
 // source 'marketplace', metadata.vehicle + deal) — o WhatsApp não entrega o número de quem

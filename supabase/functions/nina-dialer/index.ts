@@ -23,13 +23,15 @@ import { buildLeadBrief } from "../_shared/lead-brief.ts";
 import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND, NINA_ASR_KEYWORDS } from "../_shared/nina-store.ts";
 import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
 import { withLessons } from "../_shared/nina-learnings.ts";
+import { settleNoAnswer, processarMensagensPendentes } from "../_shared/nina-cadence.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const HQ_TENANT = "c13681e3-5db9-48d1-9c5c-856e6041d77f";
 const ELEVEN = "https://api.elevenlabs.io/v1";
 const GRAPH = "https://graph.facebook.com/v22.0";
-const STALE_CALLING_MIN = 15;
+const STALE_CALLING_MIN = 15; // sem resposta da ElevenLabs por 15 min → não atendeu
+const STALE_CHECK_MIN = 2;    // a partir de 2 min em 'calling' já confere na API (toque de 35 s)
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
@@ -164,10 +166,35 @@ Deno.serve(async (req) => {
   const got = req.headers.get("x-voice-token") || "";
   if (!expected || got.trim() !== expected.trim()) return json({ error: "unauthorized" }, 401);
 
-  // 0. tentativas travadas
-  const staleBefore = new Date(Date.now() - STALE_CALLING_MIN * 60_000).toISOString();
-  await sb.from("nina_call_queue").update({ status: "no_answer", last_error: "sem retorno da ligação em 15 min" })
-    .eq("status", "calling").lt("last_attempt_at", staleBefore);
+  // 0. ligações em 'calling' sem retorno: confere na ElevenLabs (a ligação não atendida às
+  //    vezes não gera webhook). Terminou curta/falhou → cadência de não atendeu
+  //    (_shared/nina-cadence.ts). Sem resposta da API por 15 min → mesma coisa.
+  {
+    const k = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+    const since = new Date(Date.now() - STALE_CHECK_MIN * 60_000).toISOString();
+    const { data: stale } = await sb.from("nina_call_queue").select("*").eq("status", "calling").lt("last_attempt_at", since).limit(5);
+    for (const row of (stale || []) as any[]) {
+      let ended = false; let dur = 0;
+      if (k && row.conversation_id) {
+        try {
+          const r = await fetch(`${ELEVEN}/convai/conversations/${row.conversation_id}`, { headers: { "xi-api-key": k } });
+          const j = r.ok ? await r.json() : null;
+          const st = String(j?.status || "");
+          dur = Number(j?.metadata?.call_duration_secs || 0);
+          ended = ["done", "failed", "ended"].includes(st) || (r.status === 404);
+        } catch { /* tenta de novo no próximo ciclo */ }
+      }
+      const muitoAntiga = new Date(row.last_attempt_at).getTime() < Date.now() - STALE_CALLING_MIN * 60_000;
+      if (ended && dur >= 8) continue; // atendeu: o webhook do pós-chamada fecha (chega em instantes)
+      if (ended || muitoAntiga) {
+        const res = await settleNoAnswer(sb, row);
+        console.log(`[nina-dialer] ${row.id} sem atender (${row.attempts}ª) → ${res}`);
+      }
+    }
+  }
+  // 0b. 2ª mensagem de curiosidade que venceu (3 h depois da 3ª tentativa)
+  const msgs = await processarMensagensPendentes(sb).catch((e) => { console.error("[nina-dialer] msg2:", (e as Error).message); return 0; });
+  if (msgs) console.log(`[nina-dialer] ${msgs} mensagem(ns) final(is) enviada(s)`);
 
   // Manutenção: { action: "ensure_agent" } só libera a 1ª frase no agente (não liga pra ninguém).
   const body = await req.json().catch(() => ({} as Record<string, unknown>));
@@ -203,6 +230,7 @@ Deno.serve(async (req) => {
 
   let q = sb.from("nina_call_queue").select("*")
     .eq("status", "queued").lte("scheduled_for", new Date().toISOString())
+    .not("metadata", "cs", '{"step":"msg2"}') // linhas de mensagem final não são discadas
     .order("scheduled_for", { ascending: true }).limit(1);
   if (outsideHours) q = q.eq("reason", "manual");
   const { data: row } = await q.maybeSingle();
@@ -244,11 +272,37 @@ Deno.serve(async (req) => {
     }
     if (!canAsk) return fail("expired", `sem permissão e sem poder pedir (${status})`);
     // pede permissão (free-form: precisa da janela de 24h aberta — o lead acabou de falar com a gente)
-    const assunto = row.playbook === "vender" ? "a venda do seu carro" : row.playbook === "trocar" ? "a troca do seu carro" : row.playbook === "comprar" ? (brief?.carro_interesse ? `o ${brief.carro_interesse}` : "o carro que você viu") : "o seu carro";
-    const texto = `${nome ? `Oi, ${nome}! ` : "Oi! "}Aqui é a Nina, da ${ninaBrand(store)}. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
+    // O MOTIVO vai numa mensagem antes do pedido (decisão do Marco, 15/10, caso Soraya): na troca e na
+    // venda o cliente precisa sentir que o carro DELE interessa — "é pra entender melhor as condições
+    // do seu HR-V, ele nos interessa muito". Sem valor, sem faixa (trava): isso é na ligação/avaliação.
+    const pb = brief?.playbook || row.playbook || "descobrir";
+    const carroDele = brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || null;
+    const carroVisto = brief?.carro_interesse_fala || brief?.carro_interesse || null;
+    const marca = ninaBrand(store);
+    const oi = nome ? `Oi, ${nome}! ` : "Oi! ";
+    let motivo: string | null = null;
+    let assunto: string;
+    if (pb === "trocar") {
+      assunto = carroDele ? `o seu ${carroDele}` : "a troca do seu carro";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito${carroVisto ? ` e pode encaixar direitinho na troca pelo ${carroVisto}` : " na troca"}. São dois minutos: ano, quilometragem, como ele está, e eu já te digo como ele entra no negócio. 😊`;
+    } else if (pb === "vender") {
+      assunto = carroDele ? `o seu ${carroDele}` : "a venda do seu carro";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito. Em dois minutos eu te explico como funciona a venda pela Totex e o que faz ele valer mais. 😊`;
+    } else if (pb === "comprar") {
+      assunto = carroVisto ? `o ${carroVisto}` : "o carro que você viu";
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra te passar as condições do ${carroVisto || "carro que você viu"} e combinar o melhor dia pra você ver ele de perto. Rapidinho, dois minutos. 😊`;
+    } else {
+      assunto = "o seu carro";
+    }
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY };
+    if (motivo) {
+      const m = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, { method: "POST", headers, body: JSON.stringify({ action: "send_text", phone: row.phone, text: motivo, lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }) });
+      if (!m.ok) log(`motivo da ligação não enviado (${m.status})`);
+    }
+    const texto = motivo ? `Posso te ligar? É só tocar em permitir. 😊` : `${oi}Aqui é a Nina, da ${marca}. Posso te ligar rapidinho pra falar sobre ${assunto}? É só tocar em permitir. 😊`;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      headers,
       body: JSON.stringify({ action: "send_call_permission", phone: row.phone, text: texto, lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }),
     });
     const data = await res.json().catch(() => ({}));

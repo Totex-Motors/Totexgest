@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calculator, Loader2, TrendingUp } from "lucide-react";
+import { EarningsSimulatorButton } from "@/components/sales/commissions/EarningsSimulator";
 
 const FIELDS = [
   { key: "carro", label: "Carro" },
@@ -136,6 +137,7 @@ export function ProfitCommissionCard({ dealId, salesRepId, salesRepName, profitB
         <p className="text-[11px] text-muted-foreground">
           A comissão é calculada sobre o lucro (carro + seguro + acessórios + documentos + retorno). Consignado soma o bônus.
         </p>
+        <EarningsSimulatorButton salesRepId={salesRepId} variant="ghost" size="sm" className="w-full text-emerald-700" label="Premissa de ganhos do mês" />
       </CardContent>
     </Card>
   );

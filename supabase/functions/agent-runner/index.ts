@@ -46,11 +46,17 @@ import { stripInternalThinking } from "./lib/safety.ts";
 import { deliverFollowupWhatsApp } from "./lib/wa-delivery.ts";
 import { resolveHumanization, waitDebounce } from "./lib/humanization/index.ts";
 import { buildAutoContext } from "./lib/auto-context.ts";
+import { scheduleAutoFollowup } from "../_shared/followup-auto.ts";
 
+import { getCaller, deny } from "../_shared/auth.ts";
 const DEFAULT_MAX_TOOL_ITERATIONS = 20; // safety net contra loop infinito (era 8, baixo demais pra agentes que exploram
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return corsResponse();
+  // Pente fino 16/10: só service (webhooks, poller, função→função), interno (crons) ou usuário
+  // logado — e usuário não pode apontar tenant_id de outra loja (superadmin pode).
+  const caller = await getCaller(req);
+  if (!caller.ok) return deny();
 
   if (req.method !== "POST") {
     return jsonError("Method not allowed", 405);
@@ -61,6 +67,9 @@ Deno.serve(async (req: Request) => {
     payload = await req.json();
   } catch {
     return jsonError("Invalid JSON body", 400);
+  }
+  if (caller.user && !caller.user.superadmin && payload.tenant_id && payload.tenant_id !== caller.user.tenantId) {
+    return deny("tenant de outra loja", 403);
   }
 
   if (!payload.agent_slug || !payload.message) {
@@ -480,7 +489,11 @@ Deno.serve(async (req: Request) => {
 
         // Entrega no WhatsApp quando o run veio de lembrete/follow-up (poller).
         // Respeita a janela de 24h da Cloud API: fora dela vai template aprovado.
-        if (isSystemResume && payload.channel === "whatsapp" && systemResumeOutputs.length > 0) {
+        // Retomada automática: o agente responde NAO_ENVIAR quando não cabe retomar
+        // (despedida, recusa, já comprou, repassado) — nada vai pro WhatsApp.
+        const naoEnviar = systemResumeOutputs.length > 0 && systemResumeOutputs.every((t) => /^\s*NAO_ENVIAR\s*$/i.test(t || ""));
+        if (naoEnviar) console.log("[agent-runner] retomada automática: NAO_ENVIAR — nada enviado");
+        if (isSystemResume && payload.channel === "whatsapp" && systemResumeOutputs.length > 0 && !naoEnviar) {
           const ctx = (payload.context ?? {}) as Record<string, unknown>;
           const recipient = String(ctx.recipient ?? "");
           if (recipient) {
@@ -500,6 +513,22 @@ Deno.serve(async (req: Request) => {
           } else {
             console.warn("[agent-runner] system_resume whatsapp sem context.recipient — nada enviado");
           }
+        }
+
+        // FOLLOW-UP AUTOMÁTICO (15/10): depois de cada resposta no WhatsApp o sistema agenda a
+        // retomada caso o cliente suma (3 h → 9h30 do dia seguinte → pausa com botões).
+        if (payload.channel === "whatsapp" && !naoEnviar) {
+          try {
+            const ctx = (payload.context ?? {}) as Record<string, unknown>;
+            const r = await scheduleAutoFollowup({
+              db, tenantId, agentId: agent.id, sessionId, channel: "whatsapp",
+              leadId: typeof ctx.lead_id === "string" ? ctx.lead_id : null,
+              instanceId: typeof ctx.instance_id === "string" ? ctx.instance_id : null,
+              recipient: typeof ctx.recipient === "string" ? ctx.recipient : (typeof ctx.whatsapp_phone === "string" ? ctx.whatsapp_phone : null),
+              stepHint: typeof ctx._followup_step === "number" ? ctx._followup_step : 0,
+            });
+            console.log("[agent-runner] follow-up automático:", r);
+          } catch (e) { console.error("[agent-runner] follow-up automático:", (e as Error).message); }
         }
 
         writer.write({ type: "done", usage: totalUsage, cost_brl: totalCost });
