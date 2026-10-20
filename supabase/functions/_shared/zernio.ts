@@ -110,18 +110,19 @@ export async function listAccounts(apiKey: string, profileId: string): Promise<Z
  */
 export async function listTenantAccounts(sb: SupabaseClient, apiKey: string, tenantId: string, profileId: string): Promise<ZernioAccount[]> {
   const own = await listAccounts(apiKey, profileId);
+  const semInstagram = (xs: ZernioAccount[]) => xs.filter((a) => a.platform !== "instagram"); // Instagram é direto na Meta
   const donoId = await getIntegrationKey(sb, "ZERNIO_DEFAULT_PROFILE_TENANT_ID");
-  if (!donoId || donoId !== tenantId) return own;
+  if (!donoId || donoId !== tenantId) return semInstagram(own);
   try {
     const list = await zernio<any>(apiKey, "GET", `/profiles?includeOverLimit=true&limit=50&skip=0`);
     const def = (list?.profiles || []).find((p: any) => p?.isDefault && p?._id !== profileId);
-    if (!def?._id) return own;
+    if (!def?._id) return semInstagram(own);
     const extra = await listAccounts(apiKey, def._id);
     const ids = new Set(own.map((a) => a._id));
-    return [...own, ...extra.filter((a) => !ids.has(a._id))];
+    return semInstagram([...own, ...extra.filter((a) => !ids.has(a._id))]);
   } catch (e) {
     console.warn("[zernio] contas do profile Default:", (e as Error).message);
-    return own;
+    return semInstagram(own);
   }
 }
 
