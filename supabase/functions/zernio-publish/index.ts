@@ -1,5 +1,7 @@
-// zernio-publish — espelha o carrossel do Studio (instagram_publications.paths) nas OUTRAS
-// redes via Zernio (Facebook, TikTok, Threads…). Instagram continua pelo instagram-publish.
+// zernio-publish — espelha a campanha nas OUTRAS redes via Zernio (Facebook, TikTok, Threads…).
+// Fonte das mídias: artes do Studio (instagram_publications.paths) ou, se a campanha já está
+// vinculada a um post do Instagram, as fotos/vídeo e a legenda do próprio post (Graph API).
+// Instagram continua pelo instagram-publish.
 //
 // Ações (POST, usuário logado; tenant do JWT):
 //   accounts  { campaignId? }                → profile + contas conectadas + histórico da campanha
@@ -21,6 +23,48 @@ const json = (body: unknown, status = 200) =>
 const BUCKET = "instagram-publications";
 const SIGNED_TTL = 7 * 24 * 3600; // Zernio baixa a mídia na hora de publicar (agendado pode demorar dias)
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Fonte das mídias da campanha:
+ *  - studio: artes devolvidas pelo Studio (instagram_publications.paths, bucket privado → URL assinada)
+ *  - instagram: campanha vinculada a um post já publicado (post_id numérico) → mídia via Graph API
+ */
+async function fonteDaCampanha(db: any, tenantId: string, campaignId: string): Promise<
+  { fonte: "studio" | "instagram"; caption: string; mediaItems: { url: string; type: "image" | "video" }[] } | { fonte: null; motivo: string }
+> {
+  const { data: pub } = await db.from("instagram_publications").select("caption, paths").eq("campaign_id", campaignId).eq("tenant_id", tenantId).maybeSingle();
+  const paths: string[] = Array.isArray(pub?.paths) ? pub!.paths : [];
+  if (paths.length) {
+    const mediaItems: { url: string; type: "image" }[] = [];
+    for (const p of paths) {
+      const { data, error } = await db.storage.from(BUCKET).createSignedUrl(p, SIGNED_TTL);
+      if (error || !data) return { fonte: null, motivo: "Arte indisponível no armazenamento." };
+      mediaItems.push({ url: data.signedUrl, type: "image" });
+    }
+    return { fonte: "studio", caption: String(pub?.caption || ""), mediaItems };
+  }
+
+  const { data: camp } = await db.from("instagram_comment_campaigns").select("post_id, post_caption, post_permalink").eq("id", campaignId).eq("tenant_id", tenantId).maybeSingle();
+  if (!camp || !/^\d+$/.test(String(camp.post_id || ""))) return { fonte: null, motivo: "Devolva as artes do Studio ou vincule a campanha a um post do Instagram." };
+
+  const { data: acct } = await db.from("instagram_business_accounts")
+    .select("instagram_business_id, access_token, page_access_token, ig_login_token")
+    .eq("tenant_id", tenantId).eq("status", "connected").limit(1).maybeSingle();
+  if (!acct) return { fonte: null, motivo: "Instagram não conectado nesta loja." };
+  const fields = "caption,media_type,media_url,thumbnail_url,permalink,children{media_type,media_url,thumbnail_url}";
+  const url = acct.ig_login_token
+    ? `https://graph.instagram.com/v20.0/${camp.post_id}?fields=${fields}&access_token=${acct.ig_login_token}`
+    : `https://graph.facebook.com/v20.0/${camp.post_id}?fields=${fields}&access_token=${acct.access_token || acct.page_access_token}`;
+  const res = await fetch(url);
+  const post = await res.json().catch(() => null);
+  if (!res.ok || !post || post.error) return { fonte: null, motivo: `Não consegui ler o post no Instagram: ${post?.error?.message || res.status}` };
+  const items: any[] = post.media_type === "CAROUSEL_ALBUM" ? (post.children?.data || []) : [post];
+  const mediaItems = items
+    .filter((m) => m.media_url)
+    .map((m) => ({ url: m.media_url as string, type: (m.media_type === "VIDEO" ? "video" : "image") as "image" | "video" }));
+  if (!mediaItems.length) return { fonte: null, motivo: "O post do Instagram não tem mídia acessível." };
+  return { fonte: "instagram", caption: String(post.caption || camp.post_caption || ""), mediaItems };
+}
 
 function mapPlatforms(post: any, prev: any[] = []) {
   const byAcc = new Map((prev || []).map((p: any) => [p.account_id, p]));
@@ -64,14 +108,21 @@ Deno.serve(async (req) => {
     if (action === "accounts") {
       const accounts = await listAccounts(apiKey, profileId);
       let history: any[] = [];
+      let fonte: string | null = null;
+      let fonteMotivo: string | null = null;
       if (body.campaignId && uuid.test(body.campaignId)) {
         const { data } = await db.from("social_publications").select("id, zernio_post_id, status, platforms, media_count, scheduled_for, created_at")
           .eq("tenant_id", tenantId).eq("campaign_id", body.campaignId).order("created_at", { ascending: false }).limit(10);
         history = data || [];
+        try {
+          const f = await fonteDaCampanha(db, tenantId, body.campaignId);
+          fonte = f.fonte; if (!f.fonte) fonteMotivo = f.motivo;
+        } catch (e) { fonteMotivo = (e as Error).message; }
       }
       return json({
         configured: true,
         profileId,
+        fonte, fonte_motivo: fonteMotivo,
         platforms: ZERNIO_PLATFORMS,
         accounts: accounts.map((a) => ({
           id: a._id, platform: a.platform, username: a.username || a.displayName || a._id,
@@ -110,25 +161,18 @@ Deno.serve(async (req) => {
       const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds.map(String) : [];
       if (accountIds.length === 0) return json({ error: "Escolha pelo menos uma rede." }, 400);
 
-      const { data: pub } = await db.from("instagram_publications").select("caption, paths, status").eq("campaign_id", campaignId).eq("tenant_id", tenantId).maybeSingle();
-      const paths: string[] = Array.isArray(pub?.paths) ? pub!.paths : [];
-      if (!pub || paths.length === 0) return json({ error: "Devolva as artes do Studio ao Totexgest primeiro." }, 409);
+      const fonte = await fonteDaCampanha(db, tenantId, campaignId);
+      if (!fonte.fonte) return json({ error: fonte.motivo }, 409);
+      const { caption, mediaItems } = fonte;
+      const temVideo = mediaItems.some((m) => m.type === "video");
 
       const accounts = await listAccounts(apiKey, profileId);
       const chosen = accounts.filter((a) => accountIds.includes(a._id));
       if (chosen.length !== accountIds.length) return json({ error: "Alguma conta escolhida não é desta loja." }, 403);
       const semImagem = chosen.filter((a) => ZERNIO_PLATFORMS[a.platform]?.aceitaImagem === false);
-      if (semImagem.length) return json({ error: `${semImagem.map((a) => ZERNIO_PLATFORMS[a.platform]?.label || a.platform).join(", ")} só aceita vídeo. Tire da seleção.` }, 400);
+      if (semImagem.length && !temVideo) return json({ error: `${semImagem.map((a) => ZERNIO_PLATFORMS[a.platform]?.label || a.platform).join(", ")} só aceita vídeo. Tire da seleção.` }, 400);
+      if (temVideo && mediaItems.length > 1) return json({ error: "Post com vídeo e várias mídias: as redes só aceitam um vídeo por post." }, 400);
 
-      // Mídia: URL assinada (HTTPS, serve o arquivo cru) — Zernio aceita URL direta.
-      const mediaItems: { url: string; type: "image" }[] = [];
-      for (const p of paths) {
-        const { data, error } = await db.storage.from(BUCKET).createSignedUrl(p, SIGNED_TTL);
-        if (error || !data) return json({ error: "Arte indisponível no armazenamento." }, 500);
-        mediaItems.push({ url: data.signedUrl, type: "image" });
-      }
-
-      const caption = String(pub.caption || "");
       const platforms: any[] = [];
       for (const a of chosen) {
         const entry: any = { platform: a.platform, accountId: a._id };
@@ -140,10 +184,11 @@ Deno.serve(async (req) => {
             const levels: { value: string }[] = info?.privacyLevels || [];
             if (levels.length && !levels.some((l) => l.value === privacy)) privacy = levels[0].value;
           } catch { /* usa padrão */ }
-          entry.platformSpecificData = {
-            mediaType: "photo", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true,
-            allowComment: true, photoCoverIndex: 0, description: caption.slice(0, 4000),
-          };
+          entry.platformSpecificData = temVideo
+            ? { mediaType: "video", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true, allowComment: true }
+            : { mediaType: "photo", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true, allowComment: true, photoCoverIndex: 0, description: caption.slice(0, 4000) };
+        } else if (a.platform === "youtube") {
+          entry.platformSpecificData = { title: caption.split("\n")[0].slice(0, 100) || "Totex Motors", visibility: "public", madeForKids: false };
         } else if (a.platform === "pinterest") {
           entry.platformSpecificData = { title: caption.split("\n")[0].slice(0, 100) };
         }
@@ -157,7 +202,7 @@ Deno.serve(async (req) => {
         mediaItems,
         platforms,
         timezone: "America/Sao_Paulo",
-        metadata: { tenant_id: tenantId, campaign_id: campaignId, origem: "totexgest-studio" },
+        metadata: { tenant_id: tenantId, campaign_id: campaignId, origem: `totexgest-${fonte.fonte}` },
         ...(agendar ? { scheduledFor: scheduledFor!.toISOString() } : { publishNow: true }),
       };
 

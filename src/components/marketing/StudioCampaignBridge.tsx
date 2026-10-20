@@ -5,7 +5,6 @@ import { instagramCampaignClient } from '@/lib/instagram-campaign-client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { InstagramPublisher } from './InstagramPublisher';
-import { SocialPublisher } from './SocialPublisher';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -87,7 +86,6 @@ export function StudioCampaignBridge({tenantId, campaign, agentSlug}: {
         <p className="mt-2 text-xs text-muted-foreground">Recebido em {new Date(studio.delivery.reviewedAt).toLocaleString('pt-BR')}. Para baixar todas as artes, abra o Studio.</p>
       </details>}
       {campaign && studio.delivery && <InstagramPublisher campaignId={campaign.id} tenantId={tenantId}/> }
-      {campaign && <SocialPublisher campaignId={campaign.id} tenantId={tenantId} canPublish={!!studio.delivery}/> }
     </div> : <Button variant="outline" onClick={()=>setOpen(true)}>Criar com o Carrossel Studio</Button>}
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Criar campanha com o Heitor</DialogTitle></DialogHeader>
       <Label htmlFor="studio-name">Nome da campanha</Label><Input id="studio-name" value={form.name} maxLength={100} onChange={e=>setForm({...form,name:e.target.value})}/>
