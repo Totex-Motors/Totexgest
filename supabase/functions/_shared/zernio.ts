@@ -103,6 +103,28 @@ export async function listAccounts(apiKey: string, profileId: string): Promise<Z
   return (r?.accounts || []) as ZernioAccount[];
 }
 
+/**
+ * Contas que a loja pode usar: as do profile dela e, se ela é a dona da conta Zernio
+ * (config ZERNIO_DEFAULT_PROFILE_TENANT_ID), também as conectadas pelo painel da Zernio,
+ * que caem no profile "Default".
+ */
+export async function listTenantAccounts(sb: SupabaseClient, apiKey: string, tenantId: string, profileId: string): Promise<ZernioAccount[]> {
+  const own = await listAccounts(apiKey, profileId);
+  const donoId = await getIntegrationKey(sb, "ZERNIO_DEFAULT_PROFILE_TENANT_ID");
+  if (!donoId || donoId !== tenantId) return own;
+  try {
+    const list = await zernio<any>(apiKey, "GET", `/profiles?includeOverLimit=true&limit=50&skip=0`);
+    const def = (list?.profiles || []).find((p: any) => p?.isDefault && p?._id !== profileId);
+    if (!def?._id) return own;
+    const extra = await listAccounts(apiKey, def._id);
+    const ids = new Set(own.map((a) => a._id));
+    return [...own, ...extra.filter((a) => !ids.has(a._id))];
+  } catch (e) {
+    console.warn("[zernio] contas do profile Default:", (e as Error).message);
+    return own;
+  }
+}
+
 /** HMAC-SHA256 hex do corpo cru, comparado com X-Zernio-Signature. */
 export async function verifyZernioSignature(secret: string, rawBody: string, header: string | null): Promise<boolean> {
   if (!secret || !header) return false;

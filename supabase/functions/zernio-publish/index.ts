@@ -12,7 +12,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCaller, deny } from "../_shared/auth.ts";
-import { ZERNIO_PLATFORMS, ZernioError, ensureProfile, listAccounts, zernio, zernioKey } from "../_shared/zernio.ts";
+import { ZERNIO_PLATFORMS, ZernioError, ensureProfile, listTenantAccounts, zernio, zernioKey } from "../_shared/zernio.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     const profileId = await ensureProfile(db, apiKey, tenantId, tenant?.name || "Loja");
 
     if (action === "accounts") {
-      const accounts = await listAccounts(apiKey, profileId);
+      const accounts = await listTenantAccounts(db, apiKey, tenantId, profileId);
       let history: any[] = [];
       let fonte: string | null = null;
       let fonteMotivo: string | null = null;
@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       const accountId = String(body.accountId || "");
       if (!accountId) return json({ error: "Conta inválida." }, 400);
       // Só contas do profile desta loja
-      const mine = (await listAccounts(apiKey, profileId)).some((a) => a._id === accountId);
+      const mine = (await listTenantAccounts(db, apiKey, tenantId, profileId)).some((a) => a._id === accountId);
       if (!mine) return json({ error: "Conta não pertence a esta loja." }, 403);
       await zernio(apiKey, "DELETE", `/accounts/${encodeURIComponent(accountId)}`);
       return json({ ok: true });
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
       const { caption, mediaItems } = fonte;
       const temVideo = mediaItems.some((m) => m.type === "video");
 
-      const accounts = await listAccounts(apiKey, profileId);
+      const accounts = await listTenantAccounts(db, apiKey, tenantId, profileId);
       const chosen = accounts.filter((a) => accountIds.includes(a._id));
       if (chosen.length !== accountIds.length) return json({ error: "Alguma conta escolhida não é desta loja." }, 403);
       const semImagem = chosen.filter((a) => ZERNIO_PLATFORMS[a.platform]?.aceitaImagem === false);
