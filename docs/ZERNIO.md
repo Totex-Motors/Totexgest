@@ -48,3 +48,9 @@ Recomendação pro grátis: **Facebook + TikTok**.
 `GET /v1/accounts/{id}/tiktok/creator-info`, padrão `PUBLIC_TO_EVERYONE`),
 `contentPreviewConfirmed` e `expressConsentGiven` = true (obrigatórios), `description` =
 legenda (4.000 chars). Limite diário de posts por API; `dryRun` existe se precisar.
+
+## Contas conectadas pelo painel da Zernio
+O que se conecta direto no painel da Zernio cai no profile "Default" dela. O CRM cria um profile
+por loja (`externalId = tenant_id`). Pra loja dona da conta Zernio ver as duas listas juntas:
+config `ZERNIO_DEFAULT_PROFILE_TENANT_ID` = tenant da Totex (já aplicado). As outras lojas só
+veem o que conectarem pelos botões do CRM.
