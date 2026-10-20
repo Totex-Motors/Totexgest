@@ -1,6 +1,7 @@
 import { CampaignCommercial } from '@/components/marketing/CampaignCommercial';
 import { useState } from "react";
 import { StudioCampaignBridge, type StudioPayload } from "@/components/marketing/StudioCampaignBridge";
+import { SocialPublisher } from "@/components/marketing/SocialPublisher";
 import { isMetaPost } from "@/lib/studio-protocol";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -216,6 +217,15 @@ function CampaignsPanel({ tenantId, agents }: {
         </Button>
       </div>
 
+      {/* Outras redes (Zernio): conectar Facebook/TikTok vale pra loja toda, não por campanha */}
+      <SocialPublisher tenantId={tenantId} />
+
+      {!isLoading && campaigns.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Em cada campanha abaixo tem o card "Outras redes" pra mandar o mesmo post (artes do Studio ou o post já publicado no Instagram) pras redes conectadas.
+        </p>
+      )}
+
       {isLoading && <Loader2 className="h-5 w-5 animate-spin" />}
       {!isLoading && campaigns.length === 0 && (
         <Card>
@@ -269,6 +279,7 @@ function CampaignsPanel({ tenantId, agents }: {
                 </div>
               </div>
               {c.studio_payload?.studio && <StudioCampaignBridge tenantId={tenantId} campaign={c} agentSlug={c.agent_slug || undefined} />}
+              <SocialPublisher tenantId={tenantId} campaignId={c.id} />
               <CampaignCommercial tenantId={tenantId} campaignId={c.id} />
               <CampaignMetrics
                 metrics={metrics[c.id] || { comentaram: 0, dms_enviadas: 0, responderam: 0, falhas: 0 }} />
