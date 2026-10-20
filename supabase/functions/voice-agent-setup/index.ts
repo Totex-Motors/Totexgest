@@ -576,7 +576,7 @@ async function actionCloneVoice(sb: any, body: any) {
   if (!apiKey) return json({ error: "Cadastre a ELEVENLABS_API_KEY em Integrações primeiro." }, 400);
   const name = String(body.name || "").trim().slice(0, 60);
   if (!name) return json({ error: "Informe o nome da voz." }, 400);
-  const samples: { filename?: string; b64?: string; config_prefix?: string }[] = Array.isArray(body.samples) ? body.samples : [];
+  const samples: { filename?: string; b64?: string; config_prefix?: string; url?: string }[] = Array.isArray(body.samples) ? body.samples : [];
   if (!samples.length) return json({ error: "Mande pelo menos uma amostra." }, 400);
 
   const form = new FormData();
@@ -598,8 +598,16 @@ async function actionCloneVoice(sb: any, body: any) {
       b64 = ordered.map((r: any) => r.value).join("");
       usedKeys.push(...ordered.map((r: any) => r.key));
     }
-    if (!b64) return json({ error: `Amostra ${i + 1} vazia.` }, 400);
-    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    let bin: Uint8Array | null = null;
+    if (!b64 && smp.url && /^https:\/\//i.test(smp.url)) {
+      const r = await fetch(smp.url);
+      if (!r.ok) return json({ error: `Amostra ${i + 1}: não consegui baixar (${r.status}).` }, 400);
+      bin = new Uint8Array(await r.arrayBuffer());
+    }
+    if (!bin) {
+      if (!b64) return json({ error: `Amostra ${i + 1} vazia.` }, 400);
+      bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    }
     totalBytes += bin.byteLength;
     const filename = String(smp.filename || `amostra_${i + 1}.mp3`);
     const mime = /\.(ogg|opus)$/i.test(filename) ? "audio/ogg" : /\.wav$/i.test(filename) ? "audio/wav" : /\.m4a$/i.test(filename) ? "audio/mp4" : "audio/mpeg";
