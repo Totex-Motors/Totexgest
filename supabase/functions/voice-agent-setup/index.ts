@@ -26,6 +26,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey, invalidateIntegrationKeyCache } from "../_shared/config.ts";
 import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, TOOLS_WITH_SOUND } from "../_shared/nina-store.ts";
 import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
+import { getCaller } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -560,18 +561,116 @@ async function actionTestTools(sb: any) {
   return json({ ok: res.ok, status: res.status, data });
 }
 
+/**
+ * clone_voice — cria uma voz na ElevenLabs (Instant Voice Clone) a partir de amostras e, se
+ * apply=true, troca a voz da LIGAÇÃO (config VOICE_CALL_VOICE_ID; a anterior fica em
+ * VOICE_CALL_VOICE_ID_PREV pra voltar com rollback_voice). O discador (nina-dialer) e o
+ * agente da ElevenLabs passam a usar a nova voz na próxima sincronização (hash muda).
+ *
+ * Amostras: body.samples = [{ filename, b64 }] OU [{ filename, config_prefix }] — neste caso os
+ * pedaços base64 ficam em config (chaves `<prefix><n>`, n numérico), concatenados em ordem e
+ * apagados depois. Serve pra mandar áudio grande sem passar pelo limite de um request só.
+ */
+async function actionCloneVoice(sb: any, body: any) {
+  const apiKey = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+  if (!apiKey) return json({ error: "Cadastre a ELEVENLABS_API_KEY em Integrações primeiro." }, 400);
+  const name = String(body.name || "").trim().slice(0, 60);
+  if (!name) return json({ error: "Informe o nome da voz." }, 400);
+  const samples: { filename?: string; b64?: string; config_prefix?: string }[] = Array.isArray(body.samples) ? body.samples : [];
+  if (!samples.length) return json({ error: "Mande pelo menos uma amostra." }, 400);
+
+  const form = new FormData();
+  form.append("name", name);
+  if (body.description) form.append("description", String(body.description).slice(0, 500));
+  form.append("remove_background_noise", body.remove_background_noise === false ? "false" : "true");
+  form.append("labels", JSON.stringify({ language: "pt-BR", origem: "totexgest" }));
+  const usedKeys: string[] = [];
+  let totalBytes = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const smp = samples[i];
+    let b64 = String(smp.b64 || "");
+    if (!b64 && smp.config_prefix) {
+      const { data: rows } = await sb.from("config").select("key, value").like("key", `${smp.config_prefix}%`);
+      const ordered = (rows || [])
+        .map((r: any) => ({ n: Number(String(r.key).slice(smp.config_prefix!.length)), key: r.key, value: r.value }))
+        .filter((r: any) => Number.isFinite(r.n))
+        .sort((a: any, b: any) => a.n - b.n);
+      b64 = ordered.map((r: any) => r.value).join("");
+      usedKeys.push(...ordered.map((r: any) => r.key));
+    }
+    if (!b64) return json({ error: `Amostra ${i + 1} vazia.` }, 400);
+    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    totalBytes += bin.byteLength;
+    const filename = String(smp.filename || `amostra_${i + 1}.mp3`);
+    const mime = /\.(ogg|opus)$/i.test(filename) ? "audio/ogg" : /\.wav$/i.test(filename) ? "audio/wav" : /\.m4a$/i.test(filename) ? "audio/mp4" : "audio/mpeg";
+    form.append("files", new Blob([bin], { type: mime }), filename);
+  }
+
+  const res = await fetch(`${ELEVEN}/voices/add`, { method: "POST", headers: { "xi-api-key": apiKey }, body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.voice_id) {
+    return json({ error: `ElevenLabs recusou a clonagem (${res.status}): ${JSON.stringify(data).slice(0, 300)}` }, 502);
+  }
+  const voiceId = String(data.voice_id);
+  const log: string[] = [`voz criada: ${voiceId} (${samples.length} amostra(s), ${Math.round(totalBytes / 1024)} KB)`];
+
+  if (usedKeys.length) {
+    await sb.from("config").delete().in("key", usedKeys);
+    log.push(`${usedKeys.length} pedaços temporários apagados do config`);
+  }
+
+  if (body.apply !== false) {
+    const atual = (await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "";
+    if (atual && atual !== voiceId) await setConfig(sb, "VOICE_CALL_VOICE_ID_PREV", atual);
+    await setConfig(sb, "VOICE_CALL_VOICE_ID", voiceId);
+    invalidateIntegrationKeyCache?.("VOICE_CALL_VOICE_ID");
+    log.push(`voz da ligação trocada: ${atual || "(nenhuma)"} → ${voiceId}`);
+    // aplica já no agente da ElevenLabs (ligação recebida); o discador sincroniza o resto
+    const agentId = await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID");
+    if (agentId) {
+      const r = await elevenFetch(apiKey, `/convai/agents/${agentId}`, { method: "PATCH", body: JSON.stringify({ conversation_config: { tts: { voice_id: voiceId } } }) });
+      log.push(r.ok ? "agente da ElevenLabs atualizado" : `agente não atualizado (${r.status}) — o discador sincroniza na próxima ligação`);
+    }
+  }
+  return json({ ok: true, voice_id: voiceId, name, log });
+}
+
+/** rollback_voice — volta a voz anterior da ligação (VOICE_CALL_VOICE_ID_PREV). */
+async function actionRollbackVoice(sb: any) {
+  const prev = (await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID_PREV")) || "";
+  if (!prev) return json({ error: "Não há voz anterior guardada." }, 400);
+  const atual = (await getIntegrationKey(sb, "VOICE_CALL_VOICE_ID")) || "";
+  await setConfig(sb, "VOICE_CALL_VOICE_ID", prev);
+  await setConfig(sb, "VOICE_CALL_VOICE_ID_PREV", atual || null);
+  invalidateIntegrationKeyCache?.("VOICE_CALL_VOICE_ID");
+  const apiKey = await getIntegrationKey(sb, "ELEVENLABS_API_KEY", HQ_TENANT);
+  const agentId = await getIntegrationKey(sb, "VOICE_ELEVEN_AGENT_ID");
+  let agente = "sem agente";
+  if (apiKey && agentId) {
+    const r = await elevenFetch(apiKey, `/convai/agents/${agentId}`, { method: "PATCH", body: JSON.stringify({ conversation_config: { tts: { voice_id: prev } } }) });
+    agente = r.ok ? "agente atualizado" : `agente não atualizado (${r.status})`;
+  }
+  return json({ ok: true, voice_id: prev, anterior: atual, agente });
+}
+
 // ───────────────────────────── server ─────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const auth = req.headers.get("Authorization") || "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "sem sessão" }, 401);
-    const jwt = auth.slice(7);
-    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: u } = await userClient.auth.getUser(jwt);
-    if (!u?.user) return json({ error: "sessão inválida" }, 401);
-    const { data: isSuper } = await userClient.rpc("is_platform_superadmin");
-    if (isSuper !== true) return json({ error: "só superadmin da plataforma" }, 403);
+    // Operação interna (x-internal-token / service role) OU superadmin logado.
+    const caller = await getCaller(req);
+    let userId = "internal";
+    if (!caller.internal && !caller.service) {
+      const auth = req.headers.get("Authorization") || "";
+      if (!auth.startsWith("Bearer ")) return json({ error: "sem sessão" }, 401);
+      const jwt = auth.slice(7);
+      const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: { persistSession: false, autoRefreshToken: false } });
+      const { data: u } = await userClient.auth.getUser(jwt);
+      if (!u?.user) return json({ error: "sessão inválida" }, 401);
+      const { data: isSuper } = await userClient.rpc("is_platform_superadmin");
+      if (isSuper !== true) return json({ error: "só superadmin da plataforma" }, 403);
+      userId = u.user.id;
+    }
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
     const body = await req.json().catch(() => ({}));
@@ -584,8 +683,10 @@ Deno.serve(async (req) => {
       case "test_tools": return await actionTestTools(sb);
       case "eleven_outbound": return await actionElevenOutbound(sb, body);
       case "set_outbound": return await actionSetOutbound(sb, body);
-      case "enqueue_test": return await actionEnqueueTest(sb, body, u.user.id);
+      case "enqueue_test": return await actionEnqueueTest(sb, body, userId);
       case "meta_diag": return await actionMetaDiag(sb, body);
+      case "clone_voice": return await actionCloneVoice(sb, body);
+      case "rollback_voice": return await actionRollbackVoice(sb);
       default: return json({ error: `action desconhecida: ${action}` }, 400);
     }
   } catch (e) {
