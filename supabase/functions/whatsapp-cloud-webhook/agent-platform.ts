@@ -108,6 +108,8 @@ export async function tryHandleViaAgentPlatformCloud(args: {
   // 4.5 Debounce via banco (latest-wins): agrupa as mensagens rápidas do cliente numa
   //     resposta só. Cada msg chega como uma invocação SEPARADA do webhook (isolates
   //     diferentes) → 3 msgs = 3 respostas robotizadas. Por isso o debounce é via banco.
+  // "digitando..." já na chegada: o cliente vê que alguém está respondendo durante o debounce
+  void digitando(messageId, tenantId);
   let messageToSend = text;
   if (leadId) {
     const deb = await debounceInbound(supabase, leadId, messageId, sessionId);
@@ -118,7 +120,9 @@ export async function tryHandleViaAgentPlatformCloud(args: {
     if (deb.combinedText) messageToSend = deb.combinedText;
   }
 
-  // 5. Chama agent-runner e lê o SSE
+  // 5. Chama agent-runner e lê o SSE. Enquanto a resposta é gerada o cliente vê "digitando..."
+  //    (a Meta apaga em 25 s: renova a cada 20 s até a resposta sair).
+  const pararDigitando = manterDigitando(messageId, tenantId);
   let fullText = "";
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-runner`, {
@@ -166,6 +170,8 @@ export async function tryHandleViaAgentPlatformCloud(args: {
     console.error("[cloud-v2] agent-runner err:", (e as Error).message);
     await sendCloud(senderDigits, "⚠️ Tive um problema técnico. Tenta de novo daqui a pouco?", tenantId, leadId);
     return true;
+  } finally {
+    pararDigitando();
   }
 
   // 5.5 A geração pode demorar (tool calls). Se nesse meio tempo chegou mensagem mais nova,
@@ -213,7 +219,7 @@ export async function tryHandleViaAgentPlatformCloud(args: {
           const parts = splitForWhatsApp(seg.text, 280);
           for (let i = 0; i < parts.length; i++) {
             await sendCloud(senderDigits, parts[i], tenantId, leadId);
-            if (i < parts.length - 1) await sleep(700 + Math.floor(Math.random() * 900));
+            if (i < parts.length - 1) { void digitando(messageId, tenantId); await sleep(700 + Math.floor(Math.random() * 900)); }
           }
         }
         if (!spokeAny) console.warn("[cloud-v2] nenhum trecho saiu em áudio (foi tudo em texto)");
@@ -228,7 +234,7 @@ export async function tryHandleViaAgentPlatformCloud(args: {
   const parts = splitForWhatsApp(finalText, 280);
   for (let i = 0; i < parts.length; i++) {
     await sendCloud(senderDigits, parts[i], tenantId, leadId);
-    if (i < parts.length - 1) await sleep(700 + Math.floor(Math.random() * 900));
+    if (i < parts.length - 1) { void digitando(messageId, tenantId); await sleep(700 + Math.floor(Math.random() * 900)); }
   }
   // Marca o piso do próximo debounce — só as msgs DEPOIS desta resposta serão reagrupadas.
   await markReplied(supabase, sessionId);
@@ -300,6 +306,26 @@ async function markReplied(supabase: any, sessionId: string | undefined): Promis
 }
 
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+
+/** "digitando..." no WhatsApp do cliente (marca a mensagem dele como lida). Nunca bloqueia nem falha. */
+async function digitando(messageId: string | null, tenantId: string | null): Promise<void> {
+  if (!messageId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
+      body: JSON.stringify({ action: "typing", message_id: messageId, tenant_id: tenantId }),
+    });
+  } catch { /* só cosmético */ }
+}
+
+/** Mantém o "digitando..." enquanto a resposta é gerada. Devolve a função que para. */
+function manterDigitando(messageId: string | null, tenantId: string | null): () => void {
+  if (!messageId) return () => {};
+  void digitando(messageId, tenantId);
+  const t = setInterval(() => void digitando(messageId, tenantId), 20_000);
+  return () => clearInterval(t);
+}
 
 /**
  * Remove o raciocínio interno do modelo (<thinking>...</thinking> e variações) que às vezes
