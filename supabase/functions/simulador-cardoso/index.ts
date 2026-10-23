@@ -13,7 +13,9 @@
  *  - formula        → coeficientes, prazo em destaque, cupons de campanha ativos, condição, horário
  *  - simular        → { veiculo, entrada?, usado?, bonus?, prazo? } → parcela por prazo (fórmula da
  *                     planilha: (V + coef·V) / prazo), economia mensal do bônus, e a "jogada" de
- *                     antecipar (parcela do mês + a última) em R$ — nunca em % de taxa.
+ *                     antecipar (parcela do mês + a última) em R$ — nunca em % de taxa. A conta usa a
+ *                     taxa do CONTRATO (config SIMULADOR_TAXA_CONTRATO_MES ou o padrão da tela
+ *                     "Antecipar parcelas" do simulador, 1,69%/mês), igual ao simulador oficial.
  *  - estoque        → pátio da Cardoso pelo feed Autoconf (id, título, preço, FIPE, url)
  *  - plano          → saída PRONTA PRA AGENTE (voz ou texto): acha o carro no pátio pelo nome se não
  *                     vier o valor, simula, e devolve "fala" + "regras" (só reais, nunca taxa).
@@ -116,20 +118,37 @@ export function acharCarro(carros: any[], texto: string): { carro: any; exato: b
 
 // ---- a fórmula da planilha (igual ao index.html) ----
 const parcelaDe = (v: number, p: number, c: number) => (p > 0 ? (v + c * v) / p : 0);
-/** taxa mensal equivalente (Price) — USO INTERNO pra conta da antecipação; nunca sai pro cliente */
-function juroEquivalente(pv: number, pmt: number, n: number): number | null {
-  if (!(pv > 0) || !(pmt > 0) || !(n > 0)) return null;
-  const f = (i: number) => (i === 0 ? pmt * n - pv : pmt * (1 - Math.pow(1 + i, -n)) / i - pv);
-  if (f(0) <= 0) return 0;
-  let lo = 0, hi = 1;
-  if (f(hi) > 0) return null;
-  for (let k = 0; k < 120; k++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; }
-  return (lo + hi) / 2;
+/**
+ * Taxa do CONTRATO (% ao mês) pra conta da antecipação — a MESMA que a tela "Antecipar parcelas"
+ * do simulador oficial usa (campo "Juros do contrato", padrão 1,69). Correção de 2026-10-23: a
+ * conta antiga usava a taxa implícita do coeficiente da planilha (~3,1%/mês, que embute IOF,
+ * tarifas e margem) e dava a última parcela por R$ 736 em vez de ~R$ 1.400 — errava a base.
+ * Ordem: config SIMULADOR_TAXA_CONTRATO_MES > valor padrão lido do index.html do simulador
+ * (input #an-taxa) > 1,69. Nunca sai pro cliente: só reais.
+ */
+const TAXA_CONTRATO_PADRAO = 1.69;
+let taxaCache: { at: number; v: number } | null = null;
+async function taxaContratoMes(sb: any): Promise<number> {
+  const cfg = parseFloat(String((await getIntegrationKey(sb, "SIMULADOR_TAXA_CONTRATO_MES")) || "").replace(",", "."));
+  if (Number.isFinite(cfg) && cfg > 0 && cfg < 10) return cfg;
+  if (taxaCache && Date.now() - taxaCache.at < 3_600_000) return taxaCache.v;
+  let v = TAXA_CONTRATO_PADRAO;
+  try {
+    const r = await fetch(`${await base(sb)}/?t=${Date.now()}`, { cache: "no-store" });
+    if (r.ok) {
+      const html = await r.text();
+      const m = html.match(/id="an-taxa"[^>]*value="([\d.,]+)"/);
+      const lido = m ? parseFloat(m[1].replace(",", ".")) : NaN;
+      if (Number.isFinite(lido) && lido > 0 && lido < 10) v = lido;
+    }
+  } catch (e) { console.warn("[simulador] taxa do contrato: não li o index.html:", (e as Error).message); }
+  taxaCache = { at: Date.now(), v };
+  return v;
 }
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-function simular(f: Formula, a: { veiculo: number; entrada?: number; usado?: number; bonus?: number; prazo?: number; extra?: number }) {
+function simular(f: Formula, a: { veiculo: number; entrada?: number; usado?: number; bonus?: number; prazo?: number; extra?: number }, taxaMes: number = TAXA_CONTRATO_PADRAO) {
   const veiculo = Math.max(0, Number(a.veiculo) || 0);
   const entrada = Math.max(0, Number(a.entrada ?? Math.round(veiculo * 0.2)) || 0);
   const usado = Math.max(0, Number(a.usado) || 0);
@@ -148,12 +167,14 @@ function simular(f: Formula, a: { veiculo: number; entrada?: number; usado?: num
   });
   const foco = prazos.find((p) => p.destaque)!;
 
-  // "A jogada que quase ninguém faz": parcela do mês + a última, pelo valor presente na taxa
-  // equivalente do próprio contrato (Resolução CMN 5.004/2022). Só R$ — a taxa fica aqui dentro.
+  // "A jogada que quase ninguém faz": parcela do mês + a última, pelo valor presente na taxa do
+  // contrato (Resolução CMN 5.004/2022) — mesma conta e mesmos padrões da tela "Antecipar parcelas"
+  // do simulador oficial: última parcela = k-ésima, vence em `prazo` meses (nenhuma paga ainda).
+  // Só R$ — a taxa fica aqui dentro.
   let antecipacao: Record<string, unknown> | null = null;
-  const i = juroEquivalente(financiado, foco.parcela, foco.prazo);
-  if (i && i > 0 && foco.prazo > 1) {
-    const ultimaHoje = foco.parcela / Math.pow(1 + i, foco.prazo - 1); // última parcela trazida pra hoje (1 mês após o início)
+  const i = taxaMes / 100;
+  if (i > 0 && foco.prazo > 1) {
+    const ultimaHoje = foco.parcela / Math.pow(1 + i, foco.prazo);
     const vpTotal = foco.parcela * (1 - Math.pow(1 + i, -foco.prazo)) / i;
     const extra = Math.max(0, Number(a.extra) || 0); // ex.: 13º, férias, PLR, FGTS
     const parcelasQueOExtraElimina = extra > 0 ? Math.min(foco.prazo - 1, Math.floor(extra / ultimaHoje)) : 0;
@@ -164,6 +185,7 @@ function simular(f: Formula, a: { veiculo: number; entrada?: number; usado?: num
       parcelas_que_somem: 1, // paga a do mês (que já vence) + a última trazida a valor presente → some UMA parcela do fim
       economia_vs_pagar_no_fim: r2(foco.parcela - ultimaHoje),
       economia_ultima: r2(foco.parcela - ultimaHoje),
+      pct_a_menos: r2((1 - ultimaHoje / foco.parcela) * 100), // uso interno/tela; o agente não fala %
       quitacao_total_hoje: r2(vpTotal),
       juros_futuros_que_somem: r2(foco.parcela * foco.prazo - vpTotal),
       ...(extra > 0 ? { extra, parcelas_do_fim_que_o_extra_elimina: parcelasQueOExtraElimina, economia_do_extra: r2(parcelasQueOExtraElimina * foco.parcela - Math.min(extra, parcelasQueOExtraElimina * ultimaHoje)) } : {}),
@@ -219,7 +241,7 @@ Deno.serve(async (req) => {
       case "simular": {
         if (!(Number(body.veiculo) > 0)) return json({ error: "informe veiculo (valor do carro)" }, 400);
         const f = await lerFormula(sb);
-        return json({ ok: true, ...simular(f, body as any) });
+        return json({ ok: true, ...simular(f, body as any, await taxaContratoMes(sb)) });
       }
       case "plano": {
         let valor = Number(body.valor || body.veiculo || body.preco) || 0;
@@ -233,7 +255,7 @@ Deno.serve(async (req) => {
         }
         if (!(valor > 0)) return json({ success: false, message: pedido ? `Não achei "${pedido}" no pátio da Cardoso agora. Confirme marca e modelo, ou me passe o valor do carro.` : "Informe o valor do carro, ou o nome dele pra eu achar no pátio da Cardoso." });
         const f = await lerFormula(sb);
-        const sim = simular(f, { veiculo: valor, entrada: body.entrada, usado: body.carro_na_troca ?? body.usado, prazo: body.prazo, extra: body.extra });
+        const sim = simular(f, { veiculo: valor, entrada: body.entrada, usado: body.carro_na_troca ?? body.usado, prazo: body.prazo, extra: body.extra }, await taxaContratoMes(sb));
         const foco = sim.prazos.find((p) => p.destaque) || sim.prazos[0];
         const fala = (n: number) => `${Math.round(n).toLocaleString("pt-BR")} reais`;
         const ant: any = sim.antecipacao;
