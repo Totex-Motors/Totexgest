@@ -59,6 +59,16 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, phone, lead_id, sent_by, sent_by_name, tenant_id: bodyTenantId } = body;
 
+    // "digitando..." (23/10): marca a mensagem do cliente como lida e mostra "digitando" até
+    // a resposta sair (a Meta apaga sozinha em 25 s ou quando a mensagem chega). Só interno.
+    if (action === "typing") {
+      if (caller.user && !caller.user.superadmin) return deny("só interno", 403);
+      if (!body.message_id) return jsonRes({ error: "message_id required" }, 400);
+      const cfg = await loadCfg(supabase, bodyTenantId ?? null);
+      const r = await callCloudAPI({ messaging_product: "whatsapp", status: "read", message_id: body.message_id, typing_indicator: { type: "text" } }, cfg);
+      return jsonRes({ success: r.ok, ...(r.ok ? {} : { error: r.data?.error?.message || "typing falhou" }) });
+    }
+
     if (!phone) {
       return jsonRes({ error: "phone required" }, 400);
     }

@@ -169,6 +169,11 @@ async function buildSessionContextBlock(
 
     // === PERFIL DE COMPRA AUTOMOTIVO (o que já sabemos × o que falta descobrir) ===
     const m = (lead.metadata ?? {}) as Record<string, any>;
+    const fone8 = String(lead.phone || context?.whatsapp_phone || "").replace(/\D/g, "").slice(-8);
+    // Reaquecimento: o lead-rewarm marca o lead da MATRIZ, mas a resposta pode cair no lead da loja
+    // (o roteamento pega o lead mais recente do telefone). Sem isso o agente não sabia o que a
+    // abertura já tinha dito e perguntava "que carro você tem pra dar na troca?" (Marcos, 23/10).
+    const re = await reaquecimentoDoTelefone(db, m, leadId!, fone8);
     const veic = m.vehicle
       ? `${m.vehicle.brand ?? ""} ${m.vehicle.model ?? ""} ${m.vehicle.version ?? ""} ${m.vehicle.year ?? ""}`.trim()
       : (m.veiculo_interesse_texto ?? null);
@@ -181,7 +186,7 @@ async function buildSessionContextBlock(
       `- Orçamento: ${has(m.faixa_preco_min) ? m.faixa_preco_min : "?"} a ${has(m.faixa_preco_max) ? m.faixa_preco_max : "?"} BRL`,
       `- Precisa financiar?: ${boolFmt(m.precisa_financiar)}`,
       `- Entrada disponível: ${has(m.entrada_disponivel) ? m.entrada_disponivel : "? falta descobrir"}`,
-      `- Tem veículo na troca?: ${boolFmt(m.tem_veiculo_troca)}`,
+      `- Tem veículo na troca?: ${re?.carro_cliente ? `Sim — ${re.carro_cliente} (já dito na mensagem que mandamos; NÃO pergunte)` : boolFmt(m.tem_veiculo_troca)}`,
       `- Forma de pagamento: ${has(m.forma_pagamento) ? m.forma_pagamento : "? falta descobrir"}`,
       `- Urgência da compra: ${has(m.urgencia) ? m.urgencia : "? falta descobrir"}`,
       "Quando o cliente revelar qualquer um desses dados, chame a tool capturar_perfil_compra com o campo correspondente. Não pergunte o que já está preenchido.",
@@ -204,7 +209,6 @@ async function buildSessionContextBlock(
     }
 
     // === MODO REAQUECIMENTO (lead-rewarm abriu a conversa com uma conta; leads.metadata.reaquecimento) ===
-    const re = (m.reaquecimento ?? null) as Record<string, any> | null;
     if (re && re.ativo) {
       const momento: Record<string, string> = {
         A_saiu_do_stand: "saiu do stand há pouco sem agendar (pode ainda estar no shopping)",
@@ -236,8 +240,51 @@ async function buildSessionContextBlock(
     }
   }
 
+  // === O QUE A LOJA JÁ MANDOU PRA ELE fora deste chat (follow-up, reaquecimento, lembretes) ===
+  // O histórico da sessão só tem a conversa com o agente. Mensagem automática que saiu por outro
+  // caminho ficava invisível, e o cliente respondia a ela ("Sim") sem o agente saber do quê.
+  const enviadas = await mensagensEnviadasFora(db, String(lead?.phone || context?.whatsapp_phone || ""));
+  if (enviadas.length) {
+    lines.push("", "Mensagens que a loja mandou pra ele nas últimas 72 h (fora deste chat). A resposta dele pode ser a uma delas: continue a partir dela e NÃO pergunte o que ela já diz:");
+    for (const e of enviadas) lines.push(`- ${e.quando}: "${e.texto}"`);
+  }
+
   lines.push("", "Use estes UUIDs SEMPRE que chamar tools que pedem `lead_id` ou `deal_id`.");
   return lines.join("\n");
+}
+
+/** Reaquecimento ativo deste lead OU de outro lead do mesmo telefone (matriz × loja), dos últimos 7 dias. */
+async function reaquecimentoDoTelefone(db: any, m: Record<string, any>, leadId: string, fone8: string): Promise<Record<string, any> | null> {
+  const proprio = (m.reaquecimento ?? null) as Record<string, any> | null;
+  if (proprio?.ativo) return proprio;
+  if (fone8.length < 8) return proprio;
+  try {
+    const { data } = await db.from("leads").select("metadata").ilike("phone", `%${fone8}`).neq("id", leadId)
+      .order("updated_at", { ascending: false }).limit(5);
+    const limite = Date.now() - 7 * 86_400_000;
+    const outro = (data || []).map((l: any) => l?.metadata?.reaquecimento).find((r: any) =>
+      r?.ativo && Date.parse(String(r.iniciado_em || "")) >= limite);
+    return outro || proprio;
+  } catch { return proprio; }
+}
+
+/** Últimas mensagens automáticas/humanas que saíram pra este telefone (não as do próprio agente). */
+async function mensagensEnviadasFora(db: any, phone: string): Promise<{ quando: string; texto: string }[]> {
+  const fone8 = phone.replace(/\D/g, "").slice(-8);
+  if (fone8.length < 8) return [];
+  try {
+    const desde = new Date(Date.now() - 72 * 3_600_000).toISOString();
+    const { data } = await db.from("whatsapp_messages").select("content, sent_at, metadata")
+      .ilike("remote_jid", `%${fone8}@%`).eq("is_from_me", true).gte("sent_at", desde)
+      .order("sent_at", { ascending: false }).limit(8);
+    return (data || [])
+      .filter((r: any) => !["ai_agent", "ai_agent_v2"].includes(String(r?.metadata?.sent_by || "")) && String(r.content || "").trim())
+      .slice(0, 3).reverse()
+      .map((r: any) => ({
+        quando: new Date(r.sent_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+        texto: String(r.content).replace(/\s+/g, " ").slice(0, 400),
+      }));
+  } catch { return []; }
 }
 
 async function buildCloserPoolBlock(
