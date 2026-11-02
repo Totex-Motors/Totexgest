@@ -122,7 +122,13 @@ async function criarTemplateNaMeta(sb: any, tenantId: string, p: { name: string;
   const { data: inst } = await sb.from("whatsapp_instances").select("id, api_key, business_account_id").eq("tenant_id", tenantId).eq("provider", "meta_cloud").not("api_key", "is", null).limit(1).maybeSingle();
   if (!inst?.api_key || !inst.business_account_id) return { ok: false, error: "Loja sem WhatsApp oficial (token/WABA)." };
   const name = p.name.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 60);
-  const components: any[] = [{ type: "BODY", text: p.body, example: { body_text: [p.example] } }];
+  // Regras da Meta: body não pode começar nem terminar com variável; variáveis em ordem {{1}},{{2}}…
+  let bodyTxt = String(p.body || "").trim();
+  if (/^\{\{\d+\}\}/.test(bodyTxt)) bodyTxt = "Oi, " + bodyTxt;
+  if (/\{\{\d+\}\}[.!?]?$/.test(bodyTxt)) bodyTxt = bodyTxt.replace(/[.!?]?$/, "") + ". Me responde por aqui?";
+  const nVars = (bodyTxt.match(/\{\{\d+\}\}/g) || []).length;
+  const example = p.example.slice(0, nVars).concat(Array(Math.max(0, nVars - p.example.length)).fill("exemplo"));
+  const components: any[] = [{ type: "BODY", text: bodyTxt, ...(nVars ? { example: { body_text: [example] } } : {}) }];
   const btns = (p.buttons || []).filter(Boolean).slice(0, 3).map((t) => ({ type: "QUICK_REPLY", text: String(t).replace(/[^\p{L}\p{N} ,.!?-]/gu, "").trim().slice(0, 20) }));
   if (btns.length) components.push({ type: "BUTTONS", buttons: btns });
   const r = await fetch(`https://graph.facebook.com/v22.0/${inst.business_account_id}/message_templates`, {
@@ -133,7 +139,7 @@ async function criarTemplateNaMeta(sb: any, tenantId: string, p: { name: string;
   if (!r.ok || d?.error) return { ok: false, error: d?.error?.error_user_msg || d?.error?.message || `Meta ${r.status}` };
   await sb.from("whatsapp_cloud_templates").upsert({
     tenant_id: tenantId, meta_template_id: d.id, meta_waba_id: inst.business_account_id, name, language: "pt_BR", category: d.category || "MARKETING", status: d.status || "PENDING",
-    components, variables_count: (p.body.match(/\{\{\d+\}\}/g) || []).length, updated_at: new Date().toISOString(),
+    components, variables_count: nVars, updated_at: new Date().toISOString(),
   }, { onConflict: "tenant_id,name,language" });
   return { ok: true, id: d.id, status: d.status || "PENDING" };
 }
