@@ -276,3 +276,7 @@ verify_jwt = false
 # Páginas de carro com IA: GET público (HTML) + clique do CTA sem auth; demais ações exigem usuário/interno.
 [functions.vehicle-page]
 verify_jwt = false
+
+# Otimizador de conversas: cron diário (x-internal-token) + tela (usuário logado).
+[functions.message-optimizer]
+verify_jwt = false
