@@ -45,9 +45,13 @@ function toPageVehicle(v: any, base: string): PageVehicle {
   const fotos = Array.isArray(v?.images)
     ? [...v.images].sort((a, b) => (b?.isPrimary ? 1 : 0) - (a?.isPrimary ? 1 : 0) || (a?.order ?? 0) - (b?.order ?? 0)).map((i) => i?.url).filter(Boolean)
     : [];
+  // O marketplace repete o modelo na versão ("Tucson" + "Tucson 2.0 16V…") → tira a repetição
+  const modelo = String(v.model || "").trim();
+  let versao = String(v.version || "").trim();
+  if (modelo && versao.toLowerCase().startsWith(modelo.toLowerCase())) versao = versao.slice(modelo.length).trim();
   return {
-    id: String(v.id), marca: v.brand || "", modelo: v.model || "", versao: v.version || null,
-    titulo: [v.brand, v.model, v.version].filter(Boolean).join(" "),
+    id: String(v.id), marca: v.brand || "", modelo, versao: versao || null,
+    titulo: [v.brand, modelo, versao].filter(Boolean).join(" "),
     ano: Number(v.year) || null, preco: Number(v.price) > 0 ? Number(v.price) : null,
     km: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null, cor: v.color || null,
     cambio: v.transmission || null, combustivel: v.fuel || null, portas: Number(v.doors) || null,
