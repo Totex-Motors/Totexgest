@@ -37,6 +37,7 @@ import {
   Handshake,
   ShieldCheck,
   GraduationCap,
+  Sparkles,
   Store,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
@@ -113,6 +114,7 @@ const sections: NavSection[] = [
       { title: "Pipeline", url: "/comercial/pipeline", icon: Kanban },
       { title: "Leads", url: "/comercial/leads", icon: User2 },
       { title: "Treinamento", url: "/comercial/treinamento", icon: GraduationCap, commercialOnly: true },
+      { title: "Páginas de carro", url: "/comercial/paginas", icon: Sparkles },
       { title: "Vendedores", url: "/comercial/vendedores", icon: Users, adminOnly: true },
       { title: "Inbox", url: "/comercial/inbox", icon: MessageSquare },
       { title: "Intermediação", url: "/comercial/intermediacao", icon: Handshake, superAdminOnly: true },

@@ -143,6 +143,7 @@ const DemandIntelligence = React.lazy(() => import("./pages/DemandIntelligence")
 // Lead Ads Meta + Canais de Entrada + Importação (portados do template v3)
 const MetaLeadAds = React.lazy(() => import("./pages/MetaLeadAds"));
 const InstagramCampaigns = React.lazy(() => import("./pages/marketing/InstagramCampaigns"));
+const VehiclePages = React.lazy(() => import("./pages/VehiclePages"));
 const CanaisEntrada = React.lazy(() => import("./pages/CanaisEntrada"));
 const OperationTower = React.lazy(() => import("./pages/OperationTower"));
 const RastreamentoLeads = React.lazy(() => import("./pages/RastreamentoLeads"));
@@ -372,6 +373,7 @@ const AppRoutes = () => {
       <Route path="/comercial/playbook" element={<ProtectedRoute><SalesPlaybook /></ProtectedRoute>} />
       <Route path="/comercial/configuracoes" element={<Navigate to="/configuracoes?s=pipeline" replace />} />
       <Route path="/comercial/materiais" element={<ProtectedRoute><SalesMaterialsConfig /></ProtectedRoute>} />
+      <Route path="/comercial/paginas" element={<ProtectedRoute><React.Suspense fallback={<div />}><VehiclePages /></React.Suspense></ProtectedRoute>} />
       <Route path="/comercial/credere" element={<ProtectedRoute><CredereLeads /></ProtectedRoute>} />
       <Route path="/comercial/marketplace" element={<ProtectedRoute><MarketplaceLeads /></ProtectedRoute>} />
       <Route path="/comercial/totem" element={<ProtectedRoute><TotemLeads /></ProtectedRoute>} />

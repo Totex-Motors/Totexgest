@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/c/:slug", "destination": "https://mztfyavuclqzivywkaeu.supabase.co/functions/v1/vehicle-page/:slug" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

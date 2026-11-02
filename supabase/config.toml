@@ -272,3 +272,7 @@ verify_jwt = false
 
 [functions.zernio-webhook]
 verify_jwt = false
+
+# Páginas de carro com IA: GET público (HTML) + clique do CTA sem auth; demais ações exigem usuário/interno.
+[functions.vehicle-page]
+verify_jwt = false
