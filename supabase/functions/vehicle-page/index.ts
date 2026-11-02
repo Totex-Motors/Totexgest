@@ -41,6 +41,15 @@ function phoneBr(s: unknown): string | null {
   return d.length >= 12 ? d : null;
 }
 
+/** Descrição do anúncio vem com entidades ("&#13;") e quebras duplicadas do ERP da loja. */
+function limpaDescricao(d: unknown): string | null {
+  let s = String(d || "");
+  if (!s.trim()) return null;
+  s = s.replace(/&#13;|&#10;/g, "\n").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return s.slice(0, 1500) || null;
+}
+
 function toPageVehicle(v: any, base: string): PageVehicle {
   const fotos = Array.isArray(v?.images)
     ? [...v.images].sort((a, b) => (b?.isPrimary ? 1 : 0) - (a?.isPrimary ? 1 : 0) || (a?.order ?? 0) - (b?.order ?? 0)).map((i) => i?.url).filter(Boolean)
@@ -55,7 +64,7 @@ function toPageVehicle(v: any, base: string): PageVehicle {
     ano: Number(v.year) || null, preco: Number(v.price) > 0 ? Number(v.price) : null,
     km: Number.isFinite(Number(v.mileage)) ? Number(v.mileage) : null, cor: v.color || null,
     cambio: v.transmission || null, combustivel: v.fuel || null, portas: Number(v.doors) || null,
-    cidade: v.city || null, estado: v.state || null, descricao: v.description ? String(v.description).trim().slice(0, 1500) : null,
+    cidade: v.city || null, estado: v.state || null, descricao: limpaDescricao(v.description),
     fotos, loja: { nome: v.dealership?.name || null, telefone: v.dealership?.phone || null, cidade: v.dealership?.city || null },
     link_marketplace: `${base}/veiculo/${v.id}`,
   };
