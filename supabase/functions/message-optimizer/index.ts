@@ -88,7 +88,7 @@ VARIANTES CADASTRADAS (corpo): ${JSON.stringify(dados.variantes)}
 AMOSTRAS COM RESPOSTA: ${JSON.stringify(dados.amostras.com_resposta)}
 AMOSTRAS SEM RESPOSTA: ${JSON.stringify(dados.amostras.sem_resposta)}
 
-Devolva:
+Devolva JSON compacto (sem markdown, sem texto fora do JSON):
 {
  "diagnostico": "3-5 frases: onde a conversa morre e por quê (use os números)",
  "hipoteses": ["hipótese 1", "hipótese 2", "hipótese 3"],
@@ -101,7 +101,8 @@ Devolva:
  "prompt_sugestoes": ["ajuste curto no prompt do agente de texto, se os dados mostrarem problema nas respostas"],
  "proximo_passo": "1 frase"
 }`;
-  const out = await askClaudeJson(sb, tenantId, system, user, { model, maxTokens: 3000, tag: "optimizer" });
+  const out = await askClaudeJson(sb, tenantId, system, user, { model, maxTokens: 6000, tag: "optimizer" });
+  if (!out) console.warn("[message-optimizer] IA sem JSON válido (modelo", model, ")");
   return { report: out, model };
 }
 
