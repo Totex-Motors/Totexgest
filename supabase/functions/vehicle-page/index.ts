@@ -290,9 +290,11 @@ Deno.serve(async (req) => {
       const { data: row } = await sb.from("vehicle_pages").select("*").eq("id", id).maybeSingle();
       if (!row || row.tenant_id !== tenantId) return json({ error: "Página não encontrada." }, 404);
       const v = row.vehicle as PageVehicle; const c = (row.content || {}) as PageContent;
+      // curto de propósito: vídeo de rede social (~20-25 s de fala)
+      const primeiraFrase = (t: string) => (t.match(/^[^.!?]+[.!?]/)?.[0] || t).trim();
       const texto = String(body.texto || "").trim() || [
         c.headline || v.titulo,
-        c.resumo?.[0] || "",
+        c.resumo?.[0] ? primeiraFrase(c.resumo[0]) : "",
         c.pontos_fortes?.length ? `Destaques: ${c.pontos_fortes.slice(0, 3).map((p) => p.titulo).join(", ")}.` : "",
         row.simulacao?.parcela ? `Cabe no bolso: ${row.simulacao.prazo} parcelas de ${brl0(row.simulacao.parcela)}.` : "",
         c.cta || "Chama a gente no WhatsApp e vem ver de perto.",
