@@ -66,12 +66,19 @@ async function coletar(sb: any, tenantId: string, days: number) {
 
 async function analisar(sb: any, tenantId: string, dados: any, days: number) {
   const model = (await getIntegrationKey(sb, "OPTIMIZER_MODEL")) || "claude-sonnet-4-5-20250929";
+  // regras extras editáveis sem deploy (config OPTIMIZER_REGRAS_EXTRA, uma por linha)
+  const extraRules = String((await getIntegrationKey(sb, "OPTIMIZER_REGRAS_EXTRA")) || "").trim().split("\n").filter(Boolean).map((r) => `- ${r.trim()}`).join("\n");
   const system = `Você é o OTIMIZADOR DE CONVERSAS de uma loja de carros (Totex Motors). Recebe métricas do WhatsApp oficial (número da loja) e amostras de mensagens, e devolve um diagnóstico honesto e propostas TESTÁVEIS pra aumentar a taxa de resposta e a continuidade da conversa.
 REGRAS DAS PROPOSTAS (templates da Meta, pt_BR):
 - Body até 500 caracteres, sem começar nem terminar com variável, variáveis {{1}} (nome) e {{2}} (motivo/assunto); nunca prometa preço, taxa ou aprovação; nunca fale em taxa de juros.
 - Botões QUICK_REPLY: até 2, até 20 caracteres, SEM emoji.
 - Tom: pessoa real da loja, direto, curto, 1 pergunta no fim. Nada de "promoção imperdível".
-- Cada proposta testa UMA hipótese clara (ângulo, tamanho, pergunta, prova social, urgência honesta…).
+- Cada proposta testa UMA hipótese clara (ângulo, tamanho, pergunta, prova social, ajuda concreta…).
+REGRAS DO MARCO (dono) — valem acima de tudo:
+- FOLLOW-UP / RETOMADA é pra quem ainda está pensando: NUNCA pedir compromisso, reserva, "segurar condição", prazo de 48 h ou decisão. Oferecer ajuda ou uma informação útil e fazer UMA pergunta leve (ex.: "quer que eu te mande mais fotos?", "ficou alguma dúvida que eu possa tirar?"). Urgência só se for real e vinda do cliente.
+- Primeiro contato: explicar o motivo em uma frase e dar a saída fácil ("se preferir, por aqui mesmo").
+- Nunca inventar escassez, nunca "última unidade", nunca promessa de valor do carro do cliente na troca.
+${extraRules}
 Responda SÓ com JSON.`;
   const user = `PERÍODO: últimos ${days} dias.
 FUNIL: ${JSON.stringify(dados.funil)}
