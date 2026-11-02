@@ -20,6 +20,9 @@ import { getCaller, deny } from "../_shared/auth.ts";
 import { getIntegrationKey } from "../_shared/config.ts";
 import { askClaudeJson } from "../_shared/claude-json.ts";
 import { buildVehicleHtml, cambioPt, combPt, brl0, type PageContent, type PageFipe, type PageSim, type PageVehicle } from "../_shared/vehicle-page-html.ts";
+import { DEFAULT_VOICE_REPLY, prepareTextForSpeech, synthesizeSpeech, type VoiceReplyConfig } from "../_shared/tts.ts";
+
+const MEDIA_BUCKET = "vehicle-media"; // público: vídeos e narrações das páginas de carro
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -223,7 +226,9 @@ Deno.serve(async (req) => {
   }
   const base = await pageBase(sb);
   const market = await marketBase(sb);
-  const pub = (r: any) => ({ id: r.id, vehicle_id: r.marketplace_vehicle_id, slug: r.slug, status: r.status, url: `${base}/${r.slug}`, preview_url: `${FN_URL}/${r.slug}?preview=1`, titulo: r.vehicle?.titulo, preco: r.vehicle?.preco, foto: r.vehicle?.fotos?.[0] || null, views: r.views, clicks: r.clicks, generated_at: r.generated_at, published_at: r.published_at, model: r.model, tem_fipe: !!r.fipe, tem_simulacao: !!r.simulacao });
+  const pub = (r: any) => ({ id: r.id, vehicle_id: r.marketplace_vehicle_id, slug: r.slug, status: r.status, url: `${base}/${r.slug}`, preview_url: `${FN_URL}/${r.slug}?preview=1`, titulo: r.vehicle?.titulo, preco: r.vehicle?.preco, foto: r.vehicle?.fotos?.[0] || null, fotos: r.vehicle?.fotos || [], views: r.views, clicks: r.clicks, generated_at: r.generated_at, published_at: r.published_at, model: r.model, tem_fipe: !!r.fipe, tem_simulacao: !!r.simulacao, videos: Array.isArray(r.videos) ? r.videos : [],
+    // dados pro vídeo (texto na tela + narração)
+    video_dados: r.content ? { headline: r.content.headline, subheadline: r.content.subheadline, pontos: (r.content.pontos_fortes || []).slice(0, 3).map((x: any) => x.titulo), cta: r.content.cta, seo: r.content.seo, ano: r.vehicle?.ano, km: r.vehicle?.km, preco: r.vehicle?.preco, parcela: r.simulacao ? { prazo: r.simulacao.prazo, valor: r.simulacao.parcela } : null, fipe_dif: r.fipe?.diferenca_pct ?? null, loja: r.vehicle?.loja?.nome } : null });
 
   try {
     if (action === "lojas") {
@@ -277,6 +282,46 @@ Deno.serve(async (req) => {
         : await sb.from("vehicle_pages").insert({ ...rowData, status: "draft" }).select("*").single();
       if (error) return json({ error: error.message }, 500);
       return json({ page: pub(saved) });
+    }
+
+    // Narração do vídeo na voz do agente (texto do autoconsultor → áudio público no bucket)
+    if (action === "narracao") {
+      const id = String(body.id || "");
+      const { data: row } = await sb.from("vehicle_pages").select("*").eq("id", id).maybeSingle();
+      if (!row || row.tenant_id !== tenantId) return json({ error: "Página não encontrada." }, 404);
+      const v = row.vehicle as PageVehicle; const c = (row.content || {}) as PageContent;
+      const texto = String(body.texto || "").trim() || [
+        c.headline || v.titulo,
+        c.resumo?.[0] || "",
+        c.pontos_fortes?.length ? `Destaques: ${c.pontos_fortes.slice(0, 3).map((p) => p.titulo).join(", ")}.` : "",
+        row.simulacao?.parcela ? `Cabe no bolso: ${row.simulacao.prazo} parcelas de ${brl0(row.simulacao.parcela)}.` : "",
+        c.cta || "Chama a gente no WhatsApp e vem ver de perto.",
+      ].filter(Boolean).join(" ");
+      // voz: a mesma da nota de voz do agente da loja (agents_registry.settings.voice_reply); senão padrão OpenAI
+      const { data: ag } = await sb.from("agents_registry").select("settings").eq("tenant_id", tenantId).eq("is_active", true).order("created_at").limit(1).maybeSingle();
+      const vr = ((ag?.settings as any)?.voice_reply || {}) as Partial<VoiceReplyConfig>;
+      const cfg: VoiceReplyConfig = { ...DEFAULT_VOICE_REPLY, ...vr, enabled: true, mode: "always", max_chars: 2000, eleven: { ...DEFAULT_VOICE_REPLY.eleven, ...(vr.eleven || {}) } };
+      const audio = await synthesizeSpeech(sb, texto.slice(0, 1200), tenantId, cfg);
+      if (!audio) return json({ error: "Não consegui gerar a narração (confira as chaves de voz em Integrações)." }, 502);
+      const ext = audio.mime === "audio/mpeg" ? "mp3" : "ogg";
+      const path = `${tenantId}/${row.id}/narracao_${Date.now()}.${ext}`;
+      const { error: upErr } = await sb.storage.from(MEDIA_BUCKET).upload(path, audio.bytes, { contentType: audio.mime, upsert: true });
+      if (upErr) return json({ error: `Upload da narração: ${upErr.message}` }, 500);
+      const { data: pu } = sb.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+      return json({ url: pu.publicUrl, texto: prepareTextForSpeech(texto), provider: audio.provider, mime: audio.mime });
+    }
+
+    // Vídeo gerado no navegador e já enviado pro bucket → registra na página
+    if (action === "video_saved") {
+      const id = String(body.id || "");
+      const { data: row } = await sb.from("vehicle_pages").select("id, tenant_id, videos").eq("id", id).maybeSingle();
+      if (!row || row.tenant_id !== tenantId) return json({ error: "Página não encontrada." }, 404);
+      const url = String(body.url || "");
+      if (!url.includes(`/${MEDIA_BUCKET}/`)) return json({ error: "URL do vídeo inválida." }, 400);
+      const video = { url, formato: String(body.formato || "9:16"), duracao_s: Number(body.duracao_s) || null, narracao: !!body.narracao, mime: String(body.mime || "video/mp4"), criado_em: new Date().toISOString(), por: caller.user?.id || null };
+      const videos = [video, ...(Array.isArray(row.videos) ? row.videos : [])].slice(0, 10);
+      await sb.from("vehicle_pages").update({ videos, updated_at: new Date().toISOString() }).eq("id", id);
+      return json({ ok: true, video, videos });
     }
 
     if (action === "publish" || action === "unpublish" || action === "delete") {

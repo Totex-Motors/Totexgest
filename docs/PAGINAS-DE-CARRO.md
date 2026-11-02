@@ -43,3 +43,14 @@ consumo e custo de manter (faixas), concorrentes, objeções, FAQ, CTA. Mais FIP
 - Regerar automaticamente quando o preço mudar no marketplace; arquivar quando o carro sair.
 - Domínio próprio (ex.: carros.totexmotors.com) apontando pro rewrite.
 - Vídeo curto do carro (IA) pra YouTube/TikTok via Zernio a partir das fotos.
+
+## Vídeo do carro (2026-11-02)
+Botão **Vídeo** em cada página: `VehicleVideoDialog` grava no navegador (Chrome desktop) um
+vídeo 9:16 de ~18 s com as fotos da página (Ken Burns), título, ano/km, ponto forte rotativo,
+preço, parcela, "% abaixo da FIPE" e CTA pulsando. Narração opcional na voz do agente
+(`vehicle-page` › `narracao`: texto do autoconsultor → `_shared/tts.ts`, salvo em
+`vehicle-media/<tenant>/<page>/narracao_*.ogg`). O vídeo vai pro bucket público `vehicle-media`
+(upload direto do navegador, RLS por pasta do tenant) e `video_saved` registra em
+`vehicle_pages.videos`. Publicação: `zernio-publish` › `publish_media` (TikTok/YouTube/Facebook;
+Facebook só aceita MP4 — se o navegador gravou WebM, fica fora). `social_publications` ganhou
+`vehicle_page_id` e `origem`; `campaign_id` virou opcional.
