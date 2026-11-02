@@ -19,6 +19,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { janelaAberta, pickVariant, logVariantSend } from "../_shared/message-variants.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
 import { applyExclusivity, brandFirstMessage, getNinaExclusiveStore, getNinaSounds, getNinaVoiceTts, ninaBrand, BLOCK_VERSION, TOOLS_WITH_SOUND, NINA_ASR_KEYWORDS } from "../_shared/nina-store.ts";
 import { NINA_PROMPT } from "../_shared/nina-prompt.ts";
@@ -166,6 +167,10 @@ Deno.serve(async (req) => {
   const got = req.headers.get("x-voice-token") || "";
   if (!expected || got.trim() !== expected.trim()) return json({ error: "unauthorized" }, 401);
 
+  // 0a. primeiro contato por template sem resposta em 72 h → expira (o otimizador conta como silêncio)
+  await sb.from("nina_call_queue").update({ status: "expired", last_error: "sem resposta ao primeiro contato (72 h)" })
+    .eq("status", "awaiting_window").lt("permission_requested_at", new Date(Date.now() - 72 * 3600_000).toISOString());
+
   // 0. ligações em 'calling' sem retorno: confere na ElevenLabs (a ligação não atendida às
   //    vezes não gera webhook). Terminou curta/falhou → cadência de não atendeu
   //    (_shared/nina-cadence.ts). Sem resposta da API por 15 min → mesma coisa.
@@ -295,6 +300,33 @@ Deno.serve(async (req) => {
       assunto = "o seu carro";
     }
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY };
+
+    // JANELA DE 24 H FECHADA (lead nunca falou com a gente / faz mais de um dia): texto livre e o
+    // pedido de permissão NÃO entregam ("Re-engagement message" — auditoria de 02/11: 20 primeiras
+    // mensagens e 21 pedidos falharam assim). Sai um TEMPLATE com botões (variante do otimizador);
+    // a fila fica em awaiting_window e o webhook reativa quando o cliente responder.
+    const aberta = await janelaAberta(sb, row.lead_id, row.phone);
+    if (!aberta) {
+      const v = await pickVariant(sb, tenantId, "nina_primeiro_contato", { kind: "template" });
+      if (!v) return fail("expired", "janela de 24 h fechada e nenhum template de primeiro contato aprovado (nina_primeiro_contato)");
+      const motivoCurto = pb === "trocar"
+        ? `Vi que você quer colocar ${carroDele ? `o seu ${carroDele}` : "o seu carro"} na troca${carroVisto ? ` pelo ${carroVisto}` : ""}, e ele nos interessa.`
+        : pb === "vender"
+          ? `Vi que você quer vender ${carroDele ? `o seu ${carroDele}` : "o seu carro"}, e ele nos interessa.`
+          : `Vi que você se interessou pelo ${carroVisto || "carro que viu com a gente"}.`;
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+        method: "POST", headers,
+        body: JSON.stringify({ action: "send_template", phone: row.phone, template_name: v.name, template_params: [nome, motivoCurto], lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      const ok = r.ok && !j?.error;
+      await logVariantSend(sb, v, { leadId: row.lead_id, phone: row.phone, delivered: ok ? null : false, metadata: { playbook: pb, queue_id: row.id, erro: ok ? null : JSON.stringify(j).slice(0, 200) } });
+      if (!ok) return fail("failed", `template de primeiro contato falhou: ${JSON.stringify(j).slice(0, 200)}`);
+      await sb.from("nina_call_queue").update({ status: "awaiting_window", permission_requested_at: new Date().toISOString(), metadata: { ...(row.metadata || {}), primeiro_contato: { variante: v.name, em: new Date().toISOString() } } }).eq("id", row.id);
+      log(`janela fechada → template ${v.name} enviado; aguardando resposta`);
+      return json({ id: row.id, status: "awaiting_window", variante: v.name });
+    }
+
     if (motivo) {
       const m = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, { method: "POST", headers, body: JSON.stringify({ action: "send_text", phone: row.phone, text: motivo, lead_id: row.lead_id, tenant_id: tenantId, sent_by: "nina_dialer" }) });
       if (!m.ok) log(`motivo da ligação não enviado (${m.status})`);

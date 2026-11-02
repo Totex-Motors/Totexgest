@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { tryHandleViaAgentPlatformCloud } from "./agent-platform.ts";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { markVariantOutcome } from "../_shared/message-variants.ts";
 
 /**
  * WhatsApp Cloud API Webhook
@@ -264,6 +265,9 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // Botão do WhatsApp do site: o clique criou um lead SEM telefone ("Cliente (não identificado)");
   // a mensagem é a 1ª vez que o número aparece → funde o clique com este número ANTES do roteamento.
   try { await absorbMarketplaceClick(supabase, cleanPhone, contactName, content); } catch (e) { console.error("[Cloud Webhook] clique do site:", (e as Error).message); }
+  // Otimizador: cliente respondeu → desfecho da variante + Nina em "awaiting_window" volta pra fila
+  // (a janela de 24 h abriu; o discador manda o pedido de permissão na próxima rodada).
+  try { await onClienteRespondeu(supabase, cleanPhone, content); } catch (e) { console.error("[Cloud Webhook] awaiting_window:", (e as Error).message); }
 
   const { data: lead } = await supabase
     .from("leads")
@@ -653,6 +657,23 @@ async function transcribeAudio(supabase: any, audioUrl: string, openaiKey: strin
   }
 }
 
+/** Cliente respondeu (qualquer mensagem): marca a variante como respondida e libera a Nina. */
+async function onClienteRespondeu(supabase: any, phone: string, text: string): Promise<void> {
+  await markVariantOutcome(supabase, phone, "replied");
+  const last8 = phone.slice(-8);
+  const { data: q } = await supabase.from("nina_call_queue").select("id, metadata").eq("status", "awaiting_window").like("phone", `%${last8}`);
+  if (!q?.length) return;
+  const prefereTexto = /prefiro por aqui|manda por aqui|por aqui/i.test(String(text || ""));
+  for (const row of q) {
+    if (prefereTexto) {
+      await supabase.from("nina_call_queue").update({ status: "cancelled", outcome: "prefere_whatsapp", last_error: null, metadata: { ...(row.metadata || {}), prefere_whatsapp_em: new Date().toISOString() } }).eq("id", row.id);
+    } else {
+      await supabase.from("nina_call_queue").update({ status: "queued", scheduled_for: new Date().toISOString(), last_error: null }).eq("id", row.id);
+    }
+  }
+  console.log(`[Cloud Webhook] ${phone} respondeu ao primeiro contato → ${prefereTexto ? "prefere WhatsApp (ligação cancelada)" : "Nina volta pra fila (janela aberta)"}`);
+}
+
 /**
  * Permissão de ligação (Meta) respondida pelo cliente: grava em leads.metadata.call_permission
  * (todos os leads com esse telefone) e, se aceitou, libera as ligações da Nina que esperavam.
@@ -671,6 +692,7 @@ async function handleCallPermissionReply(supabase: any, phone: string, r: { acce
     await supabase.from("nina_call_queue")
       .update(r.accepted ? { status: "queued", scheduled_for: new Date().toISOString() } : { status: "expired", last_error: "cliente não permitiu a ligação" })
       .in("id", q.map((x: any) => x.id));
+    if (r.accepted) { try { await markVariantOutcome(supabase, phone, "permitted"); } catch { /* ok */ } }
     console.log(`[Cloud Webhook] permissão ${r.accepted ? "aceita" : "negada"} por ${phone} → ${q.length} ligação(ões) da Nina ${r.accepted ? "liberadas" : "encerradas"}`);
   }
 }

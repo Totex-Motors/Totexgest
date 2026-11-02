@@ -48,6 +48,7 @@ import { GoogleCalendarSection } from "@/components/settings/sections/GoogleCale
 import { ThemeSection } from "@/components/settings/sections/ThemeSection";
 import { IntegrationsSection } from "@/components/settings/sections/IntegrationsSection";
 import { NinaVozSection } from "@/components/settings/sections/NinaVozSection";
+import { MessageOptimizerSection } from "@/components/settings/sections/MessageOptimizerSection";
 import { WhatsAppInstancesSection } from "@/components/settings/sections/WhatsAppInstancesSection";
 import { WhatsAppCloudConfigTab } from "@/components/settings/WhatsAppCloudConfigTab";
 import { InstagramConfigTab } from "@/components/settings/InstagramConfigTab";
@@ -280,6 +281,12 @@ const navigationSections: NavSection[] = [
         label: "Nina — Ligações",
         icon: PhoneCall,
         description: "A IA atende a ligação de voz do WhatsApp oficial com a sua voz clonada: estoque, endereço, horário e agendamento. Configuração por botão (ElevenLabs + WaVoIP).",
+      },
+      {
+        id: "otimizador",
+        label: "Otimizador de conversas",
+        icon: Headphones,
+        description: "Mede resposta e continuidade de cada mensagem do WhatsApp oficial, testa variantes sozinho e propõe novas todo dia.",
       },
     ],
   },
@@ -597,6 +604,8 @@ function SettingsContent({ section }: { section: string }) {
       return <CoachPlaybooksTab />;
     case "nina-voz":
       return <NinaVozSection />;
+    case "otimizador":
+      return <MessageOptimizerSection />;
 
     // Equipe
     case "membros":
