@@ -63,22 +63,22 @@ export async function ensureProfile(sb: SupabaseClient, apiKey: string, tenantId
 
   // Já existe lá (criado antes / em outro deploy)?
   try {
-    const list = await zernio<any>(apiKey, "GET", `/profiles?externalId=${encodeURIComponent(tenantId)}&limit=1`);
-    const found = (list?.profiles || list?.data || [])[0];
+    const list = await zernio<any>(apiKey, "GET", `/profiles?externalId=${encodeURIComponent(tenantId)}&includeOverLimit=true&limit=10&skip=0`);
+    const found = (list?.profiles || list?.data || []).find((p: any) => p?.externalId === tenantId) || (list?.profiles || [])[0];
     if (found?._id) {
       await sb.from("zernio_profiles").upsert({ tenant_id: tenantId, profile_id: found._id });
       return found._id;
     }
-  } catch { /* segue pra criar */ }
+  } catch (e) { console.warn("[zernio] GET /profiles falhou:", (e as Error).message); }
 
   let profileId = "";
   try {
     const created = await zernio<any>(apiKey, "POST", "/profiles", { name: nome, externalId: tenantId, timezone: "America/Sao_Paulo" });
     profileId = created?.profile?._id || created?._id || "";
   } catch (e) {
-    // 409 profile_external_id_conflict → devolve o id existente
+    // 409 profile_external_id_conflict → details.existingProfileId traz o id existente
     const body: any = (e as ZernioError).body;
-    profileId = body?.profileId || body?.existingProfileId || body?.profile?._id || "";
+    profileId = body?.details?.existingProfileId || body?.error?.details?.existingProfileId || body?.existingProfileId || body?.profileId || body?.profile?._id || "";
     if (!profileId) throw e;
   }
   if (!profileId) throw new Error("Zernio não devolveu o id do profile.");
@@ -98,8 +98,32 @@ export interface ZernioAccount {
 }
 
 export async function listAccounts(apiKey: string, profileId: string): Promise<ZernioAccount[]> {
-  const r = await zernio<any>(apiKey, "GET", `/accounts?profileId=${encodeURIComponent(profileId)}&category=social&limit=100`);
+  // page e limit têm que ir juntos ("page and limit must be provided together")
+  const r = await zernio<any>(apiKey, "GET", `/accounts?profileId=${encodeURIComponent(profileId)}&category=social&page=1&limit=100`);
   return (r?.accounts || []) as ZernioAccount[];
+}
+
+/**
+ * Contas que a loja pode usar: as do profile dela e, se ela é a dona da conta Zernio
+ * (config ZERNIO_DEFAULT_PROFILE_TENANT_ID), também as conectadas pelo painel da Zernio,
+ * que caem no profile "Default".
+ */
+export async function listTenantAccounts(sb: SupabaseClient, apiKey: string, tenantId: string, profileId: string): Promise<ZernioAccount[]> {
+  const own = await listAccounts(apiKey, profileId);
+  const semInstagram = (xs: ZernioAccount[]) => xs.filter((a) => a.platform !== "instagram"); // Instagram é direto na Meta
+  const donoId = await getIntegrationKey(sb, "ZERNIO_DEFAULT_PROFILE_TENANT_ID");
+  if (!donoId || donoId !== tenantId) return semInstagram(own);
+  try {
+    const list = await zernio<any>(apiKey, "GET", `/profiles?includeOverLimit=true&limit=50&skip=0`);
+    const def = (list?.profiles || []).find((p: any) => p?.isDefault && p?._id !== profileId);
+    if (!def?._id) return semInstagram(own);
+    const extra = await listAccounts(apiKey, def._id);
+    const ids = new Set(own.map((a) => a._id));
+    return semInstagram([...own, ...extra.filter((a) => !ids.has(a._id))]);
+  } catch (e) {
+    console.warn("[zernio] contas do profile Default:", (e as Error).message);
+    return semInstagram(own);
+  }
 }
 
 /** HMAC-SHA256 hex do corpo cru, comparado com X-Zernio-Signature. */

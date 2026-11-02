@@ -292,3 +292,11 @@ orientação: não repetir números, comentar a jogada do 13º em uma frase, UMA
 vem o cupom (gerar_cupom) quando houver intenção. Regras: só reais, nunca taxa, nunca valor
 do carro do cliente na troca, sempre "estimativa". Passo 2 (se converter): vídeo curto do
 simulador real gravado no VPS.
+
+## 2j. Trocar a voz da ligação (clonagem pela API) — 20/10/2026
+`voice-agent-setup` ação `clone_voice` (superadmin logado ou `x-internal-token`): cria a voz na
+ElevenLabs (Instant Voice Clone) a partir de amostras (`samples[]` com `url` https, `b64` ou
+pedaços em `config` via `config_prefix`), grava `VOICE_CALL_VOICE_ID` (a anterior vai pra
+`VOICE_CALL_VOICE_ID_PREV`) e já aplica no agente da ElevenLabs. `rollback_voice` volta a anterior.
+Histórico: 20/10 — voz "Isabela (Nina)" `Qnx8EUt5qpS2yNjCllTt` (amostras da voz Isabela da
+fish.audio, 50 s) substituiu `mPDAoQyGzxBSkE0OAOKw`.
