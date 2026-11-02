@@ -110,7 +110,11 @@ Deno.serve(async (req) => {
       let history: any[] = [];
       let fonte: string | null = null;
       let fonteMotivo: string | null = null;
-      if (body.campaignId && uuid.test(body.campaignId)) {
+      if (body.vehicle_page_id && uuid.test(String(body.vehicle_page_id))) {
+        const { data } = await db.from("social_publications").select("id, zernio_post_id, status, platforms, media_count, scheduled_for, created_at")
+          .eq("tenant_id", tenantId).eq("vehicle_page_id", body.vehicle_page_id).order("created_at", { ascending: false }).limit(10);
+        history = data || [];
+      } else if (body.campaignId && uuid.test(body.campaignId)) {
         const { data } = await db.from("social_publications").select("id, zernio_post_id, status, platforms, media_count, scheduled_for, created_at")
           .eq("tenant_id", tenantId).eq("campaign_id", body.campaignId).order("created_at", { ascending: false }).limit(10);
         history = data || [];
@@ -155,64 +159,58 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    if (action === "publish") {
-      const campaignId = String(body.campaignId || "");
-      if (!uuid.test(campaignId)) return json({ error: "Campanha inválida." }, 400);
-      const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds.map(String) : [];
-      if (accountIds.length === 0) return json({ error: "Escolha pelo menos uma rede." }, 400);
-
-      const fonte = await fonteDaCampanha(db, tenantId, campaignId);
-      if (!fonte.fonte) return json({ error: fonte.motivo }, 409);
-      const { caption, mediaItems } = fonte;
-      const temVideo = mediaItems.some((m) => m.type === "video");
-
+    // Publicação (campanha do Studio/Instagram OU mídia avulsa, ex.: vídeo da página do carro)
+    async function publicar(a: {
+      caption: string; mediaItems: { url: string; type: "image" | "video" }[]; accountIds: string[]; scheduledFor?: unknown;
+      campaignId?: string | null; vehiclePageId?: string | null; origem: string; titulo?: string | null;
+    }) {
+      if (a.accountIds.length === 0) return json({ error: "Escolha pelo menos uma rede." }, 400);
+      const temVideo = a.mediaItems.some((m) => m.type === "video");
       const accounts = await listTenantAccounts(db, apiKey, tenantId, profileId);
-      const chosen = accounts.filter((a) => accountIds.includes(a._id));
-      if (chosen.length !== accountIds.length) return json({ error: "Alguma conta escolhida não é desta loja." }, 403);
-      const semImagem = chosen.filter((a) => ZERNIO_PLATFORMS[a.platform]?.aceitaImagem === false);
-      if (semImagem.length && !temVideo) return json({ error: `${semImagem.map((a) => ZERNIO_PLATFORMS[a.platform]?.label || a.platform).join(", ")} só aceita vídeo. Tire da seleção.` }, 400);
-      if (temVideo && mediaItems.length > 1) return json({ error: "Post com vídeo e várias mídias: as redes só aceitam um vídeo por post." }, 400);
+      const chosen = accounts.filter((x) => a.accountIds.includes(x._id));
+      if (chosen.length !== a.accountIds.length) return json({ error: "Alguma conta escolhida não é desta loja." }, 403);
+      const semImagem = chosen.filter((x) => ZERNIO_PLATFORMS[x.platform]?.aceitaImagem === false);
+      if (semImagem.length && !temVideo) return json({ error: `${semImagem.map((x) => ZERNIO_PLATFORMS[x.platform]?.label || x.platform).join(", ")} só aceita vídeo. Tire da seleção.` }, 400);
+      if (temVideo && a.mediaItems.length > 1) return json({ error: "Post com vídeo e várias mídias: as redes só aceitam um vídeo por post." }, 400);
+      const titulo = (a.titulo || a.caption.split("\n")[0]).slice(0, 100) || "Totex Motors";
 
       const platforms: any[] = [];
-      for (const a of chosen) {
-        const entry: any = { platform: a.platform, accountId: a._id };
-        if (a.platform === "tiktok") {
-          // Foto-carrossel: precisa do privacy_level que o criador permite + consentimentos.
+      for (const x of chosen) {
+        const entry: any = { platform: x.platform, accountId: x._id };
+        if (x.platform === "tiktok") {
           let privacy = "PUBLIC_TO_EVERYONE";
           try {
-            const info = await zernio<any>(apiKey, "GET", `/accounts/${encodeURIComponent(a._id)}/tiktok/creator-info`);
+            const info = await zernio<any>(apiKey, "GET", `/accounts/${encodeURIComponent(x._id)}/tiktok/creator-info`);
             const levels: { value: string }[] = info?.privacyLevels || [];
             if (levels.length && !levels.some((l) => l.value === privacy)) privacy = levels[0].value;
           } catch { /* usa padrão */ }
           entry.platformSpecificData = temVideo
             ? { mediaType: "video", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true, allowComment: true }
-            : { mediaType: "photo", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true, allowComment: true, photoCoverIndex: 0, description: caption.slice(0, 4000) };
-        } else if (a.platform === "youtube") {
-          entry.platformSpecificData = { title: caption.split("\n")[0].slice(0, 100) || "Totex Motors", visibility: "public", madeForKids: false };
-        } else if (a.platform === "pinterest") {
-          entry.platformSpecificData = { title: caption.split("\n")[0].slice(0, 100) };
+            : { mediaType: "photo", privacyLevel: privacy, contentPreviewConfirmed: true, expressConsentGiven: true, allowComment: true, photoCoverIndex: 0, description: a.caption.slice(0, 4000) };
+        } else if (x.platform === "youtube") {
+          entry.platformSpecificData = { title: titulo, visibility: "public", madeForKids: false };
+        } else if (x.platform === "pinterest") {
+          entry.platformSpecificData = { title: titulo };
         }
         platforms.push(entry);
       }
 
-      const scheduledFor = body.scheduledFor ? new Date(body.scheduledFor) : null;
+      const scheduledFor = a.scheduledFor ? new Date(String(a.scheduledFor)) : null;
       const agendar = scheduledFor && !isNaN(scheduledFor.getTime()) && scheduledFor.getTime() > Date.now() + 60_000;
       const payload: any = {
-        content: caption,
-        mediaItems,
-        platforms,
-        timezone: "America/Sao_Paulo",
-        metadata: { tenant_id: tenantId, campaign_id: campaignId, origem: `totexgest-${fonte.fonte}` },
+        content: a.caption, mediaItems: a.mediaItems, platforms, timezone: "America/Sao_Paulo",
+        metadata: { tenant_id: tenantId, campaign_id: a.campaignId || null, vehicle_page_id: a.vehiclePageId || null, origem: `totexgest-${a.origem}` },
         ...(agendar ? { scheduledFor: scheduledFor!.toISOString() } : { publishNow: true }),
       };
 
       const { data: row, error: insErr } = await db.from("social_publications").insert({
-        tenant_id: tenantId, campaign_id: campaignId, status: agendar ? "scheduled" : "publishing",
-        caption, media_count: mediaItems.length, scheduled_for: agendar ? scheduledFor!.toISOString() : null,
-        platforms: chosen.map((a) => ({ platform: a.platform, account_id: a._id, username: a.username || a.displayName || null, status: "pending", url: null, error: null })),
+        tenant_id: tenantId, campaign_id: a.campaignId || null, vehicle_page_id: a.vehiclePageId || null, origem: a.origem,
+        status: agendar ? "scheduled" : "publishing",
+        caption: a.caption, media_count: a.mediaItems.length, scheduled_for: agendar ? scheduledFor!.toISOString() : null,
+        platforms: chosen.map((x) => ({ platform: x.platform, account_id: x._id, username: x.username || x.displayName || null, status: "pending", url: null, error: null })),
         created_by: caller.user?.id || null,
       }).select("id, platforms").single();
-      if (insErr || !row) return json({ error: "Não foi possível registrar a publicação." }, 500);
+      if (insErr || !row) return json({ error: `Não foi possível registrar a publicação: ${insErr?.message || ""}` }, 500);
 
       let post: any = null;
       try {
@@ -226,7 +224,6 @@ Deno.serve(async (req) => {
         }).eq("id", row.id);
         return json({ error: `Zernio recusou: ${ze.message}`, publication_id: row.id }, 502);
       }
-
       const zernioPostId = post?._id || post?.id || post?.postId || null;
       const platformsOut = post?.platforms?.length ? mapPlatforms(post, row.platforms) : row.platforms;
       const { data: updated } = await db.from("social_publications").update({
@@ -236,11 +233,36 @@ Deno.serve(async (req) => {
       return json({ publication: updated });
     }
 
-    if (action === "status") {
+    if (action === "publish") {
       const campaignId = String(body.campaignId || "");
       if (!uuid.test(campaignId)) return json({ error: "Campanha inválida." }, 400);
-      const { data: rows } = await db.from("social_publications").select("id, zernio_post_id, status, platforms, media_count, scheduled_for, created_at")
-        .eq("tenant_id", tenantId).eq("campaign_id", campaignId).order("created_at", { ascending: false }).limit(10);
+      const fonte = await fonteDaCampanha(db, tenantId, campaignId);
+      if (!fonte.fonte) return json({ error: fonte.motivo }, 409);
+      return await publicar({ caption: fonte.caption, mediaItems: fonte.mediaItems, accountIds: Array.isArray(body.accountIds) ? body.accountIds.map(String) : [], scheduledFor: body.scheduledFor, campaignId, origem: fonte.fonte });
+    }
+
+    // Mídia avulsa (vídeo/imagem já hospedados em URL pública) — ex.: vídeo da página do carro
+    if (action === "publish_media") {
+      const url = String(body.media_url || "");
+      if (!/^https:\/\//i.test(url)) return json({ error: "media_url inválida." }, 400);
+      const type: "image" | "video" = body.media_type === "image" ? "image" : "video";
+      const caption = String(body.caption || "").slice(0, 2200);
+      if (!caption) return json({ error: "Informe a legenda." }, 400);
+      const vehiclePageId = uuid.test(String(body.vehicle_page_id || "")) ? String(body.vehicle_page_id) : null;
+      if (vehiclePageId) {
+        const { data: vp } = await db.from("vehicle_pages").select("tenant_id").eq("id", vehiclePageId).maybeSingle();
+        if (!vp || vp.tenant_id !== tenantId) return json({ error: "Página de carro não é desta loja." }, 403);
+      }
+      return await publicar({ caption, mediaItems: [{ url, type }], accountIds: Array.isArray(body.accountIds) ? body.accountIds.map(String) : [], scheduledFor: body.scheduledFor, vehiclePageId, origem: vehiclePageId ? "pagina-carro" : "midia", titulo: body.titulo ? String(body.titulo) : null });
+    }
+
+    if (action === "status") {
+      const campaignId = String(body.campaignId || "");
+      const vehiclePageId = String(body.vehicle_page_id || "");
+      if (!uuid.test(campaignId) && !uuid.test(vehiclePageId)) return json({ error: "Campanha inválida." }, 400);
+      let q = db.from("social_publications").select("id, zernio_post_id, status, platforms, media_count, scheduled_for, created_at").eq("tenant_id", tenantId);
+      q = uuid.test(vehiclePageId) ? q.eq("vehicle_page_id", vehiclePageId) : q.eq("campaign_id", campaignId);
+      const { data: rows } = await q.order("created_at", { ascending: false }).limit(10);
       const out: any[] = [];
       for (const r of rows || []) {
         if (r.zernio_post_id && !["published", "failed", "cancelled"].includes(r.status)) {

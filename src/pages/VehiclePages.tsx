@@ -7,14 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Sparkles, Globe, Copy, Eye, EyeOff, RefreshCw, Loader2, ExternalLink, Trash2, Search } from "lucide-react";
+import { Sparkles, Globe, Copy, Eye, EyeOff, RefreshCw, Loader2, ExternalLink, Trash2, Search, Clapperboard } from "lucide-react";
+import { VehicleVideoDialog, type VideoPage } from "@/components/sales/VehicleVideoDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /**
  * Páginas de carro com IA ("autoconsultor"): uma landing page por carro do estoque.
  * Lista o estoque da loja (marketplace), gera o conteúdo com IA, publica e mostra views/cliques.
  */
-type Page = { id: string; vehicle_id: string; slug: string; status: string; url: string; preview_url: string; titulo: string; preco: number | null; foto: string | null; views: number; clicks: number; generated_at: string | null; published_at: string | null; tem_fipe: boolean; tem_simulacao: boolean };
+type Page = { id: string; vehicle_id: string; slug: string; status: string; url: string; preview_url: string; titulo: string; preco: number | null; foto: string | null; fotos: string[]; views: number; clicks: number; generated_at: string | null; published_at: string | null; tem_fipe: boolean; tem_simulacao: boolean; videos: VideoPage["videos"]; video_dados: VideoPage["video_dados"] };
 type Veiculo = { id: string; titulo: string; ano: number | null; preco: number | null; km: number | null; cor: string | null; fotos: string[]; loja: { nome: string | null }; pagina: Page | null };
 
 const brl = (n: number | null) => (n ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }) : "—");
@@ -31,6 +32,7 @@ export default function VehiclePages() {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "com" | "sem" | "publicadas">("todos");
   const [gerando, setGerando] = useState<Set<string>>(new Set());
+  const [videoDe, setVideoDe] = useState<Page | null>(null);
   // superadmin (matriz) escolhe a loja; usuário de loja usa a própria
   const [loja, setLoja] = useState<string>("");
   const lojas = useQuery({ queryKey: ["vehicle-pages-lojas"], queryFn: () => call<{ lojas: { tenant_id: string; nome: string }[] }>("lojas"), staleTime: 300_000 });
@@ -151,6 +153,7 @@ export default function VehiclePages() {
                           : <Button size="sm" onClick={() => toggle.mutate({ p, pub: true })}><Globe className="h-4 w-4 mr-1" /> Publicar</Button>}
                         {p.status === "published" && <Button size="sm" variant="outline" onClick={() => copiar(p.url)}><Copy className="h-4 w-4 mr-1" /> Copiar link</Button>}
                         {p.status === "published" && <Button size="sm" variant="ghost" asChild><a href={p.url} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4 mr-1" /> Abrir</a></Button>}
+                        <Button size="sm" variant="outline" onClick={() => setVideoDe(p)}><Clapperboard className="h-4 w-4 mr-1" /> Vídeo{p.videos?.length ? ` (${p.videos.length})` : ""}</Button>
                         <Button size="sm" variant="ghost" onClick={() => gerar(v)} disabled={g}>{g ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />} Regerar</Button>
                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => { if (confirm(`Apagar a página do ${v.titulo}?`)) apagar.mutate(p); }}><Trash2 className="h-4 w-4" /></Button>
                       </>}
@@ -162,6 +165,16 @@ export default function VehiclePages() {
           })}
           {!estoque.isLoading && veiculos.length === 0 && <p className="text-sm text-muted-foreground">Nenhum carro nesse filtro.</p>}
         </div>
+
+        {videoDe && (
+          <VehicleVideoDialog
+            open={!!videoDe}
+            onOpenChange={(o) => { if (!o) setVideoDe(null); }}
+            tenantId={loja || undefined}
+            page={{ id: videoDe.id, titulo: videoDe.titulo, fotos: videoDe.fotos || [], url: videoDe.url, video_dados: videoDe.video_dados, videos: videoDe.videos || [] }}
+            onSaved={() => qc.invalidateQueries({ queryKey: ["vehicle-pages-estoque"] })}
+          />
+        )}
 
         <p className="text-xs text-muted-foreground">
           A IA escreve com os dados do anúncio (ano, km, cor, descrição) e informações de referência do modelo, sempre com aviso "confirme na loja". FIPE vem da consulta oficial do CRM; a parcela aparece só nas lojas com simulador. Nunca fala em taxa de juros.
