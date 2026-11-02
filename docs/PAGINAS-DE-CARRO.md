@@ -9,8 +9,9 @@ consumo e custo de manter (faixas), concorrentes, objeções, FAQ, CTA. Mais FIP
 - CRM: Comercial › **Páginas de carro** (`/comercial/paginas`). Lista o estoque da loja no
   marketplace, "Gerar com IA", prévia, publicar/despublicar, copiar link, views e cliques.
   Superadmin escolhe a loja (select); usuário de loja vê a própria.
-- Público: `https://totexgest.vercel.app/c/<slug>` (rewrite da Vercel → edge function
-  `vehicle-page/<slug>`). Base configurável em `VEHICLE_PAGE_BASE_URL` (ex.: domínio próprio).
+- Público: `https://totexgest.vercel.app/c/<slug>` (rewrite da Vercel → `api/c.ts`, função edge
+  da Vercel que busca o HTML no `vehicle-page/<slug>` e entrega como text/html — o domínio
+  *.supabase.co devolve HTML como text/plain). Base configurável em `VEHICLE_PAGE_BASE_URL` (ex.: domínio próprio).
   `?preview=1` mostra rascunho; `?format=json` devolve os dados.
 
 ## Peças
