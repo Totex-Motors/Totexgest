@@ -307,6 +307,15 @@ Deno.serve(async (req) => {
     // a fila fica em awaiting_window e o webhook reativa quando o cliente responder.
     const aberta = await janelaAberta(sb, row.lead_id, row.phone);
     if (!aberta) {
+      // TRAVA ANTI-LOOP (incidente 03/11: 500 envios pro mesmo lead porque a gravação do status falhou
+      // em silêncio): no máximo 1 primeiro contato por telefone a cada 24 h, custe o que custar.
+      const { count: jaMandou } = await sb.from("message_variant_sends").select("id", { count: "exact", head: true })
+        .eq("touchpoint", "nina_primeiro_contato").like("phone", `%${String(row.phone).replace(/\D/g, "").slice(-8)}`).gte("sent_at", new Date(Date.now() - 24 * 3600_000).toISOString());
+      if ((jaMandou || 0) > 0) {
+        const { error: e1 } = await sb.from("nina_call_queue").update({ status: "awaiting_window", last_error: "primeiro contato já enviado nas últimas 24 h; aguardando resposta" }).eq("id", row.id);
+        if (e1) await sb.from("nina_call_queue").update({ status: "failed", last_error: `não consegui gravar awaiting_window: ${e1.message}` }).eq("id", row.id);
+        return json({ id: row.id, status: "awaiting_window", skipped: "já enviado nas últimas 24 h" });
+      }
       const v = await pickVariant(sb, tenantId, "nina_primeiro_contato", { kind: "template" });
       if (!v) return fail("expired", "janela de 24 h fechada e nenhum template de primeiro contato aprovado (nina_primeiro_contato)");
       const motivoCurto = pb === "trocar"
@@ -322,7 +331,12 @@ Deno.serve(async (req) => {
       const ok = r.ok && !j?.error;
       await logVariantSend(sb, v, { leadId: row.lead_id, phone: row.phone, delivered: ok ? null : false, metadata: { playbook: pb, queue_id: row.id, erro: ok ? null : JSON.stringify(j).slice(0, 200) } });
       if (!ok) return fail("failed", `template de primeiro contato falhou: ${JSON.stringify(j).slice(0, 200)}`);
-      await sb.from("nina_call_queue").update({ status: "awaiting_window", permission_requested_at: new Date().toISOString(), metadata: { ...(row.metadata || {}), primeiro_contato: { variante: v.name, em: new Date().toISOString() } } }).eq("id", row.id);
+      const { error: upErr } = await sb.from("nina_call_queue").update({ status: "awaiting_window", permission_requested_at: new Date().toISOString(), metadata: { ...(row.metadata || {}), primeiro_contato: { variante: v.name, em: new Date().toISOString() } } }).eq("id", row.id);
+      if (upErr) {
+        // NUNCA deixar a linha em queued depois de enviar (viraria loop)
+        await sb.from("nina_call_queue").update({ status: "failed", last_error: `enviado, mas não gravei awaiting_window: ${upErr.message}` }).eq("id", row.id);
+        return fail("failed", `status awaiting_window recusado pelo banco: ${upErr.message}`);
+      }
       log(`janela fechada → template ${v.name} enviado; aguardando resposta`);
       return json({ id: row.id, status: "awaiting_window", variante: v.name });
     }
@@ -339,7 +353,8 @@ Deno.serve(async (req) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data?.error) return fail("failed", `pedido de permissão falhou: ${JSON.stringify(data).slice(0, 200)}`);
-    await sb.from("nina_call_queue").update({ status: "awaiting_permission", permission_requested_at: new Date().toISOString() }).eq("id", row.id);
+    const { error: upErr2 } = await sb.from("nina_call_queue").update({ status: "awaiting_permission", permission_requested_at: new Date().toISOString() }).eq("id", row.id);
+    if (upErr2) { await sb.from("nina_call_queue").update({ status: "failed", last_error: `pedido enviado, mas não gravei awaiting_permission: ${upErr2.message}` }).eq("id", row.id); return fail("failed", upErr2.message); }
     log("pedido de permissão enviado");
     return json({ id: row.id, status: "awaiting_permission" });
   }
