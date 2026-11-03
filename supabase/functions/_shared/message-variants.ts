@@ -12,6 +12,23 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 export interface Variant {
   id: string; tenant_id: string; touchpoint: string; name: string; kind: "template" | "text";
   body: string | null; buttons: { text: string; id?: string }[]; status: string; weight: number;
+  /** o que vai em cada {{n}}: chaves do vocabulário (nome, assinatura, carro, assunto, motivo, parcela, loja) */
+  params_spec?: string[];
+}
+
+/** Vocabulário de parâmetros que todo ponto de contato sabe preencher. */
+export type ParamCtx = Partial<Record<"nome" | "assinatura" | "carro" | "assunto" | "motivo" | "parcela" | "loja", string | null | undefined>>;
+
+/** Monta os params do template a partir do params_spec da variante. Chave desconhecida → "". */
+export function buildParams(v: Variant, ctx: ParamCtx): string[] {
+  const spec = Array.isArray(v.params_spec) && v.params_spec.length ? v.params_spec : [];
+  if (!spec.length) {
+    // sem spec: conta as variáveis do corpo e assume nome, (assinatura), carro…
+    const n = (String(v.body || "").match(/\{\{\d+\}\}/g) || []).length;
+    const def = n >= 3 ? ["nome", "assinatura", "carro"] : n === 2 ? ["nome", "carro"] : n === 1 ? ["nome"] : [];
+    return def.map((k) => String((ctx as any)[k] ?? ""));
+  }
+  return spec.map((k) => String((ctx as any)[k] ?? ""));
 }
 
 /** Janela de 24 h da Meta: aberta se o cliente mandou algo nas últimas 23 h. */
