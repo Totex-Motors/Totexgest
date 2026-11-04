@@ -240,6 +240,21 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // === action: enable_tracking — liga abertura/clique nos domínios da conta Resend da loja ===
+    // Sem isso a Resend não manda email.opened/email.clicked e o pipeline nunca anda pra "Abriu".
+    if ((body as any).action === "enable_tracking") {
+      const tCfg = await getTenantConfig(supabase, tenantId);
+      const cfg = requireActiveConfig(tCfg, tenantId);
+      const h = { "Authorization": `Bearer ${cfg.resend_api_key}`, "Content-Type": "application/json" };
+      const lst = await fetch("https://api.resend.com/domains", { headers: h }).then((r) => r.json()).catch(() => ({}));
+      const out: any[] = [];
+      for (const d of (lst?.data || [])) {
+        const r = await fetch(`https://api.resend.com/domains/${d.id}`, { method: "PATCH", headers: h, body: JSON.stringify({ open_tracking: true, click_tracking: true }) });
+        out.push({ domain: d.name, ok: r.ok, status: r.status, before: { open: d.open_tracking, click: d.click_tracking } });
+      }
+      return new Response(JSON.stringify({ success: true, domains: out }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // === MODO TESTE — quando test_email vem no body, é teste (independente de ter campaign_id) ===
     // O wizard de criar campanha PASSA campaign_id (campanha-shell já criada) + test_email.
     // Independente disso, se test_email está presente, é envio teste pra esse endereço só.
