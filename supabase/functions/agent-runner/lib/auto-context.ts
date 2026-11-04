@@ -208,21 +208,21 @@ async function buildSessionContextBlock(
       lines.push("Continue de onde a Nina parou; não repita perguntas que ela já fez.");
     }
 
-    // === MODO REAQUECIMENTO (lead-rewarm abriu a conversa com uma conta; leads.metadata.reaquecimento) ===
+    // === MODO REAQUECIMENTO (lead-rewarm abriu a conversa com uma simulação; leads.metadata.reaquecimento) ===
     if (re && re.ativo) {
       const momento: Record<string, string> = {
         A_saiu_do_stand: "saiu do stand há pouco sem agendar (pode ainda estar no shopping)",
         B_nunca_falou: "nunca tinha recebido mensagem nossa",
         C_esfriou: "conversou e esfriou (dias sem responder)",
       };
-      lines.push("", "🔥 MODO REAQUECIMENTO — este cliente " + (momento[String(re.momento)] || "esfriou") + ". A gente abriu a conversa com uma conta pronta e ele RESPONDEU. Agora é o seu momento:");
+      lines.push("", "🔥 MODO REAQUECIMENTO — este cliente " + (momento[String(re.momento)] || "esfriou") + ". A gente abriu a conversa com uma simulação pronta e ele RESPONDEU. Agora é o seu momento:");
       if (re.abertura) lines.push(`- A mensagem que ELE recebeu e respondeu foi: "${re.abertura}"`);
       lines.push(
-        "- ⛔ NÃO pergunte o nome dele" + (re.nome ? ` (é ${re.nome})` : "") + ", NÃO pergunte se é troca ou compra, NÃO pergunte qual carro ele tem" + (re.carro_cliente ? ` (é o ${re.carro_cliente})` : "") + ". A abertura já disse tudo isso; perguntar de novo soa robô. Se ele disse 'pode mandar' / 'sim', a PRÓXIMA mensagem É a conta, não outra pergunta.",
+        "- ⛔ NÃO pergunte o nome dele" + (re.nome ? ` (é ${re.nome})` : "") + ", NÃO pergunte se é troca ou compra, NÃO pergunte qual carro ele tem" + (re.carro_cliente ? ` (é o ${re.carro_cliente})` : "") + ". A abertura já disse tudo isso; perguntar de novo soa robô. Se ele disse 'pode mandar' / 'sim', a PRÓXIMA mensagem É a simulação, não outra pergunta. Vocabulário: diga sempre 'simulação' (nunca 'conta').",
       );
       if (re.carro_cliente) lines.push(`- Carro DELE (entra na troca/venda): ${re.carro_cliente}. A TRAVA continua: não diga quanto ele vale, nem faixa, nem FIPE — "a avaliação sai na loja em 15 minutos e entra como entrada".`);
-      if (re.playbook === "trocar") lines.push("- Como mandar a conta na TROCA: pergunte (ou use, se ele já disse) qual carro ele viu ou quer; consultar_estoque pra achar o valor; simular_plano com o valor do carro (sem carro_na_troca: o valor do dele sai na avaliação) e mostre a parcela em reais + a jogada do décimo terceiro; diga que o carro dele entra como entrada e derruba essa parcela. Se ele JÁ citou o carro, pule a pergunta e vá direto pra conta.");
-      if (re.playbook === "vender") lines.push("- Como mandar a conta na VENDA: explique em 2 frases por que vender pela Totex vale mais (loja comum compra barato; a Totex intermedeia perto da FIPE) e feche com a avaliação presencial com dia e hora. Sem número de valor.");
+      if (re.playbook === "trocar") lines.push("- Como mandar a simulação na TROCA: pergunte (ou use, se ele já disse) qual carro ele viu ou quer; consultar_estoque pra achar o valor; simular_plano com o valor do carro (sem carro_na_troca: o valor do dele sai na avaliação) e mostre a parcela em reais + a jogada do décimo terceiro; diga que o carro dele entra como entrada e derruba essa parcela. Se ele JÁ citou o carro, pule a pergunta e vá direto pra simulação.");
+      if (re.playbook === "vender") lines.push("- Como mandar a simulação na VENDA: explique em 2 frases por que vender pela Totex vale mais (loja comum compra barato; a Totex intermedeia perto da FIPE) e feche com a avaliação presencial com dia e hora. Sem número de valor.");
       if (re.carro) lines.push(`- Carro da conversa: ${re.carro}`);
       if (re.plano?.parcela) {
         lines.push(`- Plano já mostrado: ${re.plano.prazo}x de R$ ${Math.round(re.plano.parcela).toLocaleString("pt-BR")}` +
@@ -235,7 +235,7 @@ async function buildSessionContextBlock(
         : "- Cupom ainda NÃO gerado: gere com gerar_cupom quando o cliente topar seguir (desconto na parcela, 48 h, com a Grazi).");
       lines.push(re.grazi_avisada_em ? "- Grazi já foi avisada." : "- Quando o cliente mostrar intenção (quer a condição, pergunta como faz, topa a visita), chame chamar_grazi.");
       lines.push(
-        "Como agir: otimista e concreto. Primeiro o ganho dele (carro melhor, mais seguro, mais econômico, mais conforto) e a sensação de que dá pra subir de carro AGORA; depois a conta (simular_plano com o valor do carro; use décimo terceiro, férias, PLR ou FGTS como dinheiro que derruba parcelas do fim). Nunca fale taxa nem porcentagem: só reais. Uma pergunta por mensagem, fácil de responder sim. Nunca pergunte se ele 'ainda tem interesse' nem se 'quer conversar depois'. Feche com visita, avaliação ou a Grazi, sempre com dia e hora ou com o cupom de 48 h como motivo real de urgência.",
+        "Como agir: otimista e concreto. Primeiro o ganho dele (carro melhor, mais seguro, mais econômico, mais conforto) e a sensação de que dá pra subir de carro AGORA; depois a simulação (simular_plano com o valor do carro; use décimo terceiro, férias, PLR ou FGTS como dinheiro que derruba parcelas do fim). Nunca fale taxa nem porcentagem: só reais. Uma pergunta por mensagem, fácil de responder sim. Nunca pergunte se ele 'ainda tem interesse' nem se 'quer conversar depois'. Feche com visita, avaliação ou a Grazi, sempre com dia e hora ou com o cupom de 48 h como motivo real de urgência.",
       );
     }
   }

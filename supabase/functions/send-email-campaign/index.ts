@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getCaller } from "../_shared/auth.ts";
 import { getTenantConfig, requireActiveConfig, type EmailConfig } from "../_shared/tenant-email-config.ts";
 
 const corsHeaders = {
@@ -33,6 +34,7 @@ interface Recipient {
   email: string;
   name: string | null;
   first_name: string | null;
+  extra_vars?: Record<string, string>;
   phone: string | null;
   city: string | null;
   state: string | null;
@@ -51,7 +53,7 @@ async function resolveAudienceByCriteria(
 
   let q = supabase
     .from("leads")
-    .select("id, name, email, phone, city_name, state, sales_rep_id")
+    .select("id, name, email, phone, city_name, state, sales_rep_id, metadata")
     .eq("tenant_id", tenantId)
     .not("email", "is", null);
 
@@ -111,6 +113,8 @@ async function resolveAudienceByCriteria(
       city: l.city_name || null,
       state: l.state || null,
       sales_rep_name: l.sales_rep_id ? (repsMap.get(l.sales_rep_id) || null) : null,
+      // variáveis extras por lead (ex.: base importada: modelo, anos, ano_compra) → {{modelo}} no e-mail
+      extra_vars: (l.metadata && typeof l.metadata === "object" && l.metadata.email_vars && typeof l.metadata.email_vars === "object") ? l.metadata.email_vars : {},
     }));
 }
 
@@ -210,7 +214,10 @@ Deno.serve(async (req: Request) => {
     //   - Fallback: body.tenant_id (chamada server-to-server, ex: email-automation-tick)
     let tenantId: string | null = null;
     const authHeader = req.headers.get("Authorization");
-    if (authHeader && !authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
+    const caller = await getCaller(req);
+    if (caller.internal || caller.service) {
+      tenantId = body.tenant_id || null;
+    } else if (authHeader && !authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
       const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: { headers: { Authorization: authHeader } },
       });
@@ -360,7 +367,7 @@ Deno.serve(async (req: Request) => {
       .eq("tenant_id", tenantId);
 
     // Resolve audience
-    const campaignAudience = (campaign as any).settings?.audience as AudienceCriteria | undefined;
+    const campaignAudience = ((campaign as any).settings?.audience || (campaign as any).audience_filters) as AudienceCriteria | undefined;
     let audience: Recipient[] = [];
     if (audience_override) {
       audience = await resolveAudienceByCriteria(supabase, tenantId, audience_override);
@@ -430,6 +437,7 @@ Deno.serve(async (req: Request) => {
 
           const unsubscribeUrl = `${appUrl}/unsubscribe?token=${token}`;
           const variables: Record<string, string> = {
+            ...Object.fromEntries(Object.entries(recipient.extra_vars || {}).map(([k, v]) => [k, String(v ?? "")])),
             nome: recipient.name || "",
             primeiro_nome: recipient.first_name || "",
             email: recipient.email,
@@ -462,13 +470,7 @@ Deno.serve(async (req: Request) => {
             .select("id")
             .single();
 
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${config.resend_api_key}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+          const payload = JSON.stringify({
               from,
               to: [recipient.email],
               subject,
@@ -487,8 +489,18 @@ Deno.serve(async (req: Request) => {
                 { name: "campaign_id", value: campaign_id },
                 { name: "send_id", value: sendRow?.id || "" },
               ],
-            }),
-          });
+            });
+          // Resend limita ~2 req/s: em 429 espera e tenta de novo (até 3x) em vez de marcar falha.
+          let res: Response = new Response(null, { status: 429 });
+          for (let tentativa = 0; tentativa < 4; tentativa++) {
+            res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${config.resend_api_key}`, "Content-Type": "application/json" },
+              body: payload,
+            });
+            if (res.status !== 429) break;
+            await new Promise((r) => setTimeout(r, 1500 * (tentativa + 1)));
+          }
 
           if (res.ok) {
             const data = await res.json();
@@ -539,7 +551,7 @@ Deno.serve(async (req: Request) => {
           failed++;
         }
 
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 600));
       }
 
       await supabase
