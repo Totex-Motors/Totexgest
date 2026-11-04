@@ -19,6 +19,7 @@
 import { getIntegrationKey } from "../../_shared/config.ts";
 import { uazapiTargetAllowed } from "../../_shared/wa-policy.ts";
 import { assuntoDoLead } from "../../_shared/nina-cadence.ts";
+import { pickVariant, buildParams, logVariantSend } from "../../_shared/message-variants.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -151,6 +152,21 @@ export async function deliverFollowupWhatsApp(opts: DeliverOpts): Promise<void> 
     }
   }
 
+  // OTIMIZADOR: variante do touchpoint retomada_conversa (A/B) pode substituir o template fixo
+  let variante: Awaited<ReturnType<typeof pickVariant>> = null;
+  if (tenantId) {
+    variante = await pickVariant(db, tenantId, "retomada_conversa", { kind: "template" }).catch(() => null);
+    if (variante && variante.name !== templateName) {
+      const nome = templateParams?.[0] && templateParams[0] !== "tudo bem" ? templateParams[0] : "";
+      const quem = (await getIntegrationKey(db, "REAQUECIMENTO_ASSINATURA", tenantId)) || "Nina";
+      const { assunto } = await assuntoDoLead(db, leadId ?? null).catch(() => ({ nome: "", assunto: "o carro que você procura" }));
+      const carro = assunto.replace(/^o (seu )?/i, "").replace(/ que você (viu|procura)$/i, "");
+      templateParams = buildParams(variante, { nome, assinatura: quem, assunto, carro, motivo: `Sobre ${assunto}.` });
+      templateName = variante.name;
+    }
+  }
+
   console.log(`[wa-delivery] fora da janela 24h → template "${templateName}" pra ${digits}`);
-  await invokeCloud({ action: "send_template", template_name: templateName, template_params: templateParams });
+  const out = await invokeCloud({ action: "send_template", template_name: templateName, template_params: templateParams });
+  if (variante && tenantId) await logVariantSend(db, variante, { leadId: leadId ?? null, phone: digits, delivered: out?.error ? false : null, metadata: { origem: "followup" } }).catch(() => null);
 }

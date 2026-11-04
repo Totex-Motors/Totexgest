@@ -25,6 +25,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { pickVariant, buildParams, logVariantSend, type Variant } from "../_shared/message-variants.ts";
 import { buildLeadBrief } from "../_shared/lead-brief.ts";
 import { spokenCarName } from "../_shared/nina-store.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
@@ -145,6 +146,17 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma conta") };
   }
 
+  // OTIMIZADOR: fora da janela, a variante do touchpoint pode trocar o template fixo (A/B).
+  let variante: Variant | null = null;
+  if (!lead.janela_aberta && template) {
+    variante = await pickVariant(sb, HQ_TENANT, template, { kind: "template" }).catch(() => null);
+    if (variante && variante.name !== template) {
+      const assunto = playbook === "comprar" ? `o ${carroInteresse} que você viu` : `o seu ${carroCliente}`;
+      params = buildParams(variante, { nome, assinatura: quem, carro: playbook === "comprar" ? carroInteresse : carroCliente, assunto, motivo: playbook === "comprar" ? `Vi que você se interessou pelo ${carroInteresse}.` : `Vi que você quer ${playbook === "trocar" ? "trocar" : "vender"} o seu ${carroCliente}.`, parcela: plano?.plano?.parcela ? fala(plano.plano.parcela) : "" });
+      template = variante.name;
+    }
+  }
+
   let sent: { ok: boolean; via: string; detail?: string };
   if (lead.janela_aberta) {
     const r = await callEdge("send-whatsapp-cloud", { action: "send_text", phone: lead.phone, text: texto, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
@@ -153,6 +165,7 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
     if (!(await templateAprovado(sb, template))) return { skipped: await pular(sb, lead.lead_id, `template ${template} ainda não aprovado`) };
     const r = await callEdge("send-whatsapp-cloud", { action: "send_template", phone: lead.phone, template_name: template, template_params: params, lead_id: lead.lead_id, tenant_id: HQ_TENANT, sent_by: "lead_rewarm" });
     sent = { ok: r.ok && !r.data?.error, via: `template:${template}`, detail: r.data?.error };
+    if (variante) await logVariantSend(sb, variante, { leadId: lead.lead_id, phone: lead.phone, delivered: sent.ok ? null : false, metadata: { playbook, origem: "lead_rewarm" } }).catch(() => null);
   }
   if (!sent.ok) return { error: sent.detail || "envio falhou", via: sent.via };
 

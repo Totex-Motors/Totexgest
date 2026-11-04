@@ -134,3 +134,15 @@ LANGUAGE sql SECURITY DEFINER STABLE AS $$
    WHERE v.tenant_id = p_tenant
    GROUP BY v.id, v.touchpoint, v.name, v.status ORDER BY v.touchpoint, v.name;
 $$;
+
+-- 03/11: status novos da fila da Nina (awaiting_window = template de primeiro contato enviado,
+-- esperando resposta; paused = segurada pela equipe). Sem isso a gravação falhava em silêncio e o
+-- discador repetia o envio a cada minuto (incidente: 500 envios pro mesmo lead).
+ALTER TABLE nina_call_queue DROP CONSTRAINT IF EXISTS nina_call_queue_status_check;
+ALTER TABLE nina_call_queue ADD CONSTRAINT nina_call_queue_status_check
+  CHECK (status = ANY (ARRAY['queued','awaiting_permission','awaiting_window','calling','done','no_answer','failed','cancelled','expired','paused']));
+
+-- 03/11: o que vai em cada {{n}} da variante (vocabulário: nome, assinatura, carro, assunto, motivo, parcela)
+ALTER TABLE message_variants ADD COLUMN IF NOT EXISTS params_spec jsonb NOT NULL DEFAULT '[]'::jsonb;
+-- Templates atuais entram como variantes "controle" do A/B (reaquecimento_* e retomada_conversa);
+-- nina_primeiro_contato / _b = ["nome","motivo"]. Seeds aplicados em produção via SQL.

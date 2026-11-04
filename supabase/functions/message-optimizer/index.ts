@@ -66,12 +66,20 @@ async function coletar(sb: any, tenantId: string, days: number) {
 
 async function analisar(sb: any, tenantId: string, dados: any, days: number) {
   const model = (await getIntegrationKey(sb, "OPTIMIZER_MODEL")) || "claude-sonnet-4-5-20250929";
+  // regras extras editáveis sem deploy (config OPTIMIZER_REGRAS_EXTRA, uma por linha)
+  const extraRules = String((await getIntegrationKey(sb, "OPTIMIZER_REGRAS_EXTRA")) || "").trim().split("\n").filter(Boolean).map((r) => `- ${r.trim()}`).join("\n");
   const system = `Você é o OTIMIZADOR DE CONVERSAS de uma loja de carros (Totex Motors). Recebe métricas do WhatsApp oficial (número da loja) e amostras de mensagens, e devolve um diagnóstico honesto e propostas TESTÁVEIS pra aumentar a taxa de resposta e a continuidade da conversa.
 REGRAS DAS PROPOSTAS (templates da Meta, pt_BR):
 - Body até 500 caracteres, sem começar nem terminar com variável, variáveis {{1}} (nome) e {{2}} (motivo/assunto); nunca prometa preço, taxa ou aprovação; nunca fale em taxa de juros.
 - Botões QUICK_REPLY: até 2, até 20 caracteres, SEM emoji.
 - Tom: pessoa real da loja, direto, curto, 1 pergunta no fim. Nada de "promoção imperdível".
-- Cada proposta testa UMA hipótese clara (ângulo, tamanho, pergunta, prova social, urgência honesta…).
+- Cada proposta testa UMA hipótese clara (ângulo, tamanho, pergunta, prova social, ajuda concreta…).
+- PROIBIDO escrever números de exemplo ou placeholders no body ("R$ xxx", "xx vezes", "[modelo]"): tudo que varia vai numa variável {{n}}. Cada variável recebe UMA chave deste vocabulário: nome (primeiro nome), assinatura (quem assina, ex.: Nina), carro (modelo do carro em questão, sem artigo), assunto ("o Nivus que você viu"), motivo (frase curta do porquê do contato), parcela ("1.819 reais por mês"). Devolva a lista em "params" na mesma ordem das variáveis.
+REGRAS DO MARCO (dono) — valem acima de tudo:
+- FOLLOW-UP / RETOMADA é pra quem ainda está pensando: NUNCA pedir compromisso, reserva, "segurar condição", prazo de 48 h ou decisão. Oferecer ajuda ou uma informação útil e fazer UMA pergunta leve (ex.: "quer que eu te mande mais fotos?", "ficou alguma dúvida que eu possa tirar?"). Urgência só se for real e vinda do cliente.
+- Primeiro contato: explicar o motivo em uma frase e dar a saída fácil ("se preferir, por aqui mesmo").
+- Nunca inventar escassez, nunca "última unidade", nunca promessa de valor do carro do cliente na troca.
+${extraRules}
 Responda SÓ com JSON.`;
   const user = `PERÍODO: últimos ${days} dias.
 FUNIL: ${JSON.stringify(dados.funil)}
@@ -81,7 +89,7 @@ VARIANTES CADASTRADAS (corpo): ${JSON.stringify(dados.variantes)}
 AMOSTRAS COM RESPOSTA: ${JSON.stringify(dados.amostras.com_resposta)}
 AMOSTRAS SEM RESPOSTA: ${JSON.stringify(dados.amostras.sem_resposta)}
 
-Devolva:
+Devolva JSON compacto (sem markdown, sem texto fora do JSON):
 {
  "diagnostico": "3-5 frases: onde a conversa morre e por quê (use os números)",
  "hipoteses": ["hipótese 1", "hipótese 2", "hipótese 3"],
@@ -89,12 +97,13 @@ Devolva:
  "propostas": [
    {"touchpoint": "nina_primeiro_contato | nina_curiosidade_1 | reaquecimento_trocar | reaquecimento_viu_carro | retomada_conversa",
     "name": "nome_do_template_em_snake_case_curto", "hipotese": "o que esta variante testa",
-    "body": "texto com {{1}} e {{2}}", "buttons": ["Pode ligar", "Prefiro por aqui"], "params_hint": "{{1}} nome; {{2}} motivo"}
+    "body": "texto com {{1}} e {{2}}", "buttons": ["Pode ligar", "Prefiro por aqui"], "params": ["nome", "motivo"], "params_hint": "{{1}} nome; {{2}} motivo"}
  ] (2 a 4 propostas),
  "prompt_sugestoes": ["ajuste curto no prompt do agente de texto, se os dados mostrarem problema nas respostas"],
  "proximo_passo": "1 frase"
 }`;
-  const out = await askClaudeJson(sb, tenantId, system, user, { model, maxTokens: 3000, tag: "optimizer" });
+  const out = await askClaudeJson(sb, tenantId, system, user, { model, maxTokens: 6000, tag: "optimizer" });
+  if (!out) console.warn("[message-optimizer] IA sem JSON válido (modelo", model, ")");
   return { report: out, model };
 }
 
@@ -116,6 +125,18 @@ async function autoPausar(sb: any, tenantId: string, vars: any[]): Promise<strin
     }
   }
   return acoes;
+}
+
+/** Deduz o vocabulário dos params a partir do hint ("{{1}} nome; {{2}} modelo do carro"). */
+function inferParams(body: string, hint?: string | null): string[] {
+  const n = (String(body || "").match(/\{\{\d+\}\}/g) || []).length;
+  const partes = String(hint || "").split(/;|\n/).map((x) => x.toLowerCase());
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const h = partes[i] || "";
+    out.push(/assinatura|quem assina/.test(h) ? "assinatura" : /assunto/.test(h) ? "assunto" : /motivo|porqu|contexto/.test(h) ? "motivo" : /parcela/.test(h) ? "parcela" : /modelo|carro/.test(h) ? "carro" : /nome/.test(h) ? "nome" : i === 0 ? "nome" : "carro");
+  }
+  return out;
 }
 
 async function criarTemplateNaMeta(sb: any, tenantId: string, p: { name: string; body: string; buttons: string[]; example: string[] }): Promise<{ ok: boolean; id?: string; status?: string; error?: string }> {
@@ -184,8 +205,10 @@ Deno.serve(async (req) => {
       const r = await criarTemplateNaMeta(sb, tenantId, { name: prop.name, body: prop.body, buttons: prop.buttons || [], example });
       if (!r.ok) return json({ error: r.error }, 502);
       const name = String(prop.name).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 60);
+      const paramsSpec: string[] = Array.isArray(body.params) && body.params.length ? body.params.map(String) : Array.isArray(prop.params) && prop.params.length ? prop.params.map(String) : inferParams(prop.body, prop.params_hint);
       const { data: v } = await sb.from("message_variants").upsert({
         tenant_id: tenantId, touchpoint: prop.touchpoint, name, kind: "template", body: prop.body, buttons: (prop.buttons || []).map((t: string) => ({ text: t })),
+        params_spec: paramsSpec,
         params_hint: prop.params_hint || null, status: "submitted", origem: "otimizador", rationale: prop.hipotese || null, meta_template_id: r.id || null, created_by: caller.user?.id || null, updated_at: new Date().toISOString(),
       }, { onConflict: "tenant_id,touchpoint,name" }).select("*").single();
       return json({ ok: true, variant: v, meta_status: r.status });
@@ -201,6 +224,7 @@ Deno.serve(async (req) => {
       }
       const { data: v, error } = await sb.from("message_variants").upsert({
         tenant_id: tenantId, touchpoint, name, kind: body.kind === "text" ? "text" : "template", body: body.body || null, buttons: (body.buttons || []).map((t: string) => ({ text: t })),
+        params_spec: Array.isArray(body.params) ? body.params.map(String) : inferParams(String(body.body || ""), body.params_hint),
         params_hint: body.params_hint || null, status: body.status || (meta ? "submitted" : "active"), origem: "manual", rationale: body.rationale || null, meta_template_id: meta?.id || null, created_by: caller.user?.id || null, updated_at: new Date().toISOString(),
       }, { onConflict: "tenant_id,touchpoint,name" }).select("*").single();
       if (error) return json({ error: error.message }, 500);
