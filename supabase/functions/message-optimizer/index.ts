@@ -79,6 +79,7 @@ REGRAS DO MARCO (dono) — valem acima de tudo:
 - FOLLOW-UP / RETOMADA é pra quem ainda está pensando: NUNCA pedir compromisso, reserva, "segurar condição", prazo de 48 h ou decisão. Oferecer ajuda ou uma informação útil e fazer UMA pergunta leve (ex.: "quer que eu te mande mais fotos?", "ficou alguma dúvida que eu possa tirar?"). Urgência só se for real e vinda do cliente.
 - Primeiro contato: explicar o motivo em uma frase e dar a saída fácil ("se preferir, por aqui mesmo").
 - Nunca inventar escassez, nunca "última unidade", nunca promessa de valor do carro do cliente na troca.
+- Vocabulário: ao falar do cálculo da negociação com o carro do cliente, a palavra é "simulação" (ou "proposta"). NUNCA "conta" ("fiz uma conta", "manda a conta", "a conta pronta" são proibidos; "me conta" no sentido de "me diga" pode).
 ${extraRules}
 Responda SÓ com JSON.`;
   const user = `PERÍODO: últimos ${days} dias.

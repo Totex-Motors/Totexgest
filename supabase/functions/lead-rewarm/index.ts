@@ -2,7 +2,7 @@
  * lead-rewarm — REAQUECIMENTO de leads (decisão do Marco, 14/10/2026).
  *
  * Lead que entrou pelo stand/totem/promotora e esfriou NÃO recebia mensagem nenhuma
- * (104 leads em 45 dias sem uma mensagem). Aqui o CRM abre a conversa com uma CONTA
+ * (104 leads em 45 dias sem uma mensagem). Aqui o CRM abre a conversa com uma SIMULAÇÃO
  * pronta (Simulador da Cardoso) e marca o lead como "em reaquecimento"; quando ele
  * responde, o agente do número oficial (Nina, agente-stand) entra no MODO REAQUECIMENTO
  * (bloco injetado pelo auto-context do agent-runner): desperta desejo, mostra o plano,
@@ -135,15 +135,15 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
   if (playbook === "comprar" && carroInteresse && plano?.plano?.parcela) {
     // params[0] vazio → send-whatsapp-cloud põe "tudo bem" (passar "tudo bem" virava "Oi, tudo!" — 14/10 23h)
     template = "reaquecimento_viu_carro"; params = [nome, quem, carroInteresse, fala(plano.plano.parcela)];
-    texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Fiz uma conta rápida no ${carroInteresse} que você viu: dá pra ficar em ${fala(plano.plano.parcela)} por mês, e tem um jeito de derrubar as últimas parcelas com o décimo terceiro. Quer que eu te mostre como?`;
+    texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Fiz uma simulação rápida do ${carroInteresse} que você viu: dá pra ficar em ${fala(plano.plano.parcela)} por mês, e tem um jeito de derrubar as últimas parcelas com o décimo terceiro. Quer que eu te mostre como?`;
   } else if (playbook === "trocar" && carroCliente) {
     template = "reaquecimento_trocar"; params = [nome, quem, carroCliente];
-    texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. O seu ${carroCliente} entra na troca valendo mais do que numa loja comum, e vi uma opção que encaixa no que você procura. Posso te mandar a conta?`;
+    texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. O seu ${carroCliente} entra na troca valendo mais do que numa loja comum, e vi uma opção que encaixa no que você procura. Posso te mandar a simulação?`;
   } else if (playbook === "vender" && carroCliente) {
     template = "reaquecimento_vender"; params = [nome, quem, carroCliente];
     texto = `Oi, ${nome ? nome : "tudo bem"}! Aqui é a ${quem}, da Totex Motors. Já tenho uma referência de valor pro seu ${carroCliente}, bem acima do que loja costuma pagar. Quer que eu te passe?`;
   } else {
-    return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma conta") };
+    return { skipped: await pular(sb, lead.lead_id, "sem carro nem intenção pra abrir com uma simulação") };
   }
 
   // OTIMIZADOR: fora da janela, a variante do touchpoint pode trocar o template fixo (A/B).
@@ -156,6 +156,10 @@ async function abrir(sb: any, lead: { lead_id: string; phone: string; name: stri
       template = variante.name;
     }
   }
+
+  // Vocabulário (Marco, 04/11): nunca "conta" — é "simulação". Os templates antigos da Meta ainda dizem
+  // "conta"; enquanto a versão _v2 (mesmos parâmetros) não for aprovada, o antigo segue valendo.
+  if (!lead.janela_aberta && template && !template.endsWith("_v2") && (await templateAprovado(sb, `${template}_v2`))) template = `${template}_v2`;
 
   let sent: { ok: boolean; via: string; detail?: string };
   if (lead.janela_aberta) {
