@@ -44,7 +44,7 @@ jobs:
       - name: Deploy edge functions (todas)
         run: |
           for i in 1 2 3; do
-            supabase functions deploy --project-ref "$PROJECT_ID" && exit 0
+            supabase functions deploy --project-ref "$PROJECT_ID" --yes && exit 0
             echo "Deploy falhou (tentativa $i/3) — aguardando 30s antes de tentar de novo"
             sleep 30
           done
@@ -55,7 +55,7 @@ jobs:
         if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
         run: |
           supabase link --project-ref "$PROJECT_ID"
-          supabase db push
+          supabase db push --yes
 
       - name: Aviso se migrations foram puladas
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
