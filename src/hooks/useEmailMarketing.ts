@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMarketingTenant } from '@/hooks/useMarketingTenant';
 import { useEffect, useState } from 'react';
 import type {
   EmailTemplate,
@@ -87,8 +88,8 @@ export const useSaveBrevoSettings = () => {
 
 export const useEmailTemplates = () => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-templates', tenantId],
     enabled: !!tenantId,
@@ -108,8 +109,8 @@ export const useEmailTemplates = () => {
 
 export const useEmailTemplate = (id: string | undefined) => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-template', tenantId, id],
     enabled: !!id && !!tenantId,
@@ -209,8 +210,8 @@ export const useDeleteEmailTemplate = () => {
 
 export const useEmailCampaigns = (statusFilter?: EmailCampaignStatus, sourceType: 'campaign' | 'automation' | 'all' = 'campaign') => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-campaigns', tenantId, statusFilter, sourceType],
     enabled: !!tenantId,
@@ -232,8 +233,8 @@ export const useEmailCampaigns = (statusFilter?: EmailCampaignStatus, sourceType
 
 export const useEmailCampaign = (id: string | undefined) => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-campaign', tenantId, id],
     enabled: !!id && !!tenantId,
@@ -526,8 +527,8 @@ export const useEmailCampaignLeads = (
   campaignStatus?: string,
 ) => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-campaign-leads', tenantId, campaignId, statusFilter, page],
     enabled: !!campaignId && !!tenantId,
@@ -589,8 +590,8 @@ export const useEmailAudienceCount = (filters: EmailAudienceFilters) => {
 
 export const useEmailMetrics = () => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-metrics', tenantId],
     enabled: !!tenantId,
@@ -633,8 +634,8 @@ export const useEmailMetrics = () => {
 
 export const useEmailUnsubscribes = (page = 0, pageSize = 50) => {
   // MULTI-TENANT
-  const { teamMember } = useAuth();
-  const tenantId = teamMember?.tenant_id;
+  // MULTI-TENANT: superadmin pode estar vendo outra loja (useMarketingTenant)
+  const { tenantId } = useMarketingTenant();
   return useQuery({
     queryKey: ['email-unsubscribes', tenantId, page],
     enabled: !!tenantId,

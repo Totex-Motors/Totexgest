@@ -8,6 +8,8 @@ import EmailCampaignList from '@/components/email-marketing/EmailCampaignList';
 import EmailCampaignForm from '@/components/email-marketing/EmailCampaignForm';
 import EmailUnsubscribeList from '@/components/email-marketing/EmailUnsubscribeList';
 import MarketingPageHeader from '@/components/marketing/MarketingPageHeader';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useMarketingTenant } from '@/hooks/useMarketingTenant';
 
 export default function EmailMarketingHub() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -15,6 +17,7 @@ export default function EmailMarketingHub() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const currentTab = searchParams.get('tab') || 'campaigns';
+  const marketingLoja = useMarketingTenant();
   const editParam = searchParams.get('edit');
 
   useEffect(() => {
@@ -50,9 +53,20 @@ export default function EmailMarketingHub() {
         <MarketingPageHeader
           eyebrow="Marketing · Email"
           title="Campanhas"
-          description="Dispare emails em massa para listas filtradas ou leads específicos."
+          description={marketingLoja.somenteLeitura
+            ? 'Você está vendo as campanhas de outra loja (só visualização). Pra criar ou disparar, volte pra sua loja.'
+            : 'Dispare emails em massa para listas filtradas ou leads específicos.'}
+          rightAccessory={marketingLoja.isSuperAdmin && marketingLoja.lojas.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Loja:</span>
+              <Select value={marketingLoja.loja} onValueChange={marketingLoja.setLoja}>
+                <SelectTrigger className="h-8 w-[220px] text-sm"><SelectValue placeholder="Escolha a loja" /></SelectTrigger>
+                <SelectContent>{marketingLoja.lojas.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ) : undefined}
           action={
-            currentTab === 'campaigns' ? (
+            currentTab === 'campaigns' && !marketingLoja.somenteLeitura ? (
               <Button
                 size="sm"
                 className="bg-[#BAA05E] hover:bg-[#917D3D] text-white gap-1.5"
