@@ -367,7 +367,7 @@ Deno.serve(async (req: Request) => {
       .eq("tenant_id", tenantId);
 
     // Resolve audience
-    const campaignAudience = (campaign as any).settings?.audience as AudienceCriteria | undefined;
+    const campaignAudience = ((campaign as any).settings?.audience || (campaign as any).audience_filters) as AudienceCriteria | undefined;
     let audience: Recipient[] = [];
     if (audience_override) {
       audience = await resolveAudienceByCriteria(supabase, tenantId, audience_override);
@@ -470,13 +470,7 @@ Deno.serve(async (req: Request) => {
             .select("id")
             .single();
 
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${config.resend_api_key}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+          const payload = JSON.stringify({
               from,
               to: [recipient.email],
               subject,
@@ -495,8 +489,18 @@ Deno.serve(async (req: Request) => {
                 { name: "campaign_id", value: campaign_id },
                 { name: "send_id", value: sendRow?.id || "" },
               ],
-            }),
-          });
+            });
+          // Resend limita ~2 req/s: em 429 espera e tenta de novo (até 3x) em vez de marcar falha.
+          let res: Response = new Response(null, { status: 429 });
+          for (let tentativa = 0; tentativa < 4; tentativa++) {
+            res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${config.resend_api_key}`, "Content-Type": "application/json" },
+              body: payload,
+            });
+            if (res.status !== 429) break;
+            await new Promise((r) => setTimeout(r, 1500 * (tentativa + 1)));
+          }
 
           if (res.ok) {
             const data = await res.json();
@@ -547,7 +551,7 @@ Deno.serve(async (req: Request) => {
           failed++;
         }
 
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 600));
       }
 
       await supabase
