@@ -271,6 +271,18 @@ Deno.serve(async (req) => {
   const nome = brief?.primeiro_nome || "";
   const store = await getNinaExclusiveStore(sb);
 
+  // Cliente de loja parceira que veio do e-mail de reativação (metadata.email_reativacao): a conversa é
+  // da Nina da LOJA, por texto. A ligação automática se apresentaria como Totex e falaria de "carro que
+  // você viu" (Edy, 04/11). Só liga se o cliente pedir (fila manual, requested_by).
+  if (!row.requested_by) {
+    const { data: ld } = await sb.from("leads").select("metadata").eq("id", row.lead_id).maybeSingle();
+    if ((ld?.metadata as any)?.email_reativacao?.loja) {
+      await sb.from("nina_call_queue").update({ status: "cancelled", outcome: "email_reativacao_texto", last_error: null, updated_at: new Date().toISOString() }).eq("id", row.id);
+      log("cancelled: cliente do e-mail de reativação — atendimento por texto como Nina da loja");
+      return json({ id: row.id, status: "cancelled", outcome: "email_reativacao_texto" });
+    }
+  }
+
   if (!canCall) {
     if (row.permission_requested_at && Date.now() - new Date(row.permission_requested_at).getTime() < 7 * 86400_000 && row.status === "queued" && row.attempts === 0 && !canAsk) {
       return fail("expired", "cliente não autorizou a ligação");
