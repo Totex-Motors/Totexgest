@@ -563,11 +563,16 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
   const { data: lead } = await supabase.from("leads").select("tenant_id, metadata").eq("id", leadId).maybeSingle();
   const md = ((lead?.metadata || {}) as Record<string, any>);
   if (md.email_reativacao?.em) return; // já marcado (mesmo texto de novo)
+  const marca = {
+    loja: tenant.name, loja_tenant_id: tenant.id, campanha: base?.utm_campaign || "reativacao", variante, modelo,
+    ano_compra: vars.ano_compra || null, anos: vars.anos || null, base_lead_id: base?.id || null, base_nome: base?.name || null, telefone_bate: telefoneBate, em: now,
+  };
+  // Quando o telefone bate, o lead que respondeu É o cadastro da base (mesma linha): um único update.
+  // (Renata, 05/11 11:50: dois updates na mesma linha, o segundo com o metadata antigo, apagaram a marcação
+  // e a ligação de stand entrou na fila.)
+  const mesmaLinha = !!base && base.id === leadId;
   await supabase.from("leads").update({
-    metadata: { ...md, tem_veiculo_troca: true, email_reativacao: {
-      loja: tenant.name, loja_tenant_id: tenant.id, campanha: base?.utm_campaign || "reativacao", variante, modelo,
-      ano_compra: vars.ano_compra || null, anos: vars.anos || null, base_lead_id: base?.id || null, base_nome: base?.name || null, telefone_bate: telefoneBate, em: now,
-    } },
+    metadata: { ...md, tem_veiculo_troca: true, email_reativacao: marca, ...(mesmaLinha ? { whatsapp_lead_id: leadId, clicou_whatsapp_em: now } : {}) },
     last_interaction_at: now,
   }).eq("id", leadId);
 
@@ -584,7 +589,8 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
     .like("phone", `%${last8}`).in("status", ["queued", "awaiting_permission"]);
 
   if (base) {
-    await supabase.from("leads").update({ metadata: { ...(base.metadata || {}), whatsapp_lead_id: leadId, clicou_whatsapp_em: now } }).eq("id", base.id);
+    // base em outra linha: ela também recebe a marcação (o discador e o agente podem olhar qualquer uma das duas)
+    if (!mesmaLinha) await supabase.from("leads").update({ metadata: { ...(base.metadata || {}), whatsapp_lead_id: leadId, clicou_whatsapp_em: now, email_reativacao: marca } }).eq("id", base.id);
     await supabase.from("email_campaign_leads").update({ clicked_at: now, click_count: 1, status: "clicked", updated_at: now }).eq("lead_id", base.id).is("clicked_at", null);
     const { error: stErr } = await supabase.rpc("base_cardoso_set_stage", { p_lead: base.id, p_stage_name: "Nina em contato" });
     if (stErr) console.warn("[Cloud Webhook] etapa da base:", stErr.message);

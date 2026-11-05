@@ -295,7 +295,9 @@ Deno.serve(async (req) => {
     const pb = brief?.playbook || row.playbook || "descobrir";
     const carroDele = brief?.carro_do_cliente?.fala || brief?.carro_do_cliente?.descricao || null;
     const carroVisto = brief?.carro_interesse_fala || brief?.carro_interesse || null;
-    const marca = ninaBrand(store);
+    // Cliente que veio do e-mail de reativação de uma loja parceira (ligação pedida pelo cliente): a Nina é da LOJA.
+    const lojaEmail = String((brief as any)?.email_reativacao_loja || (await sb.from("leads").select("metadata").eq("id", row.lead_id).maybeSingle()).data?.metadata?.email_reativacao?.loja || "");
+    const marca = lojaEmail || ninaBrand(store);
     const oi = nome ? `Oi, ${nome}! ` : "Oi! ";
     let motivo: string | null = null;
     let assunto: string;
@@ -304,7 +306,7 @@ Deno.serve(async (req) => {
       motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito${carroVisto ? ` e pode encaixar direitinho na troca pelo ${carroVisto}` : " na troca"}. São dois minutos: ano, quilometragem, como ele está, e eu já te digo como ele entra no negócio. 😊`;
     } else if (pb === "vender") {
       assunto = carroDele ? `o seu ${carroDele}` : "a venda do seu carro";
-      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito. Em dois minutos eu te explico como funciona a venda pela Totex e o que faz ele valer mais. 😊`;
+      motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra entender melhor as condições do seu ${carroDele || "carro"}, porque ele nos interessa muito. Em dois minutos eu te explico como funciona a venda pela ${marca} e o que faz ele valer mais. 😊`;
     } else if (pb === "comprar") {
       assunto = carroVisto ? `o ${carroVisto}` : "o carro que você viu";
       motivo = `${oi}Aqui é a Nina, da ${marca}. Vou te pedir pra me deixar te ligar, e já explico o porquê: é pra te passar as condições do ${carroVisto || "carro que você viu"} e combinar o melhor dia pra você ver ele de perto. Rapidinho, dois minutos. 😊`;
