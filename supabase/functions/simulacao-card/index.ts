@@ -125,7 +125,10 @@ Deno.serve(async (req) => {
     if (enviar && imageUrl) {
       const delay = Number((await getIntegrationKey(sb, "SIMULACAO_CARD_DELAY_MS")) || 6000);
       if (delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 20000)));
-      const caption = `Simulação do ${veic?.titulo || carroTitulo} 📊 ${prazo}x de ${brl0(parcela)}. Estimativa do simulador da Cardoso; a condição final é com a Grazi e os bancos.`;
+      // Marco (05/11): deixar claro que é estimativa SEM o CPF e puxar pra Grazi (parcela real no CPF + cupom
+      // de até R$ X no total do financiamento; valor em config GRAZI_CUPOM_DESCONTO_TOTAL_MAX_BRL).
+      const cupomMax = Number((await getIntegrationKey(sb, "GRAZI_CUPOM_DESCONTO_TOTAL_MAX_BRL")) || 10000);
+      const caption = `Simulação do ${veic?.titulo || carroTitulo} 📊 ${prazo}x de ${brl0(parcela)}. É uma estimativa: foi feita sem o seu CPF, então a parcela real pode mudar. A Grazi, nossa financeira, vê a parcela certa no seu CPF e tem um cupom de desconto de até ${brl0(cupomMax)} no total do financiamento.`;
       const s = await callEdge("send-whatsapp-cloud", { action: "send_image", phone, media_url: imageUrl, caption, lead_id: leadId, tenant_id: lead?.tenant_id || tenantId, sent_by: "simulacao_card" });
       envio = s.ok && !s.data?.error ? "enviada" : `falhou: ${JSON.stringify(s.data).slice(0, 160)}`;
     }
