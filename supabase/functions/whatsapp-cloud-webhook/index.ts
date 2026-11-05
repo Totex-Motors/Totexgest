@@ -542,29 +542,36 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
   const t = String(text || "").trim();
   const mA = t.match(/recebi seu e-?mail sobre a troca do meu (.+?)\.?\s*$/i);
   const mB = t.match(/quero saber a fipe do meu (.+?)\.\s*sou cliente/i);
+  // campanha de OFERTA (ex.: carros chineses): "vi no e-mail o GWM Haval H6. Quero saber mais."
+  const mO = t.match(/vi no e-?mail (?:o|a|um|uma)?\s*(.+?)\.\s*quero saber mais/i);
   const lojaTxt = t.match(/sou cliente da ([^.!,]+)/i)?.[1]?.trim() || "";
-  if ((!mA && !mB) || !lojaTxt) return;
-  const modelo = (mA?.[1] || mB?.[1] || "").trim();
-  const variante = mA ? "A" : "B";
+  if ((!mA && !mB && !mO) || !lojaTxt) return;
+  const tipo: "troca" | "fipe" | "oferta" = mO ? "oferta" : mA ? "troca" : "fipe";
+  const carroInteresse = mO ? mO[1].trim() : "";
 
   const { data: tenant } = await supabase.from("tenants").select("id, name").ilike("name", `${lojaTxt}%`).limit(1).maybeSingle();
   if (!tenant?.id) return;
 
   const last8 = phone.slice(-8);
-  const { data: cands } = await supabase.from("leads").select("id, name, phone, metadata, utm_content, utm_campaign")
-    .eq("tenant_id", tenant.id).ilike("utm_campaign", "reativacao%").ilike("metadata->email_vars->>modelo", modelo).limit(50);
+  let q = supabase.from("leads").select("id, name, phone, metadata, utm_content, utm_campaign").eq("tenant_id", tenant.id).not("metadata->base_cardoso", "is", null);
+  q = tipo === "oferta" ? q.ilike("phone", `%${last8}`) : q.ilike("utm_campaign", "reativacao%").ilike("metadata->email_vars->>modelo", mA?.[1]?.trim() || mB?.[1]?.trim() || "");
+  const { data: cands } = await q.limit(50);
   const list = (cands || []) as any[];
   let base = list.find((l) => String(l.phone || "").replace(/\D/g, "").endsWith(last8)) || null;
   const telefoneBate = !!base;
-  if (!base) { const vs = list.filter((l) => !l.utm_content || l.utm_content === variante); if (vs.length === 1) base = vs[0]; }
+  const variante = tipo === "oferta" ? (base?.utm_content || "") : (mA ? "A" : "B");
+  if (!base && tipo !== "oferta") { const vs = list.filter((l) => !l.utm_content || l.utm_content === variante); if (vs.length === 1) base = vs[0]; }
   const vars = (base?.metadata?.email_vars || {}) as Record<string, any>;
+  // "modelo" = carro DELE (troca/fipe vêm do texto; na oferta vem do cadastro da base, se houver)
+  const modelo = tipo === "oferta" ? String(vars.modelo || "") : (mA?.[1] || mB?.[1] || "").trim();
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase.from("leads").select("tenant_id, metadata").eq("id", leadId).maybeSingle();
   const md = ((lead?.metadata || {}) as Record<string, any>);
   if (md.email_reativacao?.em) return; // já marcado (mesmo texto de novo)
   const marca = {
-    loja: tenant.name, loja_tenant_id: tenant.id, campanha: base?.utm_campaign || "reativacao", variante, modelo,
+    tipo, carro_interesse: carroInteresse || null,
+    loja: tenant.name, loja_tenant_id: tenant.id, campanha: base?.utm_campaign || (tipo === "oferta" ? "oferta" : "reativacao"), variante, modelo,
     ano_compra: vars.ano_compra || null, anos: vars.anos || null, base_lead_id: base?.id || null, base_nome: base?.name || null, telefone_bate: telefoneBate, em: now,
   };
   // Quando o telefone bate, o lead que respondeu É o cadastro da base (mesma linha): um único update.
@@ -578,7 +585,7 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
 
   // carro DELE na troca → brief/dialer/agente tratam como TROCA do {modelo}
   const { data: ti } = await supabase.from("trade_in_vehicles").select("id").eq("lead_id", leadId).limit(1);
-  if (!ti?.length) {
+  if (!ti?.length && modelo) {
     // ano_compra é quando ele COMPROU na loja (carro podia ser usado): ano-modelo fica em aberto pro agente perguntar
     await supabase.from("trade_in_vehicles").insert({ tenant_id: lead?.tenant_id || null, lead_id: leadId, modelo, ano: null,
       observacoes: `Veio do e-mail de reativação da ${tenant.name} (variante ${variante})${vars.ano_compra ? `. Comprou na loja em ${vars.ano_compra}` : ""}.` });
@@ -595,7 +602,7 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
     const { error: stErr } = await supabase.rpc("base_cardoso_set_stage", { p_lead: base.id, p_stage_name: "Nina em contato" });
     if (stErr) console.warn("[Cloud Webhook] etapa da base:", stErr.message);
   }
-  console.log(`[Cloud Webhook] clique do e-mail (${tenant.name}, ${modelo}, var ${variante}) → lead ${leadId}${base ? ` ↔ base ${base.id}${telefoneBate ? " (telefone bate)" : ""}` : " (sem par na base)"}`);
+  console.log(`[Cloud Webhook] clique do e-mail (${tenant.name}, ${tipo}, ${carroInteresse || modelo}, var ${variante}) → lead ${leadId}${base ? ` ↔ base ${base.id}${telefoneBate ? " (telefone bate)" : ""}` : " (sem par na base)"}`);
 }
 
 async function matchStoreTenant(supabase: any, text: string): Promise<string | null> {
