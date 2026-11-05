@@ -574,7 +574,8 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
   // carro DELE na troca → brief/dialer/agente tratam como TROCA do {modelo}
   const { data: ti } = await supabase.from("trade_in_vehicles").select("id").eq("lead_id", leadId).limit(1);
   if (!ti?.length) {
-    await supabase.from("trade_in_vehicles").insert({ tenant_id: lead?.tenant_id || null, lead_id: leadId, modelo, ano: vars.ano_compra ? Number(vars.ano_compra) : null,
+    // ano_compra é quando ele COMPROU na loja (carro podia ser usado): ano-modelo fica em aberto pro agente perguntar
+    await supabase.from("trade_in_vehicles").insert({ tenant_id: lead?.tenant_id || null, lead_id: leadId, modelo, ano: null,
       observacoes: `Veio do e-mail de reativação da ${tenant.name} (variante ${variante})${vars.ano_compra ? `. Comprou na loja em ${vars.ano_compra}` : ""}.` });
   }
 

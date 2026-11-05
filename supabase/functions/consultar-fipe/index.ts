@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     body: JSON.stringify(payload),
   });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok || d?.ok === false) return json({ ok: false, erro: d?.error || d?.erro || `fipe-lookup ${r.status}` });
+  if (!r.ok || (d?.ok === false && !d?.precisa_confirmar_modelo)) return json({ ok: false, erro: d?.motivo || d?.error || d?.erro || `fipe-lookup ${r.status}`, instrucao: "Confirme com o cliente marca, modelo, VERSÃO e ANO-MODELO (o ano de compra na loja não é o ano do carro) e tente de novo." });
 
   if (d.precisa_confirmar_modelo) {
     const cands = (d.candidatos || []).slice(0, 5).map((c: any, i: number) => ({
