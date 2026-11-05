@@ -240,6 +240,21 @@ async function buildSessionContextBlock(
     }
   }
 
+  // === MODO E-MAIL DE REATIVAÇÃO (cliente da loja parceira clicou no botão do e-mail da Nina; leads.metadata.email_reativacao) ===
+  {
+    const er = (lead?.metadata as any)?.email_reativacao;
+    if (er?.loja) {
+      const loja = String(er.loja);
+      const assunto = er.variante === "B" ? `quanto vale o ${er.modelo} dele na FIPE hoje` : `que já é hora de trocar o ${er.modelo} dele`;
+      lines.push("", `📧 MODO E-MAIL DE REATIVAÇÃO — este cliente é CLIENTE DA ${loja.toUpperCase()}: comprou um ${er.modelo} lá${er.ano_compra ? ` em ${er.ano_compra}` : ""} e acabou de clicar no botão do e-mail que a Nina da ${loja} mandou (o e-mail falava ${assunto}). Estas regras valem ACIMA da abertura padrão:`);
+      lines.push(`- Você é a Nina, da ${loja}. NÃO diga "Totex Motors" nesta conversa. Carros, simulação e visita são na ${loja}: em consultar_estoque passe loja = "${loja}".`);
+      lines.push(`- NÃO faça a abertura genérica ("que bom que você entrou em contato", "me diz seu nome pra te atender"). ${er.base_nome && er.telefone_bate ? `O nome dele é ${er.base_nome}.` : "Se não souber o nome, pergunte de leve UMA vez, só depois de responder ao que ele pediu."} NÃO pergunte se é troca ou compra: é a TROCA do ${er.modelo} dele por um mais novo.`);
+      lines.push(`- Primeira resposta: diga que é a Nina da ${loja} e entregue o que o e-mail prometeu. Pra puxar a FIPE do ${er.modelo} use consultar_fipe (precisa de marca, modelo e ano; se a tool devolver candidatos, mostre as versões pra ele escolher). Cite a FIPE com o mês de referência ("na tabela FIPE de nov/2026"). A FIPE é tabela pública: NUNCA chame de avaliação, NUNCA diga quanto a loja paga nem quanto o carro dele entra na troca — "o valor dele na troca sai na avaliação na loja, em 15 minutos".`);
+      lines.push(`- Depois: ofereça a simulação de um carro mais novo do estoque da ${loja} com o ${er.modelo} entrando como entrada (consultar_estoque + simular_plano/enviar_simulacao). Parcela só em reais, nunca taxa.`);
+      lines.push(`- Fechamento: visita/avaliação na ${loja} com dia e hora. Ligação só se ELE pedir.`);
+    }
+  }
+
   // === O QUE A LOJA JÁ MANDOU PRA ELE fora deste chat (follow-up, reaquecimento, lembretes) ===
   // O histórico da sessão só tem a conversa com o agente. Mensagem automática que saiu por outro
   // caminho ficava invisível, e o cliente respondia a ela ("Sim") sem o agente saber do quê.

@@ -213,7 +213,12 @@ Deno.serve(async (req) => {
 
     // ── (b) API fipeX: /search dá o preço; expanded enriquece (opcional) ──
     if (!result.fonte && (modeloTxt || marcaTxt)) {
-      const cand = await fipexSearch([marcaTxt, modeloTxt].filter(Boolean).join(" "));
+      // A fipeX ordena por preço e corta no `limit`: "Chevrolet Onix" (203 resultados) devolvia só
+      // anos antigos e o filtro por ano ficava vazio. Com o ano NA BUSCA ela filtra ("Chevrolet Onix 2022"
+      // → 17). Se não achar (ex.: Ka 2023 não existe), cai na busca sem ano pra mostrar candidatos.
+      const qBase = [marcaTxt, modeloTxt].filter(Boolean).join(" ");
+      let cand = ano != null ? await fipexSearch(`${qBase} ${ano}`, 30) : [];
+      if (!cand.length) cand = await fipexSearch(qBase, 40);
       let chosen: FxRec | null = null;
       if (preferSlug) {
         chosen = cand.find((c) => c.model_slug === preferSlug && (ano == null || c.ano_modelo === ano)) || cand.find((c) => c.model_slug === preferSlug) || null;

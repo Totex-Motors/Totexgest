@@ -301,6 +301,11 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     }
   }
 
+  // Clique no botão do e-mail de reativação da loja parceira (texto pronto "Sou cliente da Cardoso…")
+  if (finalLeadId) {
+    try { await absorbEmailClick(supabase, finalLeadId, cleanPhone, content); } catch (e) { console.error("[Cloud Webhook] clique do e-mail:", (e as Error).message); }
+  }
+
   // Daqui pra frente o tenant é o do lead ROTEADO (não o da instância oficial),
   // pra mensagem, inbox e agente caírem na loja certa.
   tenantId = routedTenantId;
@@ -521,6 +526,70 @@ async function absorbMarketplaceClick(supabase: any, phone: string, contactName:
     }).eq("id", orphan.id);
     console.log(`[Cloud Webhook] clique do site ${orphan.id} identificado: ${phone}`);
   }
+}
+
+// ==================== CLIQUE NO E-MAIL (reativação da base de uma loja parceira) ====================
+// O e-mail da Nina (ex.: Cardoso Veículos) tem o botão do WhatsApp com texto pronto:
+//   A: "Oi, Nina! Sou cliente da Cardoso e recebi seu e-mail sobre a troca do meu Ka."
+//   B: "Oi, Nina! Quero saber a FIPE do meu Ka. Sou cliente da Cardoso."
+// O número é o oficial (matriz): o lead nascia como "stand", a ligação automática de stand entrava
+// na fila e a Nina abria com o roteiro genérico "da Totex Motors" (Edy, 04/11 18:46). Aqui:
+// marca o lead (metadata.email_reativacao) pro agente saber que é cliente da loja e qual carro,
+// registra o carro dele na troca, liga ao cadastro da base, cancela a ligação de stand e anda o
+// funil da campanha ("Nina em contato"). A base pode ter outro telefone (família): o vínculo é
+// certo quando o telefone bate, senão vale o modelo quando é único na variante.
+async function absorbEmailClick(supabase: any, leadId: string, phone: string, text: string): Promise<void> {
+  const t = String(text || "").trim();
+  const mA = t.match(/recebi seu e-?mail sobre a troca do meu (.+?)\.?\s*$/i);
+  const mB = t.match(/quero saber a fipe do meu (.+?)\.\s*sou cliente/i);
+  const lojaTxt = t.match(/sou cliente da ([^.!,]+)/i)?.[1]?.trim() || "";
+  if ((!mA && !mB) || !lojaTxt) return;
+  const modelo = (mA?.[1] || mB?.[1] || "").trim();
+  const variante = mA ? "A" : "B";
+
+  const { data: tenant } = await supabase.from("tenants").select("id, name").ilike("name", `${lojaTxt}%`).limit(1).maybeSingle();
+  if (!tenant?.id) return;
+
+  const last8 = phone.slice(-8);
+  const { data: cands } = await supabase.from("leads").select("id, name, phone, metadata, utm_content, utm_campaign")
+    .eq("tenant_id", tenant.id).ilike("utm_campaign", "reativacao%").ilike("metadata->email_vars->>modelo", modelo).limit(50);
+  const list = (cands || []) as any[];
+  let base = list.find((l) => String(l.phone || "").replace(/\D/g, "").endsWith(last8)) || null;
+  const telefoneBate = !!base;
+  if (!base) { const vs = list.filter((l) => !l.utm_content || l.utm_content === variante); if (vs.length === 1) base = vs[0]; }
+  const vars = (base?.metadata?.email_vars || {}) as Record<string, any>;
+  const now = new Date().toISOString();
+
+  const { data: lead } = await supabase.from("leads").select("tenant_id, metadata").eq("id", leadId).maybeSingle();
+  const md = ((lead?.metadata || {}) as Record<string, any>);
+  if (md.email_reativacao?.em) return; // já marcado (mesmo texto de novo)
+  await supabase.from("leads").update({
+    metadata: { ...md, tem_veiculo_troca: true, email_reativacao: {
+      loja: tenant.name, loja_tenant_id: tenant.id, campanha: base?.utm_campaign || "reativacao", variante, modelo,
+      ano_compra: vars.ano_compra || null, anos: vars.anos || null, base_lead_id: base?.id || null, base_nome: base?.name || null, telefone_bate: telefoneBate, em: now,
+    } },
+    last_interaction_at: now,
+  }).eq("id", leadId);
+
+  // carro DELE na troca → brief/dialer/agente tratam como TROCA do {modelo}
+  const { data: ti } = await supabase.from("trade_in_vehicles").select("id").eq("lead_id", leadId).limit(1);
+  if (!ti?.length) {
+    // ano_compra é quando ele COMPROU na loja (carro podia ser usado): ano-modelo fica em aberto pro agente perguntar
+    await supabase.from("trade_in_vehicles").insert({ tenant_id: lead?.tenant_id || null, lead_id: leadId, modelo, ano: null,
+      observacoes: `Veio do e-mail de reativação da ${tenant.name} (variante ${variante})${vars.ano_compra ? `. Comprou na loja em ${vars.ano_compra}` : ""}.` });
+  }
+
+  // a ligação automática de stand não serve aqui (se apresenta como Totex e fala de "carro que você viu")
+  await supabase.from("nina_call_queue").update({ status: "cancelled", outcome: "email_reativacao_texto", last_error: null, updated_at: now })
+    .like("phone", `%${last8}`).in("status", ["queued", "awaiting_permission"]);
+
+  if (base) {
+    await supabase.from("leads").update({ metadata: { ...(base.metadata || {}), whatsapp_lead_id: leadId, clicou_whatsapp_em: now } }).eq("id", base.id);
+    await supabase.from("email_campaign_leads").update({ clicked_at: now, click_count: 1, status: "clicked", updated_at: now }).eq("lead_id", base.id).is("clicked_at", null);
+    const { error: stErr } = await supabase.rpc("base_cardoso_set_stage", { p_lead: base.id, p_stage_name: "Nina em contato" });
+    if (stErr) console.warn("[Cloud Webhook] etapa da base:", stErr.message);
+  }
+  console.log(`[Cloud Webhook] clique do e-mail (${tenant.name}, ${modelo}, var ${variante}) → lead ${leadId}${base ? ` ↔ base ${base.id}${telefoneBate ? " (telefone bate)" : ""}` : " (sem par na base)"}`);
 }
 
 async function matchStoreTenant(supabase: any, text: string): Promise<string | null> {
