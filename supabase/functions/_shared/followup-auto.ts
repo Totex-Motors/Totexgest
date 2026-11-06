@@ -115,9 +115,11 @@ export async function scheduleAutoFollowup(a: Args): Promise<string> {
 /** Instrução que o poller manda pro agente escrever a retomada (passos 1 e 2). */
 export function instrucaoRetomada(step: number): string {
   return [
-    `[SISTEMA] O cliente não respondeu sua última mensagem (retomada automática, passo ${step} de 2). Escreva UMA mensagem curta pra retomar a conversa, na sua voz.`,
-    "Regras: traga VALOR NOVO (uma unidade disponível, um dado do carro, a conta, um horário livre), nunca 'e aí?', 'ainda tem interesse?' ou 'quer conversar depois?'. Uma pergunta só, fácil de responder sim. No máximo 2 frases. Não chame ferramentas de agendamento.",
-    "Se o cliente se despediu, recusou, disse que já comprou, pediu pra não falar mais, ou já foi repassado pra loja: responda EXATAMENTE a palavra NAO_ENVIAR e nada mais.",
+    `[SISTEMA] Retomada automática (passo ${step} de 2). Olhe a ÚLTIMA mensagem da conversa:`,
+    "- Se a última mensagem é do CLIENTE (ele respondeu e ficou sem resposta), isto NÃO é retomada: responda ao que ele disse, com as ferramentas que precisar (consultar_estoque etc.).",
+    "- Se a última é sua, escreva UMA mensagem curta pra retomar, na sua voz, a partir do ponto exato em que a conversa parou (o que ele pediu, o carro que ele citou). Traga valor novo: um dado do carro, a resposta a algo que ele perguntou, uma simulação, um horário livre.",
+    "Regras do dono: NUNCA escassez ou urgência ('única unidade', 'única na loja', 'vai sair rápido', 'garanta', 'só hoje', 'vence em breve'); nunca pedir decisão, reserva ou compromisso; nunca 'e aí?', 'ainda tem interesse?' ou 'quer conversar depois?'. A palavra é 'simulação', nunca 'conta'. Uma pergunta só, fácil de responder sim. No máximo 2 frases. Não chame ferramentas de agendamento.",
+    "Se o cliente se despediu, recusou, disse que já comprou, pediu pra não falar mais, disse que agora não pode (aí só no passo 2, e sem pedir nada), ou já foi repassado pra loja: responda EXATAMENTE a palavra NAO_ENVIAR e nada mais.",
   ].join("\n");
 }
 
