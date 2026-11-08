@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { FICHA_HTML, PIPELINE_HTML, UI_CSP, UI_MIME, UI_URI_FICHA, UI_URI_PIPELINE } from './_lib/ui.js';
 
 // SEGUNDO CÉREBRO (MCP) — função serverless auto-contida (Vercel).
 // Um único handler Node, sem Express, sem imports do próprio projeto: evita o
@@ -27,7 +28,8 @@ type TenantContext = z.infer<typeof contextSchema>;
 type McpRpc =
   | 'mcp_context' | 'mcp_resumo_operacao' | 'mcp_o_que_esta_atrasado' | 'mcp_aprovacoes_pendentes'
   | 'mcp_intermediacao_repasse' | 'mcp_criar_tarefa' | 'mcp_concluir_tarefa' | 'mcp_decidir_aprovacao'
-  | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup';
+  | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup'
+  | 'mcp_ficha_lead' | 'mcp_pipeline_do_dia';
 
 async function verifyToken(token: string) {
   // O servidor OAuth do Supabase não amarra o token ao recurso (sem RFC 8707),
@@ -67,6 +69,13 @@ function rpcClient(token: string) {
 
 const asText = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 const asFail = (msg: string) => ({ ...asText({ error: msg }), isError: true });
+// Resultado com tela: o texto vai pro modelo, o structuredContent vai pro iframe da tela.
+const asView = (value: Record<string, unknown>) => ({ ...asText(value), structuredContent: value });
+
+// MCP Apps: a ferramenta aponta pro recurso ui:// que o Claude renderiza num iframe.
+// `ui.resourceUri` é a chave atual; `ui/resourceUri` é a antiga (hosts mais velhos).
+const uiToolMeta = (resourceUri: string) => ({ ui: { resourceUri }, 'ui/resourceUri': resourceUri });
+const uiResourceMeta = { ui: { csp: UI_CSP, prefersBorder: true } };
 
 function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) {
   const server = new McpServer({ name: 'totexgest-segundo-cerebro', version: '1.0.0' }, {
@@ -102,6 +111,41 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ termo }) => {
     try { return asText(await rpc('mcp_buscar_lead', { p_termo: termo })); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
+
+  // ─── Telas (MCP Apps) ──────────────────────────────────────────────────────
+  server.registerResource('ficha_lead_view', UI_URI_FICHA,
+    { title: 'Ficha do lead', description: 'Tela da ficha do lead (Totexgest).', mimeType: UI_MIME, _meta: uiResourceMeta },
+    async () => ({ contents: [{ uri: UI_URI_FICHA, mimeType: UI_MIME, text: FICHA_HTML, _meta: uiResourceMeta }] }));
+  server.registerResource('pipeline_dia_view', UI_URI_PIPELINE,
+    { title: 'Pipeline do dia', description: 'Tela do pipeline do dia (Totexgest).', mimeType: UI_MIME, _meta: uiResourceMeta },
+    async () => ({ contents: [{ uri: UI_URI_PIPELINE, mimeType: UI_MIME, text: PIPELINE_HTML, _meta: uiResourceMeta }] }));
+
+  server.registerTool('ficha_lead', {
+    title: 'Ficha do lead',
+    description: 'Abre a FICHA COMPLETA de um lead numa tela: contato, etapa, vendedor, carro de interesse e de troca, ' +
+      'negócios, tarefas, últimas mensagens do WhatsApp, histórico (mesclagens, código antigo, e-mail de reativação) e ações da Nina. ' +
+      'Aceita código (L000123 ou só o número), nome ou telefone. Se houver vários, devolve a lista pra escolher. ' +
+      'Prefira esta ferramenta a buscar_lead quando o usuário quiser VER o lead; resuma em 2-3 linhas o que importa e deixe a tela mostrar o resto.',
+    inputSchema: { termo: z.string().trim().min(2).max(120).describe('Código (L000123), nome ou telefone do lead') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_FICHA),
+  }, async ({ termo }) => {
+    try { return asView(await rpc('mcp_ficha_lead', { p_termo: termo }) as Record<string, unknown>); }
+    catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
+
+  server.registerTool('pipeline_do_dia', {
+    title: 'Pipeline do dia',
+    description: 'Mostra numa tela o PIPELINE DE HOJE da loja: resumo do dia (novos leads, quem respondeu, cards movidos, ganhos, ' +
+      'tarefas e atrasadas), kanban por etapa com os cards mais recentes, fila do playbook (quem precisa de mensagem/ligação hoje), ' +
+      'agenda de hoje, atrasadas e novos leads. Use quando o usuário pedir "pipeline", "como está o dia", "o que tenho pra hoje", "kanban". ' +
+      'Destaque em texto só o que pede ação (fila, atrasadas, quem respondeu); a tela mostra o restante.',
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_PIPELINE),
+  }, async () => {
+    try { return asView(await rpc('mcp_pipeline_do_dia') as Record<string, unknown>); }
+    catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
   });
 
   if (context.can_write) {
