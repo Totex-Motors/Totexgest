@@ -19,6 +19,18 @@ cupom e agendamento. No direct ela **não** dá número de parcela, **não** dá
 troca (trava inviolável), **não** fala taxa, **não** usa escassez e diz "simulação",
 nunca "conta". Propaganda, pitch, sorteio, conta da própria rede → `[SKIP]` (nada sai).
 
+## Comentários em post: social seller, não vendedora
+Quem comenta nem sempre quer comprar. A Nina responde **todo** comentário em público, no
+tom da pessoa e com algo específico do post (elogio → agradece e puxa papo; marcou amigo →
+entra na brincadeira; dúvida → responde curto, preço pode; crítica → acolhe e chama pro
+direct). O direct (private reply) só abre com sinal claro de compra ("quanto tá?", "quero",
+"tenho um carro pra trocar"). Formato que o código espera: linha `PÚBLICO: …` + (opcional)
+direct; `[SKIP]` pra spam, propaganda e contas da rede. Markdown e linhas `---` são
+removidos no código (`sanitizeIgText`), o Instagram não formata nada.
+
+Modo teste: com `ig_agent_test_allowlist` ativa o agente recebe `modo_teste` no contexto e
+responde o dono mesmo que a conta pareça "da rede" (senão dava `[SKIP]` no Marco).
+
 ## Peças
 | Peça | Onde |
 |---|---|
