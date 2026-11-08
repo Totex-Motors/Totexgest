@@ -18,6 +18,9 @@ import { CreateLeadOrDealModal } from "@/components/sales/CreateLeadOrDealModal"
 import { useSalesLeads, useLeadsCountByStage } from "@/hooks/useSalesLeads";
 import { useAtivarLeadsEmMassa } from "@/hooks/useSalesWorkflow";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Users,
@@ -59,6 +62,15 @@ const SalesLeads = () => {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"score" | "recent">("score");
   const [showHotOnly, setShowHotOnly] = useState(searchParams.get("hot") === "true");
+  // Loja (superadmin enxerga todas as lojas; sem isso a lista misturava Cardoso, Totex, PG…)
+  const { teamMember, isSuperAdmin } = useAuth();
+  const [loja, setLojaState] = useState<string>(() => { try { return localStorage.getItem("leads_loja") || ""; } catch { return ""; } });
+  const setLoja = (v: string) => { const id = v === "__todas__" ? "" : v; try { localStorage.setItem("leads_loja", id); } catch { /* ignore */ } setLojaState(id); setPage(1); };
+  const { data: lojas = [] } = useQuery({
+    queryKey: ["leads-lojas"], enabled: isSuperAdmin, staleTime: 300_000,
+    queryFn: async () => { const { data } = await supabase.from("tenants").select("id, name").order("name"); return (data || []) as { id: string; name: string }[]; },
+  });
+  const lojaNome = useMemo(() => Object.fromEntries(lojas.map((l) => [l.id, l.name])), [lojas]);
   const [period, setPeriod] = useState<"all" | "today" | "7d">(
     (searchParams.get("period") as "all" | "today" | "7d") || "all"
   );
@@ -96,6 +108,7 @@ const SalesLeads = () => {
   };
 
   const filters = useMemo(() => ({
+    tenant_id: isSuperAdmin ? (loja || undefined) : undefined,
     sales_stage: selectedStage !== "all" ? selectedStage : undefined,
     search: search || undefined,
     min_score: showHotOnly ? 70 : undefined,
@@ -103,7 +116,7 @@ const SalesLeads = () => {
     lead_kind: kind,
     page,
     pageSize: 50,
-  }), [selectedStage, search, showHotOnly, createdAfter, kind, page]);
+  }), [selectedStage, search, showHotOnly, createdAfter, kind, page, isSuperAdmin, loja]);
 
   const { data: leadsData, isLoading, refetch } = useSalesLeads(filters);
   const leads = leadsData?.leads || [];
@@ -169,6 +182,15 @@ const SalesLeads = () => {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {isSuperAdmin && lojas.length > 0 && (
+              <Select value={loja || "__todas__"} onValueChange={setLoja}>
+                <SelectTrigger className="h-9 w-[200px] text-sm"><SelectValue placeholder="Loja" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todas__">Todas as lojas</SelectItem>
+                  {lojas.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant={showHotOnly ? "default" : "outline"}
               size="sm"
@@ -224,8 +246,14 @@ const SalesLeads = () => {
               variant="outline"
               size="sm"
               onClick={async () => {
+                // Só funciona na própria loja (a função do banco usa a loja do usuário logado)
+                if (isSuperAdmin && loja && teamMember?.tenant_id && loja !== teamMember.tenant_id) {
+                  toast({ title: "Escolha a sua loja", description: `"Ativar no Playbook" só vale pra leads da sua própria loja (${lojaNome[teamMember.tenant_id] || "a sua"}). Selecione ela no filtro de loja.`, variant: "destructive" });
+                  return;
+                }
                 // Pega os primeiros 20 leads em AGUARDAR para ativar
                 const leadsParaAtivar = sortedLeads
+                  .filter((l: any) => !isSuperAdmin || !teamMember?.tenant_id || l.tenant_id === teamMember.tenant_id)
                   .filter((l: any) => l.acao_de_hoje === 'AGUARDAR' || !l.acao_de_hoje)
                   .slice(0, 20)
                   .map((l: any) => l.id);
@@ -369,8 +397,11 @@ const SalesLeads = () => {
               : "space-y-3"
           )}>
             {sortedLeads.map((lead) => (
+              <div key={lead.id} className="relative">
+                {isSuperAdmin && !loja && (lead as any).tenant_id && lojaNome[(lead as any).tenant_id] && (
+                  <Badge variant="secondary" className="absolute right-3 top-3 z-10 text-[10px]">{lojaNome[(lead as any).tenant_id]}</Badge>
+                )}
               <LeadCard
-                key={lead.id}
                 lead={lead}
                 compact={viewMode === "list"}
                 onView={() => handleLeadClick(lead)}
@@ -379,6 +410,7 @@ const SalesLeads = () => {
                 showScore
                 showBANT={viewMode === "grid"}
               />
+              </div>
             ))}
           </div>
         ) : (
