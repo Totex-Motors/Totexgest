@@ -645,6 +645,8 @@ export interface UpdateLeadSalesInput {
 // =====================================================
 
 export interface SalesLeadFilters {
+  /** superadmin: limita a uma loja (tenant); vazio = todas as lojas que ele enxerga */
+  tenant_id?: string;
   sales_stage?: SalesStage;
   sales_rep_id?: string;
   min_score?: number;

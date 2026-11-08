@@ -27,6 +27,7 @@ export const useSalesLeads = (filters?: SalesLeadFilters & { page?: number; page
       // CARRO mostra vendedor (captação) e comprador; franqueado e contato (decisor/
       // sócio) ficam fora. 'all' libera tudo (uso administrativo).
       const kind = filters?.lead_kind;
+      if (filters?.tenant_id) query = query.eq('tenant_id', filters.tenant_id);
       if (kind && kind !== 'all') query = query.eq('lead_kind', kind);
       else if (kind !== 'all') query = query.in('lead_kind', ['seller', 'buyer']);
       if (filters?.sales_stage) {
