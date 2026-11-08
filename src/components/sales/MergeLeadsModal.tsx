@@ -335,7 +335,7 @@ export function MergeLeadsModal({ open, onOpenChange, lead }: MergeLeadsModalPro
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm">{lead.name}</p>
+                        <p className="font-medium text-sm">{lead.name}{(lead as any).codigo ? <span className="ml-2 font-mono text-xs text-muted-foreground">{(lead as any).codigo}</span> : null}</p>
                         {getStageBadge(lead.etapa_funil || lead.sales_stage)}
                         <Badge variant="outline" className="text-xs">Lead atual</Badge>
                       </div>
@@ -504,7 +504,7 @@ export function MergeLeadsModal({ open, onOpenChange, lead }: MergeLeadsModalPro
                               </Avatar>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium text-sm truncate">{dup.name}</p>
+                                  <p className="font-medium text-sm truncate">{dup.name}{(dup as any).codigo ? <span className="ml-2 font-mono text-xs text-muted-foreground">{(dup as any).codigo}</span> : null}</p>
                                   {getStageBadge(dup.etapa_funil || dup.sales_stage)}
                                 </div>
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">

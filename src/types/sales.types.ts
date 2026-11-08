@@ -169,6 +169,10 @@ export function calculateSPINScore(spin: SPINQualification): number {
 
 export interface SalesLead {
   id: string;
+  /** Número de atendimento por loja (L000123), atribuído na criação; sobrevive à mesclagem. */
+  codigo?: string;
+  /** Códigos dos leads que foram mesclados neste. */
+  codigos_antigos?: string[];
   name: string;
   email?: string;
   phone?: string;
