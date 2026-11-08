@@ -242,8 +242,8 @@ const SalesLeads = () => {
                     description: "Os leads agora aparecem no 'Meu Dia' para ação."
                   });
                   refetch();
-                } catch (error) {
-                  toast({ title: "Erro ao ativar leads", variant: "destructive" });
+                } catch (error: any) {
+                  toast({ title: "Erro ao ativar leads", description: error?.message || String(error), variant: "destructive" });
                 }
               }}
               disabled={ativarEmMassa.isPending}
