@@ -803,6 +803,11 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <h1 className="text-2xl font-bold text-foreground" data-sensitive="name">{lead.name}</h1>
+                  {(lead as any).codigo && (
+                    <Badge variant="outline" className="font-mono text-xs" title="Número do atendimento">
+                      <Hash className="h-3 w-3 mr-0.5" />{(lead as any).codigo}
+                    </Badge>
+                  )}
                   {/* Star toggle */}
                   <button
                     onClick={() => {
@@ -1048,6 +1053,14 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                     <Clock className="h-3.5 w-3.5" />
                     <span>Lead há {daysAsLead} dias</span>
                   </div>
+                  {Array.isArray((lead as any).metadata?.mesclado_de) && (lead as any).metadata.mesclado_de.length > 0 && (
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground" title="Cadastros duplicados que foram unidos neste lead">
+                      <Users className="h-3.5 w-3.5" />
+                      <span>
+                        Mesclado: {(lead as any).metadata.mesclado_de.map((m: any) => `${m.codigo || "lead"} (${m.nome || m.telefone || "?"}${m.em ? `, ${new Date(m.em).toLocaleDateString("pt-BR")}` : ""})`).join(" · ")}
+                      </span>
+                    </div>
+                  )}
                   {/* Responsável - Clicável para atribuir */}
                   <Popover open={isResponsavelPopoverOpen} onOpenChange={setIsResponsavelPopoverOpen}>
                     <PopoverTrigger asChild>

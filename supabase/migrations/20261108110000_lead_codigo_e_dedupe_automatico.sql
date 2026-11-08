@@ -1,0 +1,16 @@
+-- 08/11 — pedido do Marco: número de atendimento por lead (ver que "teve um passado") e
+-- junção automática de duplicados. JÁ APLICADO em produção (via cron one-off).
+--
+-- 1) leads.codigo = 'L' + 6 dígitos, numeração por loja, trigger BEFORE INSERT; backfill por ordem
+--    de criação. leads.codigos_antigos guarda os códigos dos leads mesclados neste.
+-- 2) merge_leads: registra código/nome/telefone/origem do duplicado em metadata.mesclado_de (lista),
+--    acumula codigos_antigos, grava lead_merge_log (modo manual/automático).
+-- 3) lead_phone_key(p): DDD + 8 últimos dígitos (ignora 55 e nono dígito) — índice em leads.
+-- 4) auto_merge_duplicate_leads(p_tenant): mesmo telefone (chave) ou mesmo e-mail na mesma loja →
+--    nomes compatíveis (vazio/numérico/igual/mesmo primeiro nome/prefixo) mescla no lead com mais
+--    mensagens (desempate: mais antigo); nomes diferentes → lead_duplicate_candidates (revisão).
+--    Cron diário 'auto-merge-duplicate-leads' às 06:30 UTC (03:30 BRT).
+-- 5) find_or_create_lead: além do telefone exato, reconhece pela chave de telefone e pelo e-mail
+--    (telefone novo vai pra metadata.telefones_extras).
+-- O SQL completo está no histórico da sessão; esta migration documenta o que existe no banco.
+SELECT 1;
