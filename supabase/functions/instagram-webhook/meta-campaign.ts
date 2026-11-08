@@ -1432,8 +1432,12 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   // Nome real + bio (cache → Business Discovery) — "Opaa Dra. Rosa!" + contexto do negócio
   const profile = await fetchCommenterProfile(supabase, args.username, tenantId, account);
 
+  // Com a Nina do Instagram ligada (IG_NINA_AGENT_SLUG) é ela quem faz a triagem do
+  // comentário; senão o legado. (Na Totex o legado nem existia → agent-runner 404.)
+  const triageSlug = (await getColdDmAgentSlug(supabase, tenantId)) || "ig-primeiro-contato";
+  if (triageSlug !== "ig-primeiro-contato" && await igNinaIgnores(supabase, args.username, tenantId)) return;
   const run = await runAgent({
-    agentSlug: "ig-primeiro-contato",
+    agentSlug: triageSlug,
     tenantId,
     sessionId,
     message: `[COMENTÁRIO no post] ${args.text}`,
@@ -1465,9 +1469,11 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   const text = dmText;
   if (!text) return;
 
-  // Envia como Private Reply (abre a janela)
-  if (!account?.page_access_token) {
-    console.error("triage: sem page_access_token — private reply impossível, DM não enviada");
+  // Envia como Private Reply (abre a janela). Instagram Login (graph.instagram.com) ou
+  // página do Facebook — o que a conta tiver (antes exigia page token e a Totex não tem).
+  const prEndpoint = resolveSendEndpoint(account);
+  if (!prEndpoint) {
+    console.error("triage: conta sem credencial de envio — private reply impossível, DM não enviada");
     return;
   }
 
@@ -1476,13 +1482,13 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   // Então a 1ª DM vai INTEIRA numa mensagem só; o split fica pras respostas (janela aberta).
   const fullDm = splitAgentText(text, Infinity).join("\n\n");
   const sendPrivateReply = () =>
-    fetch(`${GRAPH}/${account.facebook_page_id}/messages`, {
+    fetch(prEndpoint.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         recipient: { comment_id: args.commentId },
         message: { text: fullDm },
-        access_token: account.page_access_token,
+        access_token: prEndpoint.token,
       }),
     });
   let sendRes = await sendPrivateReply();
