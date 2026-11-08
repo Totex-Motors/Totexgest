@@ -41,6 +41,10 @@ Duas ferramentas abrem uma **tela** na conversa (Claude Desktop / claude.ai), em
 |---|---|---|
 | `ficha_lead` (código `L000123`, nome ou telefone) | `mcp_ficha_lead` | `ui://totexgest/ficha-lead.html` — contato, etapa, negociação (carro de interesse/troca), negócios, tarefas, últimas mensagens do WhatsApp, histórico (mesclagens, código antigo, e-mail de reativação), ações da Nina |
 | `pipeline_do_dia` | `mcp_pipeline_do_dia` | `ui://totexgest/pipeline-dia.html` — resumo do dia, kanban por etapa, fila do playbook, agenda de hoje, atrasadas, novos leads. Clicar num card abre a ficha na mesma tela |
+| `inbox` (canal, filtro, busca) e `conversa` (canal, id) | `mcp_inbox`, `mcp_conversa` | `ui://totexgest/inbox.html` — conversas do WhatsApp **oficial** e DMs do Instagram (quem aguarda resposta, janela de 24h, Nina), chat completo e caixa de resposta |
+| `responder` (canal, id, texto) + `envio_status` | `mcp_responder`, `mcp_envio_status` | sem tela — enfileira o envio pelas edge functions oficiais (`send-whatsapp-cloud` / `instagram-send-dm`) via pg_net com o token interno; a tela do inbox usa e confirma com `envio_status`. Só dentro da janela de 24h da Meta. **Nunca UAZAPI** |
+| `agenda_semana` (inicio) | `mcp_agenda_semana` | `ui://totexgest/agenda-semana.html` — segunda a domingo, navega entre semanas, clica no lead e abre a ficha |
+| `ranking_time` (periodo) | `mcp_ranking_time` | `ui://totexgest/ranking.html` — vendas, valor, abertos, perdidas, leads novos, responderam, tarefas feitas/atrasadas por vendedor |
 
 Como funciona: a ferramenta devolve `structuredContent` + `_meta.ui.resourceUri`; o Claude lê o
 recurso (HTML em `api/_lib/ui.ts`, mimeType `text/html;profile=mcp-app`) e abre num iframe

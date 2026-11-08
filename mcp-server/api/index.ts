@@ -3,7 +3,10 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { FICHA_HTML, PIPELINE_HTML, UI_CSP, UI_MIME, UI_URI_FICHA, UI_URI_PIPELINE } from './_lib/ui.js';
+import {
+  AGENDA_HTML, FICHA_HTML, INBOX_HTML, PIPELINE_HTML, RANKING_HTML, UI_CSP, UI_MIME,
+  UI_URI_AGENDA, UI_URI_FICHA, UI_URI_INBOX, UI_URI_PIPELINE, UI_URI_RANKING,
+} from './_lib/ui.js';
 
 // SEGUNDO CÉREBRO (MCP) — função serverless auto-contida (Vercel).
 // Um único handler Node, sem Express, sem imports do próprio projeto: evita o
@@ -29,7 +32,8 @@ type McpRpc =
   | 'mcp_context' | 'mcp_resumo_operacao' | 'mcp_o_que_esta_atrasado' | 'mcp_aprovacoes_pendentes'
   | 'mcp_intermediacao_repasse' | 'mcp_criar_tarefa' | 'mcp_concluir_tarefa' | 'mcp_decidir_aprovacao'
   | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup'
-  | 'mcp_ficha_lead' | 'mcp_pipeline_do_dia';
+  | 'mcp_ficha_lead' | 'mcp_pipeline_do_dia' | 'mcp_inbox' | 'mcp_conversa' | 'mcp_responder' | 'mcp_envio_status'
+  | 'mcp_agenda_semana';
 
 async function verifyToken(token: string) {
   // O servidor OAuth do Supabase não amarra o token ao recurso (sem RFC 8707),
@@ -98,11 +102,14 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
   read('agenda_hoje', 'Reuniões e atividades agendadas para hoje (horário, responsável, se já concluída).', 'mcp_agenda_hoje');
 
   server.registerTool('ranking_time', {
-    description: 'Ranking dos vendedores no período: vendas ganhas, valor, em aberto e perdidas.',
+    title: 'Ranking do time',
+    description: 'Mostra numa tela o ranking dos vendedores no período (semana/mês/tudo): vendas ganhas, valor, em aberto, perdidas, ' +
+      'leads novos, leads que responderam, tarefas feitas e atrasadas. Use quando pedirem "ranking", "quem vendeu mais", "como está o time".',
     inputSchema: { periodo: z.enum(['week', 'month', 'all']).default('month') },
     annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_RANKING),
   }, async ({ periodo }) => {
-    try { return asText(await rpc('mcp_ranking_time', { p_period: periodo })); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+    try { return asView(await rpc('mcp_ranking_time', { p_period: periodo }) as Record<string, unknown>); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
   });
 
   server.registerTool('buscar_lead', {
@@ -114,12 +121,44 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
   });
 
   // ─── Telas (MCP Apps) ──────────────────────────────────────────────────────
-  server.registerResource('ficha_lead_view', UI_URI_FICHA,
-    { title: 'Ficha do lead', description: 'Tela da ficha do lead (Totexgest).', mimeType: UI_MIME, _meta: uiResourceMeta },
-    async () => ({ contents: [{ uri: UI_URI_FICHA, mimeType: UI_MIME, text: FICHA_HTML, _meta: uiResourceMeta }] }));
-  server.registerResource('pipeline_dia_view', UI_URI_PIPELINE,
-    { title: 'Pipeline do dia', description: 'Tela do pipeline do dia (Totexgest).', mimeType: UI_MIME, _meta: uiResourceMeta },
-    async () => ({ contents: [{ uri: UI_URI_PIPELINE, mimeType: UI_MIME, text: PIPELINE_HTML, _meta: uiResourceMeta }] }));
+  const view = (name: string, uri: string, title: string, html: string) =>
+    server.registerResource(name, uri, { title, description: `Tela "${title}" do Totexgest.`, mimeType: UI_MIME, _meta: uiResourceMeta },
+      async () => ({ contents: [{ uri, mimeType: UI_MIME, text: html, _meta: uiResourceMeta }] }));
+  view('ficha_lead_view', UI_URI_FICHA, 'Ficha do lead', FICHA_HTML);
+  view('pipeline_dia_view', UI_URI_PIPELINE, 'Pipeline do dia', PIPELINE_HTML);
+  view('inbox_view', UI_URI_INBOX, 'Inbox', INBOX_HTML);
+  view('agenda_semana_view', UI_URI_AGENDA, 'Agenda da semana', AGENDA_HTML);
+  view('ranking_view', UI_URI_RANKING, 'Ranking do time', RANKING_HTML);
+
+  server.registerTool('inbox', {
+    title: 'Inbox (WhatsApp + Instagram)',
+    description: 'Abre numa tela o INBOX da loja: conversas do WhatsApp oficial e DMs do Instagram, com quem está aguardando resposta, ' +
+      'janela de 24h aberta ou não, última mensagem, vendedor e o que a Nina fez. Filtros: canal (todos/whatsapp/instagram), ' +
+      'filtro (pendentes = aguardando resposta, todas) e busca (nome, @usuário, telefone, código). Clicar numa conversa abre o chat. ' +
+      'Use quando pedirem "inbox", "quem está esperando resposta", "mensagens do WhatsApp/Instagram". Resuma só quem precisa de resposta.',
+    inputSchema: {
+      canal: z.enum(['todos', 'whatsapp', 'instagram']).default('todos'),
+      filtro: z.enum(['pendentes', 'todas']).default('pendentes'),
+      busca: z.string().trim().min(2).max(80).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_INBOX),
+  }, async ({ canal, filtro, busca }) => {
+    try { return asView(await rpc('mcp_inbox', { p_canal: canal, p_filtro: filtro, p_busca: busca ?? null }) as Record<string, unknown>); }
+    catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
+
+  server.registerTool('conversa', {
+    title: 'Conversa',
+    description: 'Abre numa tela o CHAT completo com um lead (WhatsApp, id = id do lead) ou uma DM do Instagram (id = id da conversa, ' +
+      'pegue em inbox). Mostra as últimas mensagens, se a janela de 24h está aberta e, se der, a caixa pra responder pelo canal oficial.',
+    inputSchema: { canal: z.enum(['whatsapp', 'instagram']), id: z.string().uuid(), limite: z.number().int().min(5).max(120).default(40) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_INBOX),
+  }, async ({ canal, id, limite }) => {
+    try { return asView(await rpc('mcp_conversa', { p_canal: canal, p_id: id, p_limite: limite }) as Record<string, unknown>); }
+    catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
 
   server.registerTool('ficha_lead', {
     title: 'Ficha do lead',
@@ -148,7 +187,43 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
     catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
   });
 
+  server.registerTool('agenda_semana', {
+    title: 'Agenda da semana',
+    description: 'Mostra numa tela a AGENDA DA SEMANA da loja (segunda a domingo): reuniões, visitas, ligações e tarefas por dia, com lead e ' +
+      'responsável. Sem "inicio" é a semana atual; "inicio" (AAAA-MM-DD, uma segunda-feira) navega. Use quando pedirem "agenda", "semana", "o que tem marcado".',
+    inputSchema: { inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Primeiro dia da semana (AAAA-MM-DD)') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: uiToolMeta(UI_URI_AGENDA),
+  }, async ({ inicio }) => {
+    try { return asView(await rpc('mcp_agenda_semana', { p_inicio: inicio ?? null }) as Record<string, unknown>); }
+    catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+  });
+
   if (context.can_write) {
+    server.registerTool('responder', {
+      title: 'Responder conversa',
+      description: 'Envia uma resposta de TEXTO pelo canal OFICIAL (WhatsApp Cloud API ou DM do Instagram) a uma conversa aberta — ' +
+        'só funciona dentro da janela de 24h desde a última mensagem da pessoa. id = id do lead (whatsapp) ou da conversa (instagram). ' +
+        'SEMPRE mostre o texto exato e CONFIRME com o usuário antes de chamar. Nunca invente texto por conta própria. ' +
+        'Depois, use envio_status com o request_id pra confirmar que a Meta aceitou.',
+      inputSchema: { canal: z.enum(['whatsapp', 'instagram']), id: z.string().uuid(), texto: z.string().trim().min(1).max(1500) },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    }, async ({ canal, id, texto }) => {
+      try { return asText(await rpc('mcp_responder', { p_canal: canal, p_id: id, p_texto: texto })); }
+      catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+    });
+
+    server.registerTool('envio_status', {
+      title: 'Status do envio',
+      description: 'Confirma se um envio feito por "responder" foi aceito (request_id devolvido por responder). pronto=false = ainda processando.',
+      inputSchema: { request_id: z.number().int().positive() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { visibility: ['model', 'app'] } },
+    }, async ({ request_id }) => {
+      try { return asText(await rpc('mcp_envio_status', { p_request_id: request_id })); }
+      catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
+    });
+
     server.registerTool('agendar_followup', {
       description: 'Cria uma tarefa de follow-up ligada a um lead (pegue o id em buscar_lead). CONFIRME com o usuário antes.',
       inputSchema: {
