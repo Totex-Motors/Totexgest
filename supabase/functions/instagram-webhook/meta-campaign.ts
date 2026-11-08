@@ -151,6 +151,37 @@ async function agentAllowlistBlocks(supabase: Supa, username: string | null, ten
 }
 
 /**
+ * NINA NO INSTAGRAM (DM fria) — 08/11/2026.
+ * Config POR LOJA (tenant_integration_keys, cai no config global):
+ *   IG_NINA_AGENT_SLUG → slug do agente que atende DM fria (ex: nina-instagram).
+ *     Sem isso, DM fria continua indo pro humano (comportamento antigo).
+ *   IG_NINA_IGNORAR    → JSON array de usernames que a Nina NUNCA responde
+ *     (contas da própria rede, sócios, parceiros). Além do "Ignorar" do inbox.
+ * Teste: ig_agent_test_allowlist continua valendo (só fala com quem está na lista).
+ */
+async function getColdDmAgentSlug(supabase: Supa, tenantId: string): Promise<string | null> {
+  try {
+    const v = await getIntegrationKey(supabase, "IG_NINA_AGENT_SLUG", tenantId);
+    const slug = String(v || "").trim();
+    return slug || null;
+  } catch { return null; }
+}
+
+async function igNinaIgnores(supabase: Supa, username: string | null, tenantId: string): Promise<boolean> {
+  if (!username) return true;
+  try {
+    const raw = await getIntegrationKey(supabase, "IG_NINA_IGNORAR", tenantId);
+    if (!raw) return false;
+    const list = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(list)) return false;
+    const u = username.replace(/^@/, "").toLowerCase();
+    const hit = list.some((x: string) => String(x).replace(/^@/, "").toLowerCase() === u);
+    if (hit) console.log("IG_NINA_IGNORAR — Nina pulando:", username);
+    return hit;
+  } catch { return false; }
+}
+
+/**
  * Contato marcado como "Ignorar" no inbox (instagram_conversations.is_ignored=true).
  * Uso típico: contatos próximos/família. O agente NÃO conversa no DM com eles.
  * (Comentário de campanha segue normal — a regra é "só comentário, não conversa".)
@@ -575,9 +606,15 @@ export async function handleCampaignReplyByUsername(
       .not("agent_session_id", "is", null)
       .limit(1).maybeSingle();
     if (!convU?.agent_session_id) {
-      // Sem sessão: só entra se bater um gatilho de palavra-chave (ex: story do evento)
+      // Sem sessão: entra se bater um gatilho de palavra-chave (ex: story do evento)
+      // OU se a loja tiver a Nina do Instagram ligada (IG_NINA_AGENT_SLUG) — aí DM
+      // fria, resposta de story e menção em story também são atendidas.
       const trig = await matchDmKeywordTrigger(supabase, text, tenantId);
-      if (!trig) return; // agente nunca falou e sem gatilho → humano cuida
+      if (!trig) {
+        const cold = await getColdDmAgentSlug(supabase, tenantId);
+        if (!cold) return; // agente nunca falou e sem gatilho → humano cuida
+        if (await igNinaIgnores(supabase, senderUsername, tenantId)) return;
+      }
     }
   }
 
@@ -751,21 +788,26 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
         .order("last_message_at", { ascending: false })
         .limit(1);
       const conv = convU?.[0];
-      if (!conv?.agent_session_id) return; // agente nunca falou com essa pessoa → humano cuida
+      const coldSlug = await getColdDmAgentSlug(supabase, tenantId);
+      if (!conv?.agent_session_id && !coldSlug) return; // agente nunca falou com essa pessoa → humano cuida
+      if (coldSlug && await igNinaIgnores(supabase, senderUsername, tenantId)) return;
 
-      const linkAula = buildAulaLink(materialBase, null, senderUsername); // sem campanha → dm_direto + @ pré-preenche a LP
+      // Com a Nina ligada o agente é ela (DM fria ou continuação); senão o legado.
+      const slug = coldSlug || "ig-primeiro-contato";
+      const linkAula = coldSlug ? null : buildAulaLink(materialBase, null, senderUsername); // legado: dm_direto + @ pré-preenche a LP
       const run = await runAgent({
-        agentSlug: "ig-primeiro-contato",
+        agentSlug: slug,
         tenantId,
-        sessionId: personSession || conv.agent_session_id,
+        sessionId: personSession || conv?.agent_session_id || null,
         message: text,
         userId: senderUsername,
         context: {
-          interaction: "dm_reply",
+          interaction: conv?.agent_session_id ? "dm_reply" : "dm_cold",
           commenter_username: senderUsername,
           ...(linkAula ? { link_aula: linkAula } : {}), // sem config → não injeta (prompt manda não inventar link)
           recipient: senderUsername, // jobs assíncronos entregam o resume pra cá
           ...(pendingMission ? { contexto_especial: pendingMission } : {}),
+          ...(!conv?.agent_session_id ? { conversa_nova: "SIM — primeira vez que o agente fala com essa pessoa; ela escreveu/marcou primeiro" } : {}),
         },
       });
       if (run.sessionId) await savePersonSession(supabase, senderUsername, run.sessionId, tenantId);
