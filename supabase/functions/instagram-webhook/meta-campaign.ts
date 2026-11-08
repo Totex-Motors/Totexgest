@@ -1294,8 +1294,8 @@ export async function processCommentNudges(supabase: Supa): Promise<{ nudged: nu
   return { nudged };
 }
 
-/** Instagram não formata nada: tira **negrito**/_itálico_ e linhas separadoras ("---")
- *  que o modelo às vezes emite mesmo com a regra no prompt. */
+// Instagram não formata nada: tira negrito (asteriscos duplos), itálico (underscores) e
+// linhas separadoras ("---") que o modelo às vezes emite mesmo com a regra no prompt.
 function sanitizeIgText(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/g, "$1")
