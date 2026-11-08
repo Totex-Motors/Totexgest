@@ -11,8 +11,11 @@
  * robô de cobrança do TotexCar Co-pilot. Esta trava evita a reincidência.
  */
 
-const WINDOW_MIN = 5;    // janela de contagem das respostas do bot
-const MAX_REPLIES = 8;   // máx. de respostas do bot na janela antes de travar
+// 06/11: 8 em 5 min travava conversa NORMAL (fluxo da FIPE manda 2-3 balões por resposta: Alberto,
+// Saveiro, 05/11 16:41 — a sessão pausou e a resposta dele "Creta ou Nivus" se perdeu). Loop com robô
+// passa de 25 em 15 min fácil; conversa humana, não.
+const WINDOW_MIN = 15;   // janela de contagem das respostas do bot
+const MAX_REPLIES = 25;  // máx. de respostas do bot na janela antes de travar
 const COOLDOWN_MIN = 60; // tempo que a sessão fica pausada após detectar o loop
 
 /**

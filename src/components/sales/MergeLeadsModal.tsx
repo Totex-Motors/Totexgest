@@ -281,6 +281,9 @@ export function MergeLeadsModal({ open, onOpenChange, lead }: MergeLeadsModalPro
           onOpenChange(false);
           resetState();
         },
+        // Erro (ex.: função ausente no banco): fecha a confirmação por conta própria. Com o
+        // AlertDialog fechando sozinho por cima do Dialog, a tela ficava travada (overlay preso).
+        onError: () => setShowConfirmDialog(false),
       }
     );
   };
@@ -841,7 +844,8 @@ export function MergeLeadsModal({ open, onOpenChange, lead }: MergeLeadsModalPro
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={executeMerge}
+              onClick={(e) => { e.preventDefault(); executeMerge(); }}
+              disabled={mergeMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {mergeMutation.isPending && (
