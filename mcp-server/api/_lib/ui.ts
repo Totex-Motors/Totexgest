@@ -9,6 +9,9 @@
 export const UI_MIME = 'text/html;profile=mcp-app';
 export const UI_URI_FICHA = 'ui://totexgest/ficha-lead.html';
 export const UI_URI_PIPELINE = 'ui://totexgest/pipeline-dia.html';
+export const UI_URI_INBOX = 'ui://totexgest/inbox.html';
+export const UI_URI_AGENDA = 'ui://totexgest/agenda-semana.html';
+export const UI_URI_RANKING = 'ui://totexgest/ranking.html';
 
 // Versão fixada do SDK de UI (mesma do quickstart oficial). Subir junto com o CSP.
 const SDK_URL = 'https://unpkg.com/@modelcontextprotocol/ext-apps@1.7.5/dist/src/app-with-deps.js';
@@ -71,6 +74,24 @@ h3{font-size:15px;margin:0}
 .empty{color:var(--fg2);font-style:italic;padding:6px 2px}
 .err{border:1px solid var(--bad);color:var(--bad);border-radius:var(--r);padding:10px}
 .loading{color:var(--fg2);padding:20px;text-align:center}
+input,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:36px;width:100%}
+textarea{resize:vertical;min-height:64px}
+.conv{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer}
+.conv:hover{border-color:var(--accent)} .conv.wait{border-left:3px solid var(--warn)}
+.conv .ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--bg3);font-size:16px;flex:none}
+.conv .ic.wa{background:#25d36622} .conv .ic.ig{background:#e1306c22}
+.conv .last{color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r)}
+.reply{display:flex;gap:8px;align-items:flex-end;margin-top:10px}
+.week{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.day{min-width:170px;flex:1 0 170px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:8px}
+.day.today{border-color:var(--accent)} .day h3{font-size:13px;margin:0 0 6px;display:flex;justify-content:space-between}
+.ev{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px;font-size:12px;cursor:pointer}
+.ev:hover{border-color:var(--accent)} .ev.done{opacity:.6} .ev .h{font-family:ui-monospace,monospace;color:var(--fg2)}
+.rank{display:flex;flex-direction:column;gap:8px}
+.rk{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.rk .pos{font-size:20px;text-align:center} .rk .bar{height:6px;border-radius:3px;background:var(--bg3);margin-top:6px;overflow:hidden} .rk .bar i{display:block;height:100%;background:var(--accent)}
+.rk .stats{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--fg2);margin-top:4px}
 `;
 
 // JS compartilhado: utilidades + renderização da ficha (usada nas duas telas).
@@ -81,6 +102,8 @@ const has = (a) => Array.isArray(a) && a.length > 0;
 const ACAO = { ENVIAR_MENSAGEM: 'Enviar mensagem', LIGAR: 'Ligar', CONFIRMAR_CALL: 'Confirmar call', RESGATAR_NO_SHOW: 'Resgatar no-show', AGUARDAR: 'Aguardar', ENCERRAR: 'Encerrar' };
 const ETAPA = { new: 'Novo', novo: 'Novo', em_contato: 'Em contato', contacted: 'Em contato', qualificado: 'Qualificado', qualified: 'Qualificado', call_agendada: 'Call agendada', no_show: 'No-show', call_realizada: 'Call realizada', em_fechamento: 'Em fechamento', negotiation: 'Negociação', proposal: 'Proposta', ganho: 'Ganho', won: 'Ganho', perdido: 'Perdido', lost: 'Perdido' };
 const etapa = (v) => ETAPA[v] || v || '';
+const DIA = { Monday: 'Segunda-feira', Tuesday: 'Terça-feira', Wednesday: 'Quarta-feira', Thursday: 'Quinta-feira', Friday: 'Sexta-feira', Saturday: 'Sábado', Sunday: 'Domingo', Mon: 'Seg', Tue: 'Ter', Wed: 'Qua', Thu: 'Qui', Fri: 'Sex', Sat: 'Sáb', Sun: 'Dom' };
+const diaPt = (v) => DIA[v] || v || '';
 const kv = (pairs) => '<div class="kv">' + pairs.filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => '<b>' + esc(k) + '</b><span>' + v + '</span>').join('') + '</div>';
 const tel = (t) => t ? '<a href="https://wa.me/' + esc(String(t).replace(/\\D/g, '')) + '" data-link>' + esc(t) + '</a>' : '';
 const openLink = async (url) => { try { await app.sendOpenLink({ url }); } catch { try { window.open(url, '_blank', 'noopener'); } catch {} } };
@@ -191,7 +214,7 @@ const tile = (n, l, cls) => '<div class="tile"><div class="n ' + (cls || '') + '
 const who = (x) => x.lead ? '<b>' + esc(x.lead) + '</b>' + (x.codigo ? ' <span class="code">' + esc(x.codigo) + '</span>' : '') : '';
 function renderBoard() {
   const d = data, r = d.resumo || {};
-  let out = '<div class="row between" style="margin-bottom:10px"><div><h1>Pipeline do dia</h1><div class="muted">' + esc(d.dia_semana) + ', ' + esc(d.data) + (d.loja ? ' · ' + esc(d.loja) : '') + '</div></div><div class="row"><button data-refresh>Atualizar</button>' + (d.app_url ? '<button class="primary" data-open="' + esc(d.app_url + '/comercial/pipeline') + '">Abrir no CRM</button>' : '') + '</div></div>';
+  let out = '<div class="row between" style="margin-bottom:10px"><div><h1>Pipeline do dia</h1><div class="muted">' + esc(diaPt(d.dia_semana)) + ', ' + esc(d.data) + (d.loja ? ' · ' + esc(d.loja) : '') + '</div></div><div class="row"><button data-refresh>Atualizar</button>' + (d.app_url ? '<button class="primary" data-open="' + esc(d.app_url + '/comercial/pipeline') + '">Abrir no CRM</button>' : '') + '</div></div>';
   out += '<div class="tiles">' + tile(r.novos_leads, 'novos leads hoje') + tile(r.responderam, 'responderam hoje', r.responderam ? 'ok' : '') + tile(r.movidos, 'cards movidos') + tile(r.ganhos, 'ganhos hoje', r.ganhos ? 'ok' : '') + tile(r.em_aberto, 'negócios abertos') + tile(r.fila, 'na fila do playbook', r.fila ? 'acc' : '') + tile(r.tarefas_hoje, 'tarefas hoje') + tile(r.tarefas_atrasadas, 'tarefas atrasadas', r.tarefas_atrasadas ? 'bad' : '') + '</div>';
   const pps = d.pipelines || [];
   if (pps.length > 1) out += '<div class="tabs sec">' + pps.map((p, i) => '<button data-tab="' + i + '" class="' + (i === tab ? 'on' : '') + '">' + esc(p.nome) + '</button>').join('') + '</div>';
@@ -232,6 +255,143 @@ async function openFicha(termo) {
   } catch (e) { root.innerHTML = '<div class="row" style="margin-bottom:10px"><button data-back>← Voltar</button></div><div class="err">' + esc(e?.message || e) + '</div>'; root.querySelector('[data-back]').addEventListener('click', renderBoard); }
 }
 app.ontoolresult = (r) => { const d = fromResult(r); if (r?.isError || d?.error) root.innerHTML = '<div class="err">' + esc(d?.error || 'A ferramenta falhou.') + '</div>'; else { data = d; tab = 0; renderBoard(); } };
+app.onhostcontextchanged = (c) => { if (c?.theme) document.documentElement.style.colorScheme = c.theme; };
+await app.connect();
+`);
+
+// ─── Inbox (WhatsApp oficial + Instagram) ───────────────────────────────────
+export const INBOX_HTML = page('Totexgest — Inbox', '<div class="loading">Abrindo o inbox…</div>', /* js */ `
+let inbox = null, args = { canal: 'todos', filtro: 'pendentes' }, thread = null, pollTimer = null;
+const icon = (c) => '<div class="ic ' + (c === 'instagram' ? 'ig' : 'wa') + '">' + (c === 'instagram' ? '📷' : '💬') + '</div>';
+function convRow(c, canal) {
+  const chips = [];
+  if (c.aguardando) chips.push('<span class="chip warn">aguardando' + (c.sem_resposta > 1 ? ' · ' + esc(c.sem_resposta) : '') + '</span>');
+  if (c.janela_aberta) chips.push('<span class="chip ok">janela 24h aberta</span>');
+  if (c.nina) chips.push('<span class="chip ' + (c.nina === 'replied' ? 'ok' : 'warn') + '">Nina: ' + esc(c.nina) + '</span>');
+  if (c.nao_lidas) chips.push('<span class="chip acc">' + esc(c.nao_lidas) + ' não lidas</span>');
+  if (canal === 'whatsapp' && c.provider && c.provider !== 'meta_cloud') chips.push('<span class="chip">' + esc(c.instancia || 'UAZAPI') + '</span>');
+  if (c.outra_loja) chips.push('<span class="chip muted">lead da ' + esc(c.outra_loja) + '</span>');
+  const who = canal === 'instagram' ? '@' + esc(c.usuario) + (c.nome ? ' · ' + esc(c.nome) : '') : esc(c.nome || c.telefone || 'Sem nome');
+  return '<div class="conv ' + (c.aguardando ? 'wait' : '') + '" data-conv="' + canal + ':' + esc(c.id) + '">' + icon(canal) + '<div style="flex:1;min-width:0"><div class="row between" style="gap:6px"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + who + '</b><span class="muted" style="font-size:12px;white-space:nowrap">' + esc(c.ultima_em || '') + '</span></div>' +
+    '<div class="last">' + (c.ultima_minha ? '<span class="muted">' + esc(c.enviada_por || 'você') + ': </span>' : '') + esc(c.ultima || '') + '</div>' +
+    '<div class="row" style="gap:4px;margin-top:4px">' + (c.codigo ? '<span class="code">' + esc(c.codigo) + '</span>' : '') + chips.join('') + (c.vendedor || c.responsavel ? '<span class="chip">' + esc(c.vendedor || c.responsavel) + '</span>' : '') + (c.etapa ? '<span class="chip muted">' + esc(c.etapa) + '</span>' : '') + '</div></div></div>';
+}
+function renderInbox() {
+  const d = inbox, r = d.resumo || {};
+  const wa = d.whatsapp || [], ig = d.instagram || [];
+  let out = '<div class="row between" style="margin-bottom:10px"><div><h1>Inbox</h1><div class="muted">' + esc(d.loja || '') + ' · WhatsApp ' + (d.oficial_conectado ? 'oficial conectado' : '<span style="color:var(--bad)">oficial desconectado</span>') + ' · Instagram ' + (d.instagram_conectado ? 'conectado' : '<span style="color:var(--bad)">desconectado</span>') + '</div></div><div class="row"><button data-refresh>Atualizar</button></div></div>';
+  out += '<div class="row" style="margin-bottom:10px"><div class="tabs">' + [['todos','Todos'],['whatsapp','WhatsApp'],['instagram','Instagram']].map(([k,v]) => '<button data-canal="' + k + '" class="' + (args.canal === k ? 'on' : '') + '">' + v + '</button>').join('') + '</div><div class="tabs">' + [['pendentes','Aguardando resposta'],['todas','Todas']].map(([k,v]) => '<button data-filtro="' + k + '" class="' + (args.filtro === k ? 'on' : '') + '">' + v + '</button>').join('') + '</div><form data-busca class="row" style="flex:1;min-width:200px"><input name="q" placeholder="Buscar nome, @usuário, telefone ou código" value="' + esc(args.busca || '') + '"><button type="submit">Buscar</button></form></div>';
+  out += '<div class="tiles" style="margin-bottom:10px">' + '<div class="tile"><div class="n ' + (r.wa_aguardando ? 'warn' : '') + '">' + esc(r.wa_aguardando ?? 0) + '</div><div class="l">WhatsApp aguardando</div></div><div class="tile"><div class="n ' + (r.ig_aguardando ? 'warn' : '') + '">' + esc(r.ig_aguardando ?? 0) + '</div><div class="l">Instagram aguardando</div></div><div class="tile"><div class="n">' + esc((r.wa_total ?? 0) + (r.ig_total ?? 0)) + '</div><div class="l">conversas listadas</div></div></div>';
+  const all = [...wa.map((c) => ({ c, canal: 'whatsapp' })), ...ig.map((c) => ({ c, canal: 'instagram' }))];
+  if (args.canal === 'todos') all.sort((a, b) => String(b.c.ultima_em || '').localeCompare(String(a.c.ultima_em || '')));
+  out += all.length ? '<div class="list">' + all.map(({ c, canal }) => convRow(c, canal)).join('') + '</div>' : '<div class="empty">' + (args.filtro === 'pendentes' ? 'Ninguém aguardando resposta. 👏' : 'Nenhuma conversa encontrada.') + '</div>';
+  root.innerHTML = out;
+  root.querySelectorAll('[data-canal]').forEach((b) => b.addEventListener('click', () => loadInbox({ ...args, canal: b.getAttribute('data-canal') })));
+  root.querySelectorAll('[data-filtro]').forEach((b) => b.addEventListener('click', () => loadInbox({ ...args, filtro: b.getAttribute('data-filtro') })));
+  root.querySelector('[data-busca]').addEventListener('submit', (e) => { e.preventDefault(); loadInbox({ ...args, busca: e.target.q.value.trim() || undefined }); });
+  root.querySelector('[data-refresh]').addEventListener('click', () => loadInbox(args));
+  root.querySelectorAll('[data-conv]').forEach((el) => el.addEventListener('click', () => { const [canal, id] = el.getAttribute('data-conv').split(':'); openThread(canal, id); }));
+}
+async function loadInbox(a) {
+  args = a; root.innerHTML = '<div class="loading">Carregando…</div>';
+  try { const r = await app.callServerTool({ name: 'inbox', arguments: a }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou'); inbox = d; renderInbox(); }
+  catch (e) { root.innerHTML = '<div class="err">' + esc(e?.message || e) + '</div>'; }
+}
+function renderThread(t, note) {
+  const h = t.cabecalho || {}, canal = t.canal;
+  let out = '<div class="row between" style="margin-bottom:10px"><div class="row"><button data-back>← Inbox</button>' + icon(canal) + '<div><div><b>' + (canal === 'instagram' ? '@' + esc(h.usuario) + (h.nome ? ' · ' + esc(h.nome) : '') : esc(h.nome || h.telefone)) + '</b> ' + (h.codigo ? '<span class="code">' + esc(h.codigo) + '</span>' : '') + '</div><div class="muted" style="font-size:12px">' + esc([h.telefone, h.etapa, h.vendedor || h.responsavel, h.outra_loja ? 'lead da ' + h.outra_loja : ''].filter(Boolean).join(' · ')) + (h.ultima_do_cliente ? ' · cliente escreveu ' + esc(h.ultima_do_cliente) : '') + '</div></div></div><div class="row"><button data-refresh>Atualizar</button>' + (h.codigo ? '<button data-ficha="' + esc(h.codigo) + '">Ficha</button>' : '') + (h.link ? '<button class="primary" data-open="' + esc(h.link) + '">Abrir no CRM</button>' : '') + '</div></div>';
+  if (has(h.nina)) out += '<div class="row" style="margin-bottom:8px;gap:4px">' + h.nina.map((e) => '<span class="chip ' + (e.evento === 'replied' ? 'ok' : e.evento === 'error' ? 'bad' : 'warn') + '" title="' + esc(e.motivo || '') + '">Nina ' + esc(e.evento) + ' ' + esc(e.em) + '</span>').join('') + '</div>';
+  const msgs = t.mensagens || [];
+  out += '<div class="thread">' + (msgs.length ? msgs.map((m) => '<div class="msg ' + (m.minha ? 'me' : '') + '">' + esc(m.texto) + (m.tem_midia ? ' 📎' : '') + '<small>' + esc(m.em) + (m.minha ? ' · ' + esc(m.por || '') + (m.status ? ' · ' + esc(m.status) : '') : '') + (m.erro ? ' · ⚠ ' + esc(m.erro) : '') + '</small></div>').join('') : '<div class="empty">Sem mensagens.</div>') + '</div>';
+  if (note) out += '<div class="' + (note.ok ? 'card' : 'err') + '" style="margin-top:8px">' + esc(note.texto) + '</div>';
+  if (h.pode_responder) out += '<form data-reply class="reply"><textarea name="texto" maxlength="1500" placeholder="Responder pelo ' + (canal === 'instagram' ? 'Instagram (conta oficial)' : 'WhatsApp oficial') + '…" required></textarea><button class="primary" type="submit">Enviar</button></form>';
+  else out += '<div class="muted" style="margin-top:8px;font-size:12px">🔒 ' + esc(h.motivo_bloqueio || 'Não dá pra responder por aqui.') + '</div>';
+  root.innerHTML = out;
+  root.querySelector('[data-back]').addEventListener('click', () => loadInbox(args));
+  root.querySelector('[data-refresh]').addEventListener('click', () => openThread(canal, t.id));
+  bindFicha(root, openFichaFromInbox);
+  root.querySelector('[data-reply]')?.addEventListener('submit', (e) => { e.preventDefault(); sendReply(canal, t.id, e.target.texto.value.trim(), e.target); });
+}
+async function openThread(canal, id) {
+  root.innerHTML = '<div class="loading">Abrindo a conversa…</div>';
+  try { const r = await app.callServerTool({ name: 'conversa', arguments: { canal, id } }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou'); thread = d; renderThread(d); }
+  catch (e) { root.innerHTML = '<div class="row" style="margin-bottom:10px"><button data-back>← Inbox</button></div><div class="err">' + esc(e?.message || e) + '</div>'; root.querySelector('[data-back]').addEventListener('click', () => loadInbox(args)); }
+}
+async function openFichaFromInbox(termo) {
+  root.innerHTML = '<div class="loading">Abrindo a ficha…</div>';
+  try { const r = await app.callServerTool({ name: 'ficha_lead', arguments: { termo } }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou');
+    root.innerHTML = '<div class="row" style="margin-bottom:10px"><button data-back>← Conversa</button></div>' + renderFicha(d);
+    root.querySelector('[data-back]').addEventListener('click', () => thread ? renderThread(thread) : loadInbox(args)); bindFicha(root, openFichaFromInbox);
+  } catch (e) { root.innerHTML = '<div class="err">' + esc(e?.message || e) + '</div>'; }
+}
+async function sendReply(canal, id, texto, form) {
+  if (!texto) return;
+  form.querySelector('button').disabled = true; form.querySelector('textarea').disabled = true;
+  try {
+    const r = await app.callServerTool({ name: 'responder', arguments: { canal, id, texto } }); const d = fromResult(r);
+    if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou');
+    let st = null;
+    for (let i = 0; i < 14 && !st?.pronto; i++) { await new Promise((ok) => setTimeout(ok, 1500)); const s = await app.callServerTool({ name: 'envio_status', arguments: { request_id: d.request_id } }); st = fromResult(s); }
+    const rr = await app.callServerTool({ name: 'conversa', arguments: { canal, id } }); thread = fromResult(rr);
+    renderThread(thread, !st?.pronto ? { ok: true, texto: 'Mensagem enviada pra fila. Ainda sem confirmação da Meta — atualize em instantes.' } : st.ok ? { ok: true, texto: 'Enviada ✓' } : { ok: false, texto: 'Não foi: ' + (st.erro || 'erro desconhecido') });
+  } catch (e) { renderThread(thread, { ok: false, texto: e?.message || String(e) }); }
+}
+app.ontoolinput = ({ arguments: a }) => { if (a && (a.canal || a.filtro || a.busca) && !a.id) args = { canal: a.canal || 'todos', filtro: a.filtro || 'pendentes', busca: a.busca }; };
+app.ontoolresult = (r) => { const d = fromResult(r); if (r?.isError || d?.error) { root.innerHTML = '<div class="err">' + esc(d?.error || 'A ferramenta falhou.') + '</div>'; return; }
+  if (d?.tipo === 'conversa') { thread = d; renderThread(d); } else { inbox = d; if (d?.canal) args = { canal: d.canal, filtro: d.filtro || 'pendentes', busca: d.busca || undefined }; renderInbox(); } };
+app.onhostcontextchanged = (c) => { if (c?.theme) document.documentElement.style.colorScheme = c.theme; };
+await app.connect();
+`);
+
+// ─── Agenda da semana ────────────────────────────────────────────────────────
+export const AGENDA_HTML = page('Totexgest — Agenda da semana', '<div class="loading">Montando a semana…</div>', /* js */ `
+let data = null;
+const TIPO = { meeting: '🤝', call: '📞', follow_up: '🔁', note: '📝', visit: '🏬', internal: '🏢' };
+function renderWeek() {
+  const d = data, r = d.resumo || {};
+  let out = '<div class="row between" style="margin-bottom:10px"><div><h1>Agenda da semana</h1><div class="muted">' + esc(d.inicio) + ' a ' + esc(d.fim) + (d.loja ? ' · ' + esc(d.loja) : '') + '</div></div><div class="row"><button data-nav="' + esc(d.anterior) + '">← Anterior</button><button data-nav="">Esta semana</button><button data-nav="' + esc(d.proxima) + '">Próxima →</button>' + (d.app_url ? '<button class="primary" data-open="' + esc(d.app_url + '/gestao/calendario') + '">Abrir no CRM</button>' : '') + '</div></div>';
+  out += '<div class="tiles" style="margin-bottom:10px"><div class="tile"><div class="n">' + esc(r.total ?? 0) + '</div><div class="l">compromissos</div></div><div class="tile"><div class="n">' + esc(r.reunioes ?? 0) + '</div><div class="l">reuniões / visitas</div></div><div class="tile"><div class="n">' + esc(r.ligacoes ?? 0) + '</div><div class="l">ligações</div></div><div class="tile"><div class="n ok">' + esc(r.concluidas ?? 0) + '</div><div class="l">concluídos</div></div></div>';
+  out += '<div class="week">' + (d.dias || []).map((dia) => '<div class="day ' + (dia.eh_hoje ? 'today' : '') + '"><h3><span>' + esc(diaPt(dia.semana)) + ' ' + esc(dia.data) + (dia.eh_hoje ? ' <span class="chip acc">hoje</span>' : '') + '</span><span class="cnt">' + (dia.itens || []).length + '</span></h3>' +
+    ((dia.itens || []).map((a) => '<div class="ev ' + (a.concluida ? 'done' : '') + '" ' + (a.codigo ? 'data-ficha="' + esc(a.codigo) + '"' : '') + '><div><span class="h">' + (a.dia_inteiro ? 'dia' : esc(a.hora || '--:--')) + '</span> ' + (TIPO[a.tipo] || '•') + ' ' + (a.concluida ? '<s>' : '') + esc(a.titulo) + (a.concluida ? '</s>' : '') + (a.critica ? ' <span class="chip bad">!</span>' : '') + '</div>' + (a.lead || a.responsavel ? '<div class="muted">' + esc([a.lead, a.responsavel].filter(Boolean).join(' · ')) + (a.confirmada ? ' ✓ confirmado' : '') + '</div>' : '') + '</div>').join('') || '<div class="empty">livre</div>') + '</div>').join('') + '</div>';
+  root.innerHTML = out;
+  root.querySelectorAll('[data-nav]').forEach((b) => b.addEventListener('click', () => load(b.getAttribute('data-nav') || undefined)));
+  bindFicha(root, openFicha);
+}
+async function load(inicio) {
+  root.innerHTML = '<div class="loading">Carregando…</div>';
+  try { const r = await app.callServerTool({ name: 'agenda_semana', arguments: inicio ? { inicio } : {} }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou'); data = d; renderWeek(); }
+  catch (e) { root.innerHTML = '<div class="err">' + esc(e?.message || e) + '</div>'; }
+}
+async function openFicha(termo) {
+  root.innerHTML = '<div class="loading">Abrindo a ficha…</div>';
+  try { const r = await app.callServerTool({ name: 'ficha_lead', arguments: { termo } }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou');
+    root.innerHTML = '<div class="row" style="margin-bottom:10px"><button data-back>← Agenda</button></div>' + renderFicha(d); root.querySelector('[data-back]').addEventListener('click', renderWeek); bindFicha(root, openFicha);
+  } catch (e) { root.innerHTML = '<div class="row" style="margin-bottom:10px"><button data-back>← Agenda</button></div><div class="err">' + esc(e?.message || e) + '</div>'; root.querySelector('[data-back]').addEventListener('click', renderWeek); }
+}
+app.ontoolresult = (r) => { const d = fromResult(r); if (r?.isError || d?.error) root.innerHTML = '<div class="err">' + esc(d?.error || 'A ferramenta falhou.') + '</div>'; else { data = d; renderWeek(); } };
+app.onhostcontextchanged = (c) => { if (c?.theme) document.documentElement.style.colorScheme = c.theme; };
+await app.connect();
+`);
+
+// ─── Ranking do time ─────────────────────────────────────────────────────────
+export const RANKING_HTML = page('Totexgest — Ranking do time', '<div class="loading">Calculando o ranking…</div>', /* js */ `
+let data = null;
+const PER = { week: 'Esta semana', month: 'Este mês', all: 'Tudo' };
+function renderRank() {
+  const d = data, rk = d.ranking || [], maxV = Math.max(1, ...rk.map((x) => Number(x.valor_ganho) || 0)), maxN = Math.max(1, ...rk.map((x) => Number(x.vendas_ganhas) || 0));
+  let out = '<div class="row between" style="margin-bottom:10px"><div><h1>Ranking do time</h1><div class="muted">' + esc(PER[d.periodo] || d.periodo) + ' · desde ' + esc(d.desde) + (d.loja ? ' · ' + esc(d.loja) : '') + '</div></div><div class="tabs">' + Object.entries(PER).map(([k, v]) => '<button data-per="' + k + '" class="' + (d.periodo === k ? 'on' : '') + '">' + v + '</button>').join('') + '</div></div>';
+  const tot = rk.reduce((a, x) => ({ v: a.v + (Number(x.valor_ganho) || 0), n: a.n + (Number(x.vendas_ganhas) || 0), ab: a.ab + (Number(x.em_aberto) || 0) }), { v: 0, n: 0, ab: 0 });
+  out += '<div class="tiles" style="margin-bottom:10px"><div class="tile"><div class="n ok">' + esc(tot.n) + '</div><div class="l">vendas no período</div></div><div class="tile"><div class="n">' + esc(brl(tot.v) || 'R$ 0') + '</div><div class="l">valor ganho</div></div><div class="tile"><div class="n">' + esc(tot.ab) + '</div><div class="l">em aberto com vendedor</div></div>' + (d.sem_vendedor ? '<div class="tile"><div class="n ' + (d.sem_vendedor.em_aberto ? 'warn' : '') + '">' + esc(d.sem_vendedor.em_aberto ?? 0) + '</div><div class="l">em aberto SEM vendedor</div></div>' : '') + '</div>';
+  out += rk.length ? '<div class="rank">' + rk.map((x, i) => '<div class="rk"><div class="pos">' + (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + 'º') + '</div><div style="min-width:0"><div class="row between"><b>' + esc(x.vendedor) + '</b><span class="muted" style="font-size:12px">' + esc(x.papel || '') + '</span></div><div class="bar"><i style="width:' + Math.round(100 * ((Number(x.valor_ganho) || 0) > 0 ? (Number(x.valor_ganho) / maxV) : (Number(x.vendas_ganhas) / maxN))) + '%"></i></div><div class="stats"><span>' + esc(x.em_aberto) + ' em aberto</span><span>' + esc(x.perdidas) + ' perdidas</span><span>' + esc(x.leads_novos) + ' leads novos</span><span>' + esc(x.leads_que_responderam) + ' responderam</span><span>' + esc(x.tarefas_feitas) + ' tarefas feitas</span>' + (Number(x.tarefas_atrasadas) ? '<span style="color:var(--bad)">' + esc(x.tarefas_atrasadas) + ' atrasadas</span>' : '') + '</div></div><div style="text-align:right"><div style="font-size:20px;font-weight:600">' + esc(x.vendas_ganhas) + '</div><div class="muted" style="font-size:12px">' + esc(brl(x.valor_ganho) || 'R$ 0') + '</div></div></div>').join('') + '</div>' : '<div class="empty">Nenhum vendedor ativo.</div>';
+  root.innerHTML = out;
+  root.querySelectorAll('[data-per]').forEach((b) => b.addEventListener('click', () => load(b.getAttribute('data-per'))));
+}
+async function load(periodo) {
+  root.innerHTML = '<div class="loading">Calculando…</div>';
+  try { const r = await app.callServerTool({ name: 'ranking_time', arguments: { periodo } }); const d = fromResult(r); if (r?.isError || d?.error) throw new Error(d?.error || 'Falhou'); data = d; renderRank(); }
+  catch (e) { root.innerHTML = '<div class="err">' + esc(e?.message || e) + '</div>'; }
+}
+app.ontoolresult = (r) => { const d = fromResult(r); if (r?.isError || d?.error) root.innerHTML = '<div class="err">' + esc(d?.error || 'A ferramenta falhou.') + '</div>'; else { data = d; renderRank(); } };
 app.onhostcontextchanged = (c) => { if (c?.theme) document.documentElement.style.colorScheme = c.theme; };
 await app.connect();
 `);
