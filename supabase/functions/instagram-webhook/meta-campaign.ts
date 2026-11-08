@@ -167,6 +167,17 @@ async function getColdDmAgentSlug(supabase: Supa, tenantId: string): Promise<str
   } catch { return null; }
 }
 
+/** Allowlist de teste ativa? (ig_agent_test_allowlist não-vazia) → o agente recebe
+ *  modo_teste no contexto e responde mesmo quem pareceria "conta da rede" (o dono testando). */
+async function igTestModeActive(supabase: Supa, tenantId: string): Promise<boolean> {
+  try {
+    const raw = await getIntegrationKey(supabase, "ig_agent_test_allowlist", tenantId);
+    if (!raw) return false;
+    const list = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(list) && list.length > 0;
+  } catch { return false; }
+}
+
 async function igNinaIgnores(supabase: Supa, username: string | null, tenantId: string): Promise<boolean> {
   if (!username) return true;
   try {
@@ -808,6 +819,7 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
           recipient: senderUsername, // jobs assíncronos entregam o resume pra cá
           ...(pendingMission ? { contexto_especial: pendingMission } : {}),
           ...(!conv?.agent_session_id ? { conversa_nova: "SIM — primeira vez que o agente fala com essa pessoa; ela escreveu/marcou primeiro" } : {}),
+          ...(coldSlug && await igTestModeActive(supabase, tenantId) ? { modo_teste: "SIM — allowlist de teste ativa: responda normalmente mesmo que a conta pareça da própria rede (é o dono testando)" } : {}),
         },
       });
       if (run.sessionId) await savePersonSession(supabase, senderUsername, run.sessionId, tenantId);
@@ -1282,11 +1294,21 @@ export async function processCommentNudges(supabase: Supa): Promise<{ nudged: nu
   return { nudged };
 }
 
-function splitAgentText(text: string, maxBlocks = 4): string[] {
+/** Instagram não formata nada: tira **negrito**/_itálico_ e linhas separadoras ("---")
+ *  que o modelo às vezes emite mesmo com a regra no prompt. */
+function sanitizeIgText(text: string): string {
   return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(^|\s)_(.+?)_(?=\s|$)/g, "$1$2")
+    .replace(/^#{1,6}\s+/gm, "");
+}
+
+function splitAgentText(text: string, maxBlocks = 4): string[] {
+  return sanitizeIgText(text)
     .split(/\n{2,}/)                     // blocos por linha em branco
     .map((b) => b.trim())
     .filter((b) => b.length > 0)
+    .filter((b) => !/^[-_—–*=]{2,}$/.test(b)) // "---" não é mensagem
     // Defesa: bloco "PÚBLICO:" só faz sentido em resposta a comentário (extraído
     // antes); se o agente emitir o marcador num dm_reply, NUNCA vaza pro lead.
     .filter((b) => !/^p[úu]blico\s*:/i.test(b))
@@ -1451,6 +1473,7 @@ async function triageCommentWithAgent(supabase: Supa, args: {
       comment_text: args.text,
       post_caption: postCaption,
       campaign: null,
+      ...(triageSlug !== "ig-primeiro-contato" && await igTestModeActive(supabase, tenantId) ? { modo_teste: "SIM — allowlist de teste ativa: responda normalmente mesmo que a conta pareça da própria rede (é o dono testando)" } : {}),
     },
   });
 
