@@ -1057,7 +1057,7 @@ export const SalesLeadDetailContent = ({ leadId, hideBackButton }: {
                     <div className="flex items-center gap-1 text-sm text-muted-foreground" title="Cadastros duplicados que foram unidos neste lead">
                       <Users className="h-3.5 w-3.5" />
                       <span>
-                        Mesclado: {(lead as any).metadata.mesclado_de.map((m: any) => `${m.codigo || "lead"} (${m.nome || m.telefone || "?"}${m.em ? `, ${new Date(m.em).toLocaleDateString("pt-BR")}` : ""})`).join(" · ")}
+                        Mesclado: {(lead as any).metadata.mesclado_de.map((m: any) => `${m.codigo || "cadastro"} (${m.nome || m.telefone || "?"}${m.em ? `, ${new Date(m.em).toLocaleDateString("pt-BR")}` : ""})`).join(" · ")}
                       </span>
                     </div>
                   )}

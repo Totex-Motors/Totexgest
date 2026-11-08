@@ -130,7 +130,7 @@ export function useLeadDuplicates(leadId: string | undefined) {
       // First get the current lead's phone and email
       const { data: currentLead, error: leadError } = await supabase
         .from("leads")
-        .select("id, phone, email, instagram")
+        .select("id, phone, email, instagram, tenant_id")
         .eq("id", leadId)
         .single();
 
@@ -157,6 +157,9 @@ export function useLeadDuplicates(leadId: string | undefined) {
         .select("id, name, email, phone, instagram, sales_stage, etapa_funil, sales_score, company_name, created_at, messages_count")
         .or(conditions.join(","))
         .neq("id", leadId)
+        // Mesma loja SEMPRE: a RLS limita o usuário comum, mas o superadmin enxerga todas as lojas e
+        // o botão oferecia um lead de outra loja (merge_leads recusa: "de outra loja"). 08/11.
+        .eq("tenant_id", (currentLead as any).tenant_id)
         .order("created_at", { ascending: false })
         .limit(10);
 
@@ -197,6 +200,13 @@ export function useSearchLeadsForMerge(query: string, excludeId?: string) {
     queryFn: async () => {
       if (query.length < 2) return [];
 
+      // só leads da MESMA loja do lead principal (merge_leads recusa loja diferente)
+      let tenantId: string | null = null;
+      if (excludeId) {
+        const { data: cur } = await supabase.from("leads").select("tenant_id").eq("id", excludeId).maybeSingle();
+        tenantId = (cur as any)?.tenant_id || null;
+      }
+
       const cleanPhone = query.replace(/\D/g, "");
       const isPhone = cleanPhone.length >= 8;
       const isEmail = query.includes("@");
@@ -216,6 +226,9 @@ export function useSearchLeadsForMerge(query: string, excludeId?: string) {
 
       if (excludeId) {
         dbQuery = dbQuery.neq("id", excludeId);
+      }
+      if (tenantId) {
+        dbQuery = dbQuery.eq("tenant_id", tenantId);
       }
 
       const { data, error } = await dbQuery
