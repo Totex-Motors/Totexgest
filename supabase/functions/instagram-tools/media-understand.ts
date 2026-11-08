@@ -132,6 +132,23 @@ export async function handleMediaUnderstand(req: Request): Promise<Response> {
       const d = await descrever(msg.reference_url,
         "Este é um story da conta que uma pessoa acabou de responder. Descreva em 1-2 frases, em português, o que o story mostra/diz (transcreva o texto que aparecer). Isso serve de CONTEXTO pra entender a resposta dela.", GEMINI_KEY);
       if (d) texto = `[respondeu teu story: ${d}]`;
+    } else if (tipo === "story_mention") {
+      // A pessoa MARCOU a conta num story dela (foto/vídeo). media_url é o story
+      // (arquivado no nosso storage). Gemini descreve imagem ou vídeo; se não der,
+      // ainda devolve um marcador legível — a Nina agradece e puxa papo mesmo assim.
+      const GEMINI_KEY = await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId);
+      const d = GEMINI_KEY && msg.media_url
+        ? await descrever(msg.media_url,
+          "Uma pessoa marcou a conta da loja de carros num story dela. Descreva em 1-2 frases, em português, o que o story mostra/diz (carro? modelo? texto na tela? é propaganda de outro negócio?). Transcreva o texto que aparecer. Seja objetivo.", GEMINI_KEY)
+        : null;
+      texto = d ? `[marcou a loja num story: ${d}]` : "[marcou a loja num story]";
+    } else if (["video", "ig_reel", "ig_post", "share"].includes(tipo)) {
+      const GEMINI_KEY = await getIntegrationKey(supabase, "GEMINI_API_KEY", tenantId);
+      const d = GEMINI_KEY && msg.media_url
+        ? await descrever(msg.media_url,
+          "Uma pessoa mandou este conteúdo (vídeo/post/reel) no direct de uma loja de carros. Descreva em 1-2 frases, em português, o que mostra/diz (carro? modelo? texto?). Transcreva o texto que aparecer. Seja objetivo.", GEMINI_KEY)
+        : null;
+      texto = d ? `[mandou um ${tipo === "video" ? "vídeo" : "post"}: ${d}]` : `[mandou um ${tipo === "video" ? "vídeo" : "post"}]`;
     }
 
     if (!texto) return out({ ok: false, error: `não consegui processar ${tipo}` });

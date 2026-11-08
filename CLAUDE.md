@@ -363,6 +363,15 @@ privada pela API não oficial. Desde então:
 - **Toda função nova que envie WhatsApp via UAZAPI precisa chamar o guarda.**
   Sem exceção, sem flag, sem "só dessa vez".
 
+## INSTAGRAM — só API oficial da Meta (Nina no direct)
+
+Instagram (DM, story, comentário) passa **só** pela API oficial (`instagram-webhook`,
+`instagram-send-dm`, conta em `instagram_business_accounts`). Nunca automação por navegador.
+A Nina do direct é o agente `nina-instagram`, ligado por loja pela chave `IG_NINA_AGENT_SLUG`
+(`IG_NINA_IGNORAR` = contas que ela nunca responde; `ig_agent_test_allowlist` = modo teste).
+Ver `docs/NINA-INSTAGRAM.md`. Mesmas regras da Nina: sem valor de troca, sem taxa, sem
+escassez, "simulação" (nunca "conta"); no direct não dá parcela — leva pro WhatsApp oficial.
+
 ## INTERMEDIAÇÃO (captação das promotoras) — regra de ouro
 
 Entidade-mãe é `intermediations` (docs/INTERMEDIACAO.md). "Captação" é só a origem.
