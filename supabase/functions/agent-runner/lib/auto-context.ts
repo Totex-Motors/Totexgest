@@ -263,6 +263,16 @@ async function buildSessionContextBlock(
     }
   }
 
+  // === INDIQUE E GANHE (o cliente chegou pelo link de um indicador; leads.metadata.indicacao) ===
+  {
+    const ind = (lead?.metadata as any)?.indicacao;
+    if (ind?.codigo) {
+      lines.push("", `👥 VEIO POR INDICAÇÃO de ${ind.indicador_nome || "um indicador"} (programa Indique e Ganhe, código ${ind.codigo}). Trate como cliente NOVO, atendimento normal da Totex: descubra o que ele procura e avance pra simulação/visita.`);
+      lines.push(`- NÃO fale de comissão, valor da indicação nem de quem indicou, a não ser que ELE pergunte. Se perguntar como funciona o programa, explique em 1 linha (quem indica ganha R$ 200 quando o indicado dá o sinal e R$ 800 quando a venda fecha) e mande o link ${appUrlIndique()} pra ele também indicar.`);
+      lines.push(`- A primeira mensagem dele é o texto pronto do link ("Vim pela indicação…"): NÃO repita esse texto, não pergunte "de quem é a indicação". Vá direto: cumprimente pelo nome se tiver e pergunte que tipo de carro ele está buscando (ou se é troca).`);
+    }
+  }
+
   // === O QUE A LOJA JÁ MANDOU PRA ELE fora deste chat (follow-up, reaquecimento, lembretes) ===
   // O histórico da sessão só tem a conversa com o agente. Mensagem automática que saiu por outro
   // caminho ficava invisível, e o cliente respondia a ela ("Sim") sem o agente saber do quê.
@@ -367,4 +377,10 @@ function buildWorkingHoursBlock(
     `Atendimento: ${s.working_hours_start} às ${s.working_hours_end} (Brasília)`,
     `Dias úteis: ${dayNames}`,
   ].join("\n");
+}
+
+/** Link público do cadastro de indicador (config app_url; default do projeto). */
+function appUrlIndique(): string {
+  const base = (Deno.env.get("APP_URL") || "https://totexgest.vercel.app").replace(/\/$/, "");
+  return `${base}/indique`;
 }

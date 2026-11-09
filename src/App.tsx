@@ -79,6 +79,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 const RepasseLanding = React.lazy(() => import("./pages/RepasseLanding"));
+const IndiqueLanding = React.lazy(() => import("./pages/IndiqueLanding"));
 const McpConsent = React.lazy(() => import("./pages/McpConsent"));
 
 // Settings unificada + WhatsApp
@@ -259,6 +260,18 @@ const AppRoutes = () => {
       <Route path="/r/:code" element={
         <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
           <RepasseLanding />
+        </React.Suspense>
+      } />
+
+      {/* Indique e Ganhe — cadastro público do indicador e painel (link do WhatsApp oficial) */}
+      <Route path="/indique" element={
+        <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+          <IndiqueLanding />
+        </React.Suspense>
+      } />
+      <Route path="/indique/:code" element={
+        <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+          <IndiqueLanding />
         </React.Suspense>
       } />
 

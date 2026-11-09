@@ -33,7 +33,7 @@ type McpRpc =
   | 'mcp_intermediacao_repasse' | 'mcp_criar_tarefa' | 'mcp_concluir_tarefa' | 'mcp_decidir_aprovacao'
   | 'mcp_ranking_time' | 'mcp_agenda_hoje' | 'mcp_buscar_lead' | 'mcp_agendar_followup'
   | 'mcp_ficha_lead' | 'mcp_pipeline_do_dia' | 'mcp_inbox' | 'mcp_conversa' | 'mcp_responder' | 'mcp_envio_status'
-  | 'mcp_agenda_semana';
+  | 'mcp_agenda_semana' | 'mcp_indicacoes' | 'mcp_indicacao_marcar_pago';
 
 async function verifyToken(token: string) {
   // O servidor OAuth do Supabase não amarra o token ao recurso (sem RFC 8707),
@@ -199,7 +199,20 @@ function buildServer(context: TenantContext, rpc: ReturnType<typeof rpcClient>) 
     catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); }
   });
 
+  server.registerTool('indicacoes', {
+    title: 'Indique e Ganhe',
+    description: 'Programa de indicação (R$ 200 no sinal + R$ 800 na venda, até 5 por indicador): resumo, pagamentos A PAGAR (com PIX/WhatsApp do indicador e o lead), ranking de indicadores e o link público de cadastro. Use quando pedirem "indicações", "indicadores", "quanto devo pagar de indicação".',
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => { try { return asText(await rpc('mcp_indicacoes')); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); } });
+
   if (context.can_write) {
+    server.registerTool('marcar_indicacao_paga', {
+      title: 'Marcar indicação paga',
+      description: 'Marca um pagamento do Indique e Ganhe como PAGO (id em indicacoes → a_pagar) depois que o PIX foi feito. CONFIRME com o usuário antes.',
+      inputSchema: { id: z.string().uuid(), nota: z.string().trim().max(200).optional() },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    }, async ({ id, nota }) => { try { return asText(await rpc('mcp_indicacao_marcar_pago', { p_pagamento: id, p_nota: nota ?? null })); } catch (e) { return asFail(e instanceof Error ? e.message : 'Falhou'); } });
+
     server.registerTool('responder', {
       title: 'Responder conversa',
       description: 'Envia uma resposta de TEXTO pelo canal OFICIAL (WhatsApp Cloud API ou DM do Instagram) a uma conversa aberta — ' +

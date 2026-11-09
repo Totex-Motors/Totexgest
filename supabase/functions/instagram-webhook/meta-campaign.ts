@@ -167,6 +167,17 @@ async function getColdDmAgentSlug(supabase: Supa, tenantId: string): Promise<str
   } catch { return null; }
 }
 
+/** Allowlist de teste ativa? (ig_agent_test_allowlist não-vazia) → o agente recebe
+ *  modo_teste no contexto e responde mesmo quem pareceria "conta da rede" (o dono testando). */
+async function igTestModeActive(supabase: Supa, tenantId: string): Promise<boolean> {
+  try {
+    const raw = await getIntegrationKey(supabase, "ig_agent_test_allowlist", tenantId);
+    if (!raw) return false;
+    const list = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(list) && list.length > 0;
+  } catch { return false; }
+}
+
 async function igNinaIgnores(supabase: Supa, username: string | null, tenantId: string): Promise<boolean> {
   if (!username) return true;
   try {
@@ -808,6 +819,7 @@ async function runIgAgentReply(supabase: Supa, senderUsername: string, text: str
           recipient: senderUsername, // jobs assíncronos entregam o resume pra cá
           ...(pendingMission ? { contexto_especial: pendingMission } : {}),
           ...(!conv?.agent_session_id ? { conversa_nova: "SIM — primeira vez que o agente fala com essa pessoa; ela escreveu/marcou primeiro" } : {}),
+          ...(coldSlug && await igTestModeActive(supabase, tenantId) ? { modo_teste: "SIM — allowlist de teste ativa: responda normalmente mesmo que a conta pareça da própria rede (é o dono testando)" } : {}),
         },
       });
       if (run.sessionId) await savePersonSession(supabase, senderUsername, run.sessionId, tenantId);
@@ -1282,11 +1294,21 @@ export async function processCommentNudges(supabase: Supa): Promise<{ nudged: nu
   return { nudged };
 }
 
-function splitAgentText(text: string, maxBlocks = 4): string[] {
+// Instagram não formata nada: tira negrito (asteriscos duplos), itálico (underscores) e
+// linhas separadoras ("---") que o modelo às vezes emite mesmo com a regra no prompt.
+function sanitizeIgText(text: string): string {
   return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(^|\s)_(.+?)_(?=\s|$)/g, "$1$2")
+    .replace(/^#{1,6}\s+/gm, "");
+}
+
+function splitAgentText(text: string, maxBlocks = 4): string[] {
+  return sanitizeIgText(text)
     .split(/\n{2,}/)                     // blocos por linha em branco
     .map((b) => b.trim())
     .filter((b) => b.length > 0)
+    .filter((b) => !/^[-_—–*=]{2,}$/.test(b)) // "---" não é mensagem
     // Defesa: bloco "PÚBLICO:" só faz sentido em resposta a comentário (extraído
     // antes); se o agente emitir o marcador num dm_reply, NUNCA vaza pro lead.
     .filter((b) => !/^p[úu]blico\s*:/i.test(b))
@@ -1432,8 +1454,12 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   // Nome real + bio (cache → Business Discovery) — "Opaa Dra. Rosa!" + contexto do negócio
   const profile = await fetchCommenterProfile(supabase, args.username, tenantId, account);
 
+  // Com a Nina do Instagram ligada (IG_NINA_AGENT_SLUG) é ela quem faz a triagem do
+  // comentário; senão o legado. (Na Totex o legado nem existia → agent-runner 404.)
+  const triageSlug = (await getColdDmAgentSlug(supabase, tenantId)) || "ig-primeiro-contato";
+  if (triageSlug !== "ig-primeiro-contato" && await igNinaIgnores(supabase, args.username, tenantId)) return;
   const run = await runAgent({
-    agentSlug: "ig-primeiro-contato",
+    agentSlug: triageSlug,
     tenantId,
     sessionId,
     message: `[COMENTÁRIO no post] ${args.text}`,
@@ -1447,6 +1473,7 @@ async function triageCommentWithAgent(supabase: Supa, args: {
       comment_text: args.text,
       post_caption: postCaption,
       campaign: null,
+      ...(triageSlug !== "ig-primeiro-contato" && await igTestModeActive(supabase, tenantId) ? { modo_teste: "SIM — allowlist de teste ativa: responda normalmente mesmo que a conta pareça da própria rede (é o dono testando)" } : {}),
     },
   });
 
@@ -1465,9 +1492,11 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   const text = dmText;
   if (!text) return;
 
-  // Envia como Private Reply (abre a janela)
-  if (!account?.page_access_token) {
-    console.error("triage: sem page_access_token — private reply impossível, DM não enviada");
+  // Envia como Private Reply (abre a janela). Instagram Login (graph.instagram.com) ou
+  // página do Facebook — o que a conta tiver (antes exigia page token e a Totex não tem).
+  const prEndpoint = resolveSendEndpoint(account);
+  if (!prEndpoint) {
+    console.error("triage: conta sem credencial de envio — private reply impossível, DM não enviada");
     return;
   }
 
@@ -1476,13 +1505,13 @@ async function triageCommentWithAgent(supabase: Supa, args: {
   // Então a 1ª DM vai INTEIRA numa mensagem só; o split fica pras respostas (janela aberta).
   const fullDm = splitAgentText(text, Infinity).join("\n\n");
   const sendPrivateReply = () =>
-    fetch(`${GRAPH}/${account.facebook_page_id}/messages`, {
+    fetch(prEndpoint.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         recipient: { comment_id: args.commentId },
         message: { text: fullDm },
-        access_token: account.page_access_token,
+        access_token: prEndpoint.token,
       }),
     });
   let sendRes = await sendPrivateReply();
