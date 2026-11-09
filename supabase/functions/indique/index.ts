@@ -3,11 +3,16 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // INDIQUE E GANHE — porta pública do programa de indicação (verify_jwt = false).
 //
-//   POST { action: "cadastrar", nome, telefone, email? }  → { ok, code, nome, link, share_text, painel_url }
-//   GET  ?code=ABC123                                      → painel do indicador (totais + lista mascarada)
+//   POST { action: "cadastrar", nome, telefone, email? }
+//        → novo:  { ok, novo:true, code, link, share_text, painel_url (com token privado) }
+//        → já cadastrado: { ok, ja_cadastrado:true, recuperar } — NÃO devolve código nem painel
+//          e NÃO altera nada (recuperação só pelo WhatsApp cadastrado: "meu painel").
+//   GET  ?token=<painel_token>  → painel do indicador (totais + lista mascarada)
 //
-// Sem segredos aqui: a regra (código único, um telefone = um indicador, teto, valores)
-// mora nas RPCs indique_* (SECURITY DEFINER), chamadas com o service role.
+// Privacidade: o CÓDIGO (6 chars) é público e serve só pro link de indicação. O PAINEL só
+// abre com o token privado (64 hex), mostrado uma vez no cadastro e reenviado pelo WhatsApp
+// do próprio dono (prova de posse do telefone, no webhook do número oficial).
+// Sem segredos aqui: as RPCs indique_* (SECURITY DEFINER) são chamadas com o service role.
 // O link é SEMPRE o WhatsApp OFICIAL (Cloud API) da loja — nunca UAZAPI (regra inviolável).
 
 const cors = {
@@ -22,20 +27,20 @@ const LOG = "[indique]";
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 }
-const normCode = (raw: unknown) => String(raw ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+const normToken = (raw: unknown) => String(raw ?? "").trim().toLowerCase().replace(/[^a-f0-9]/g, "").slice(0, 64);
 
 /** Texto pronto que o indicado manda pra Nina (o código é o que amarra a indicação). */
 export function textoIndicado(code: string): string {
   return `Oi Nina! Vim pela indicação ${code} e quero ver os carros da Totex.`;
 }
 
-function montarLinks(code: string, whatsapp: string | null, appUrl: string) {
+export function montarLinks(code: string, token: string, whatsapp: string | null, appUrl: string) {
   const link = whatsapp ? `https://wa.me/${whatsapp}?text=${encodeURIComponent(textoIndicado(code))}` : null;
-  const painel = `${appUrl}/indique/${code}`;
+  const painel = `${appUrl}/indique/painel/${token}`;
   const share = link
     ? `Tô indicando a Totex Motors pra quem quer trocar de carro 🚗 Fala com a Nina por aqui que ela te mostra os carros, faz a simulação e marca a visita no Shopping Tamboré: ${link}`
     : null;
-  return { link, painel_url: painel, share_text: share };
+  return { link, painel_url: painel, share_text: share, texto_indicado: textoIndicado(code) };
 }
 
 Deno.serve(async (req) => {
@@ -46,12 +51,13 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method === "GET") {
-      const code = normCode(new URL(req.url).searchParams.get("code"));
-      if (!code) return json({ ok: false, error: "Código ausente" }, 400);
-      const { data, error } = await supabase.rpc("indique_painel", { p_code: code });
+      const token = normToken(new URL(req.url).searchParams.get("token"));
+      if (token.length < 32) return json({ ok: false, error: "Link inválido" }, 400);
+      const { data, error } = await supabase.rpc("indique_painel_token", { p_token: token });
       if (error) { console.error(LOG, "painel", error.message); return json({ ok: false, error: "Falha na consulta" }, 500); }
-      if (!data?.ok) return json({ ok: false, error: "Código inválido" }, 404);
-      return json({ ...data, ...montarLinks(data.code, data.whatsapp || null, appUrl), texto_indicado: textoIndicado(data.code) });
+      if (!data?.ok) return json({ ok: false, error: "Link inválido" }, 404);
+      const { painel_token: _t, ...rest } = data;
+      return json({ ...rest, ...montarLinks(data.code, token, data.whatsapp || null, appUrl) });
     }
     if (req.method !== "POST") return json({ ok: false, error: "Método não suportado" }, 405);
 
@@ -69,14 +75,14 @@ Deno.serve(async (req) => {
         console.error(LOG, "cadastrar", msg);
         return json({ ok: false, error: known ? msg : "Não consegui fazer seu cadastro agora" }, known ? 400 : 500);
       }
+      if (data?.ja_cadastrado) {
+        // Não revela nada: quem tem o telefone recupera o painel pelo próprio WhatsApp
+        const wa = data.whatsapp ? `https://wa.me/${data.whatsapp}?text=${encodeURIComponent("meu painel")}` : null;
+        return json({ ok: true, ja_cadastrado: true, recuperar_link: wa, recuperar: "Esse WhatsApp já tem cadastro. Pra receber o link do seu painel, mande \"meu painel\" pro WhatsApp da Totex a partir desse número." });
+      }
       if (data?.status === "bloqueado") return json({ ok: false, error: "Cadastro bloqueado. Fale com a Totex." }, 403);
-      return json({ ...data, ...montarLinks(data.code, data.whatsapp || null, appUrl), texto_indicado: textoIndicado(data.code) });
-    }
-    if (body?.action === "painel") {
-      const code = normCode(body?.code);
-      const { data, error } = await supabase.rpc("indique_painel", { p_code: code });
-      if (error || !data?.ok) return json({ ok: false, error: "Código inválido" }, 404);
-      return json({ ...data, ...montarLinks(data.code, data.whatsapp || null, appUrl), texto_indicado: textoIndicado(data.code) });
+      const { painel_token, ...rest } = data;
+      return json({ ...rest, ...montarLinks(data.code, painel_token, data.whatsapp || null, appUrl) });
     }
     return json({ ok: false, error: "Ação inválida" }, 400);
   } catch (e) {
