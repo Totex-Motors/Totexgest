@@ -52,3 +52,27 @@ ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_dealersh
 ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_integration_id text;
 ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_result jsonb;
 ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS lead_webhook_url text;
+
+-- Correção de rumo (Marco, 09/11): lojista Autoconf NÃO ganha tenant no Totexgest — trabalha no CRM do
+-- Autoconf e os leads vão pra lá. autoconf_stores.tenant_id fica nulo (coluna mantida). Cada entrega de
+-- lead (site → marketplace usa Dealership.leadWebhookUrl; stand → stand-handoff/_shared/autoconf-leads.ts)
+-- fica registrada aqui. Destino: autoconf_stores.lead_webhook_url ou config AUTOCONF_LEADS_URL (?store_id=),
+-- token opcional em config AUTOCONF_LEADS_TOKEN.
+CREATE TABLE IF NOT EXISTS public.autoconf_lead_deliveries (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id     text NOT NULL,
+  lead_id      uuid,
+  origem       text,
+  url          text,
+  status       text NOT NULL CHECK (status IN ('entregue','falhou','sem_destino')),
+  http_status  integer,
+  erro         text,
+  payload      jsonb,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS autoconf_lead_deliveries_store_idx ON public.autoconf_lead_deliveries(store_id, created_at DESC);
+ALTER TABLE public.autoconf_lead_deliveries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS autoconf_lead_deliveries_admin ON public.autoconf_lead_deliveries;
+CREATE POLICY autoconf_lead_deliveries_admin ON public.autoconf_lead_deliveries FOR SELECT TO authenticated USING (public.is_superadmin() OR public.is_admin());
+GRANT SELECT ON public.autoconf_lead_deliveries TO authenticated;
+GRANT ALL ON public.autoconf_lead_deliveries TO service_role;
