@@ -18,6 +18,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getIntegrationKey } from "../_shared/config.ts";
+import { acharLojaAutoconf, enviarLeadAutoconf, type LojaAutoconf } from "../_shared/autoconf-leads.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 
 const corsHeaders = {
@@ -54,7 +55,7 @@ async function saveLeadMeta(
 /** Busca o veículo no marketplace e monta o metadata.vehicle (formato do VehicleOfInterestCard). */
 async function fetchVehicleMeta(
   supabase: any, vehicleId: string,
-): Promise<{ vehicle: Record<string, unknown>; storeName: string | null } | null> {
+): Promise<{ vehicle: Record<string, unknown>; storeName: string | null; storeId: string | null } | null> {
   try {
     const cfgUrl = await getIntegrationKey(supabase, "TOTEX_MARKETPLACE_API_URL");
     const base = (cfgUrl || "https://totexmotors.com").replace(/\/$/, "");
@@ -75,7 +76,7 @@ async function fetchVehicleMeta(
         ? price.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
         : null,
     };
-    return { vehicle, storeName: v.dealership?.name ?? null };
+    return { vehicle, storeName: v.dealership?.name ?? null, storeId: v.dealership?.id ?? v.dealershipId ?? null };
   } catch (e) { console.error("[stand-handoff] fetchVehicleMeta err:", (e as Error).message); return null; }
 }
 
@@ -296,12 +297,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Loja parceira AUTOCONF (sem tenant no Totexgest): o lead vai pro CRM do Autoconf, não pro nosso.
+    // Casa pelo id da loja do carro no marketplace (exato) e, sem tenant casado, pelo nome citado.
+    let lojaAutoconf: LojaAutoconf | null = await acharLojaAutoconf(supabase, { marketplaceDealershipId: vehMeta?.storeId ?? null });
+    if (!lojaAutoconf && !ownerTenantId) lojaAutoconf = await acharLojaAutoconf(supabase, { nome: lojaCitada || vehMeta?.storeName || null });
+    if (lojaAutoconf) { ownerTenantId = null; ownerLabel = lojaAutoconf.name; }
+
     // Registra no metadata qual loja recebeu o repasse (alimenta a coluna "Loja" do Totem Físico).
     // encaminhado = vai virar lead no CRM da loja (quente/muito_quente E loja casada).
     if (shouldForward) {
       metaPatch.handoff = {
-        encaminhado: !!(ownerTenantId && customerPhone),
+        encaminhado: !!((ownerTenantId || lojaAutoconf) && customerPhone),
         loja: ownerLabel || lojaCitada || null,
+        ...(lojaAutoconf ? { destino: "autoconf", autoconf_store_id: lojaAutoconf.store_id } : {}),
         em: new Date().toISOString(),
       };
     }
@@ -359,6 +367,26 @@ Deno.serve(async (req: Request) => {
 
     // 5. (removido) Não avisamos a loja por WhatsApp — o lead chega direto no CRM dela (passo 6).
 
+    // 5b. Loja Autoconf: entrega o lead no CRM do Autoconf (mesma régua: morno/quente/muito quente).
+    if (shouldForward && lojaAutoconf && customerPhone) {
+      const v = (vehMeta?.vehicle || {}) as Record<string, any>;
+      const ent = await enviarLeadAutoconf(supabase, lojaAutoconf, {
+        leadId: standLeadId,
+        origem: "STAND_TOTEX",
+        cliente: { nome: customerName, telefone: customerPhone, mensagem: `Lead do stand Totex (qualificado pela Nina). ${resumo}`.trim() },
+        veiculo: {
+          id: v.id ?? null, marca: v.brand ?? null, modelo: v.model ?? null, versao: v.version ?? null, ano: v.year ?? null,
+          quilometragem: v.mileage ?? null, preco: v.price ?? null, precoFormatado: v.price_formatted ?? null, descricao: v.description ?? carInterest,
+        },
+        qualificacao: { ...qualificacao, troca_veiculo: trocaVeiculo || null },
+      });
+      result.autoconf = { entregue: ent.ok, erro: ent.erro };
+      result.lead_created = ent.ok;
+      if (standLeadId) {
+        await saveLeadMeta(supabase, standLeadId, { handoff: { ...(metaPatch.handoff as Record<string, unknown> || {}), encaminhado: ent.ok, autoconf_entregue: ent.ok, autoconf_erro: ent.erro } }, score);
+      }
+    }
+
     // 6. Cria lead no CRM da loja dona — SÓ se o lead estiver Quente/Muito Quente.
     let ownerLeadId: string | null = null;
     if (shouldForward && ownerTenantId && customerPhone) {
@@ -408,8 +436,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // 7. Log de decisão crítica
+    const autoconfRes = result.autoconf as { entregue: boolean; erro: string | null } | undefined;
     const decisionText = shouldForward
-      ? (ownerLeadId ? `Repassado p/ ${ownerLabel || "loja"}` : `Quente, mas loja não casada (${ownerLabel || lojaCitada || "?"})`)
+      ? (autoconfRes
+          ? (autoconfRes.entregue ? `Repassado p/ ${ownerLabel} (CRM Autoconf)` : `Quente, loja Autoconf ${ownerLabel} — entrega FALHOU: ${autoconfRes.erro}`)
+          : ownerLeadId ? `Repassado p/ ${ownerLabel || "loja"}` : `Quente, mas loja não casada (${ownerLabel || lojaCitada || "?"})`)
       : `Não repassado — ${tempLabel[temperatura || ""] || "frio"} (nutrição)`;
     await supabase.from("ai_critical_decisions").insert({
       tenant_id: session.tenant_id,
@@ -426,8 +457,10 @@ Deno.serve(async (req: Request) => {
     let message: string;
     if (!shouldForward) {
       message = `Lead classificado como ${categoria || "—"} (${tempLabel[temperatura || ""] || "frio"}). Não encaminhado à loja (perfil de nutrição). Qualificação registrada.`;
-    } else if (ownerLeadId) {
+    } else if (autoconfRes?.entregue || ownerLeadId) {
       message = `Lead quente encaminhado para ${ownerLabel}. Qualificação registrada.`;
+    } else if (autoconfRes) {
+      message = `Lead quente da loja ${ownerLabel}; o envio pro sistema da loja falhou e a equipe vai repassar manualmente. Qualificação registrada.`;
     } else {
       message = `Lead quente, mas não encontrei a loja "${lojaCitada || ownerLabel || ""}" cadastrada. Qualificação registrada no stand; repasse manual necessário.`;
     }

@@ -379,6 +379,12 @@ R$ 200 no sinal + R$ 800 na venda, até 5 por indicador. Tabelas `indicadores`, 
 (Registrar Sinal) e `deals.won_at`. Não crie outro caminho de pagamento: tudo passa por
 `indique_evento`. Páginas públicas `/indique` e `/indique/:code`.
 
+## AUTOCONF (lojas parceiras) — ver docs/INTEGRACAO-AUTOCONF.md
+
+Lojista Autoconf **não** usa o Totexgest: ativou o app → estoque no marketplace/stand/Nina
+(`autoconf-webhook` → marketplace) e **leads vão pro CRM do Autoconf** (site: `Dealership.leadWebhookUrl`;
+stand: `stand-handoff` → `_shared/autoconf-leads.ts`). Não crie tenant pra loja Autoconf.
+
 ## INTERMEDIAÇÃO (captação das promotoras) — regra de ouro
 
 Entidade-mãe é `intermediations` (docs/INTERMEDIACAO.md). "Captação" é só a origem.
