@@ -24,8 +24,10 @@ export function buildParams(v: Variant, ctx: ParamCtx): string[] {
   const spec = Array.isArray(v.params_spec) && v.params_spec.length ? v.params_spec : [];
   if (!spec.length) {
     // sem spec: conta as variáveis do corpo e assume nome, (assinatura), carro…
-    const n = (String(v.body || "").match(/\{\{\d+\}\}/g) || []).length;
-    const def = n >= 3 ? ["nome", "assinatura", "carro"] : n === 2 ? ["nome", "carro"] : n === 1 ? ["nome"] : [];
+    // Conta variáveis DISTINTAS ({{1}}..{{N}}). Faltar parâmetro = Meta recusa com #132000 (bug 08-09/11:
+    // reaquecimento_viu_carro_v2 sem params_spec mandava 3 de 4 e falhou ~48 vezes em 24 h).
+    const n = new Set(String(v.body || "").match(/\{\{\d+\}\}/g) || []).size;
+    const def = n >= 4 ? ["nome", "assinatura", "carro", "parcela"] : n === 3 ? ["nome", "assinatura", "carro"] : n === 2 ? ["nome", "carro"] : n === 1 ? ["nome"] : [];
     return def.map((k) => String((ctx as any)[k] ?? ""));
   }
   return spec.map((k) => String((ctx as any)[k] ?? ""));
