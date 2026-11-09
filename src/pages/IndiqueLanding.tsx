@@ -5,8 +5,10 @@ import { maskPhoneBR, onlyDigits } from "@/lib/phone";
 import { Gift, Loader2, MessageCircle, Copy, Share2, CheckCircle2, Car, Users, Sparkles, ShieldCheck } from "lucide-react";
 
 // INDIQUE E GANHE — páginas públicas do programa de indicação (sem login).
-//   /indique          → cadastro (nome + WhatsApp) → recebe o link e o texto pra compartilhar
-//   /indique/:code    → painel do indicador (link, indicados, quanto tem a receber)
+//   /indique                 → cadastro (nome + WhatsApp) → recebe o link e o texto pra compartilhar
+//   /indique/painel/:token   → painel do indicador (token PRIVADO de 64 hex, mostrado uma vez no cadastro;
+//                              recuperação só mandando "meu painel" pro WhatsApp oficial a partir do número cadastrado)
+// O código de 6 letras é público e serve só pro link de indicação — nunca abre o painel.
 //
 // Regras (decisão do Marco, 08/11/2026): R$ 200 quando o indicado dá o sinal, R$ 800 quando a
 // venda fecha; até 5 indicações pagas (R$ 5.000). Um telefone conta pra um indicador (o
@@ -65,7 +67,8 @@ function ShareBox({ p }: { p: Painel }) {
             <button type="button" onClick={() => copy("link")} className="rounded-xl bg-white border border-emerald-200 py-2.5 flex items-center justify-center gap-1">{copied === "link" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} Copiar link</button>
             <button type="button" onClick={() => copy("texto")} className="rounded-xl bg-white border border-emerald-200 py-2.5 flex items-center justify-center gap-1">{copied === "texto" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} Copiar texto</button>
           </div>
-          <p className="text-xs text-emerald-900/80">Seu código é <b className="font-mono">{p.code}</b>. Salve esta página: <span className="font-mono break-all">{p.painel_url}</span></p>
+          <p className="text-xs text-emerald-900/80">Seu código de indicação é <b className="font-mono">{p.code}</b>.</p>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">🔒 Este painel é só seu: salve o link desta página. Se perder, mande <b>"meu painel"</b> pro WhatsApp da Totex a partir do seu número cadastrado que ela te devolve o link.</p>
         </>
       ) : (
         <p className="text-sm text-amber-800">O WhatsApp oficial da Totex está sendo configurado. Volte em instantes.</p>
@@ -116,9 +119,10 @@ function PainelView({ p }: { p: Painel }) {
 }
 
 export default function IndiqueLanding() {
-  const { code = "" } = useParams();
+  const { token = "", code: codeParam = "" } = useParams();
   const navigate = useNavigate();
-  const [step, setStep] = useState<"form" | "loading" | "painel" | "invalid">(code ? "loading" : "form");
+  const [step, setStep] = useState<"form" | "loading" | "painel" | "invalid" | "ja_cadastrado">(token ? "loading" : codeParam ? "invalid" : "form");
+  const [recuperar, setRecuperar] = useState<{ texto: string; link: string | null } | null>(null);
   const [painel, setPainel] = useState<Painel | null>(null);
   const [nome, setNome] = useState("");
   const [phone, setPhone] = useState("");
@@ -129,18 +133,18 @@ export default function IndiqueLanding() {
   const valores = useMemo(() => painel?.valores || { sinal_cents: 20000, venda_cents: 80000, max_pagas: 5 }, [painel]);
 
   useEffect(() => {
-    if (!code) return;
+    if (!token) return;
     let alive = true;
     (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke(`indique?code=${encodeURIComponent(code)}`, { method: "GET" });
+        const { data, error } = await supabase.functions.invoke(`indique?token=${encodeURIComponent(token)}`, { method: "GET" });
         if (!alive) return;
         if (error || !data?.ok) { setStep("invalid"); return; }
         setPainel(data as Painel); setStep("painel");
       } catch { if (alive) setStep("invalid"); }
     })();
     return () => { alive = false; };
-  }, [code]);
+  }, [token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setError(null);
@@ -155,7 +159,9 @@ export default function IndiqueLanding() {
         setError(msg); return;
       }
       if (!data?.ok) { setError(data?.error || "Não consegui fazer seu cadastro."); return; }
-      navigate(`/indique/${data.code}`, { replace: true });
+      if (data.ja_cadastrado) { setRecuperar({ texto: data.recuperar, link: data.recuperar_link || null }); setStep("ja_cadastrado"); return; }
+      // o token privado vai só na URL do painel (nunca no link compartilhado)
+      navigate(data.painel_url.replace(/^https?:\/\/[^/]+/, ""), { replace: true });
     } catch { setError("Não consegui fazer seu cadastro. Tente de novo."); }
     finally { setSubmitting(false); }
   }
@@ -171,8 +177,17 @@ export default function IndiqueLanding() {
 
         {step === "loading" && <div className="py-10 grid place-items-center text-emerald-600"><Loader2 className="h-6 w-6 animate-spin" /></div>}
         {step === "invalid" && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-            Esse código não existe. <button className="underline font-medium" onClick={() => navigate("/indique")}>Fazer meu cadastro</button>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 space-y-2">
+            <p>{codeParam ? "Esse é um link de indicação, não o seu painel." : "Esse link de painel não existe ou foi digitado errado."}</p>
+            <p>Se você já tem cadastro, mande <b>"meu painel"</b> pro WhatsApp da Totex a partir do seu número cadastrado. Se não, <button className="underline font-medium" onClick={() => navigate("/indique")}>faça seu cadastro</button>.</p>
+          </div>
+        )}
+        {step === "ja_cadastrado" && recuperar && (
+          <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-sm text-slate-700 space-y-3">
+            <p className="font-semibold text-slate-900">Você já tem cadastro 👋</p>
+            <p>{recuperar.texto}</p>
+            {recuperar.link && <a href={recuperar.link} target="_blank" rel="noreferrer" className="block text-center rounded-xl bg-emerald-600 text-white py-3 font-semibold">Pedir meu painel no WhatsApp</a>}
+            <p className="text-xs text-slate-500">Por segurança a gente não mostra o painel aqui: ele só vai pro WhatsApp que está no cadastro.</p>
           </div>
         )}
         {step === "painel" && painel && <PainelView p={painel} />}
@@ -192,7 +207,7 @@ export default function IndiqueLanding() {
               <button type="submit" disabled={submitting} className="w-full rounded-xl bg-emerald-600 text-white py-3 font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />} Quero meu link
               </button>
-              <p className="text-xs text-slate-500">Se você já tem cadastro, basta colocar o mesmo WhatsApp: a gente mostra o seu painel.</p>
+              <p className="text-xs text-slate-500">Já tem cadastro? Mande "meu painel" pro WhatsApp da Totex a partir do seu número que ela te devolve o link do painel.</p>
             </form>
             <Regras sinal={valores.sinal_cents} venda={valores.venda_cents} max={valores.max_pagas} />
           </>

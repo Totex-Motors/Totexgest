@@ -269,6 +269,12 @@ const AppRoutes = () => {
           <IndiqueLanding />
         </React.Suspense>
       } />
+      <Route path="/indique/painel/:token" element={
+        <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+          <IndiqueLanding />
+        </React.Suspense>
+      } />
+      {/* código de indicação NÃO abre painel: só orienta */}
       <Route path="/indique/:code" element={
         <React.Suspense fallback={<div className="min-h-screen bg-emerald-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
           <IndiqueLanding />

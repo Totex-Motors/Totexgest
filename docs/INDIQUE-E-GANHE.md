@@ -17,7 +17,12 @@ carro. Decisão do Marco: **R$ 200 quando o indicado dá o sinal, R$ 800 quando 
    trigger `trg_indicacao_deal_events` → `indique_evento('sinal')` → pagamento R$ 200
    `a_pagar`. Deal **ganho** (`won_at`) → `indique_evento('venda')` → R$ 800 (e o sinal, se
    ainda não existia). Teto: 5 indicações com pagamento por indicador.
-5. Indicador acompanha em `/indique/<CODIGO>` (painel público, lista mascarada).
+5. Indicador acompanha em `/indique/painel/<TOKEN>`: token privado de 64 hex
+   (`indicadores.painel_token`), mostrado uma vez no cadastro. **O código de 6 letras é
+   público e nunca abre o painel.** Recadastro com telefone já usado não devolve nada nem
+   altera dados; recuperação só mandando "meu painel" pro WhatsApp oficial **a partir do
+   número cadastrado** (webhook → `indique_recuperar_painel` → link por WhatsApp = prova de
+   posse). Lista dos indicados sempre mascarada (primeiro nome + 4 últimos dígitos).
 6. Gestor vê no Claude: `indicacoes` (a pagar com WhatsApp/PIX do indicador) e
    `marcar_indicacao_paga` depois do PIX.
 

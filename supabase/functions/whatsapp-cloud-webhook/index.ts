@@ -309,6 +309,9 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
     // Indique e Ganhe: "Vim pela indicação ABC123" amarra o lead ao indicador (RPC decide dedupe/teto)
     try { await absorbIndicacao(supabase, routedTenantId, finalLeadId, cleanPhone, content, contactName !== cleanPhone ? contactName : null, leadFoiCriadoAgora); }
     catch (e) { console.error("[Cloud Webhook] indicação:", (e as Error).message); }
+    // Indicador pedindo o painel ("meu painel"): só responde pro telefone CADASTRADO (prova de posse)
+    try { await responderPainelIndicador(supabase, routedTenantId, finalLeadId, cleanPhone, content); }
+    catch (e) { console.error("[Cloud Webhook] painel do indicador:", (e as Error).message); }
   }
 
   // Daqui pra frente o tenant é o do lead ROTEADO (não o da instância oficial),
@@ -554,6 +557,30 @@ async function absorbIndicacao(supabase: any, tenantId: string | null, leadId: s
   });
   if (error) console.error("[Cloud Webhook] indique_registrar_contato:", error.message);
   else console.log("[Cloud Webhook] indicação:", JSON.stringify(data));
+}
+
+/** INDIQUE E GANHE — recuperação do painel. O indicador manda "meu painel" (ou "minha indicação",
+ *  "meu link") pro número oficial; se o telefone remetente é o cadastrado, devolvemos o link do
+ *  painel (token privado) + o link de indicação. Nunca por outro canal: é a prova de posse. */
+async function responderPainelIndicador(supabase: any, tenantId: string | null, leadId: string, phone: string, text: string): Promise<void> {
+  const t = String(text || "").trim();
+  if (!tenantId || t.length > 60 || !/\b(meu|minha|meus|minhas)\s+(painel|link|indica[çc][ãa]o|indica[çc][õo]es|indicad[oa]s?)\b/i.test(t)) return;
+  const { data, error } = await supabase.rpc("indique_recuperar_painel", { p_tenant: tenantId, p_phone: phone });
+  if (error) { console.error("[Cloud Webhook] indique_recuperar_painel:", error.message); return; }
+  if (!data?.ok || !data?.painel_token) return;
+  const { data: appRow } = await supabase.from("config").select("value").eq("key", "app_url").maybeSingle();
+  const appUrl = String(appRow?.value || "https://totexgest.vercel.app").replace(/\/$/, "");
+  const { data: inst } = await supabase.from("whatsapp_instances").select("phone_number").eq("tenant_id", tenantId).eq("provider", "meta_cloud").eq("status", "connected").order("created_at").limit(1).maybeSingle();
+  const oficial = String(inst?.phone_number || "").replace(/\D/g, "");
+  const linkIndicacao = oficial ? `https://wa.me/${oficial}?text=${encodeURIComponent(`Oi Nina! Vim pela indicação ${data.code} e quero ver os carros da Totex.`)}` : "";
+  const nome = String(data.nome || "").split(/\s+/)[0];
+  const msg = `Oi${nome ? `, ${nome}` : ""}! Aqui está o seu painel do Indique e Ganhe (link só seu, não compartilhe): ${appUrl}/indique/painel/${data.painel_token}` +
+    (linkIndicacao ? `\n\nE o seu link de indicação pra mandar pras pessoas: ${linkIndicacao}` : "");
+  await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp-cloud`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+    body: JSON.stringify({ action: "send_text", phone, text: msg, lead_id: leadId, tenant_id: tenantId, sent_by: "indique_painel" }),
+  });
+  console.log(`[Cloud Webhook] painel do indicador enviado pra ${phone}`);
 }
 
 async function absorbEmailClick(supabase: any, leadId: string, phone: string, text: string): Promise<void> {
