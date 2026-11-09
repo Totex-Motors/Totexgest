@@ -217,11 +217,11 @@ BEGIN
     -- sinal: paga no sinal E também na venda (venda sem sinal registrado ainda vale os R$ 200)
     INSERT INTO indicacao_pagamentos (tenant_id, indicador_id, indicacao_id, tipo, valor_cents)
     VALUES (i.tenant_id, i.indicador_id, i.id, 'sinal', v_sinal) ON CONFLICT (indicacao_id, tipo) DO NOTHING;
-    IF FOUND THEN criados := criados || 'sinal'; END IF;
+    IF FOUND THEN criados := array_append(criados, 'sinal'); END IF;
     IF p_tipo = 'venda' THEN
       INSERT INTO indicacao_pagamentos (tenant_id, indicador_id, indicacao_id, tipo, valor_cents)
       VALUES (i.tenant_id, i.indicador_id, i.id, 'venda', v_venda) ON CONFLICT (indicacao_id, tipo) DO NOTHING;
-      IF FOUND THEN criados := criados || 'venda'; END IF;
+      IF FOUND THEN criados := array_append(criados, 'venda'); END IF;
     END IF;
   ELSE
     UPDATE indicacoes SET meta = meta || jsonb_build_object('teto_atingido', true) WHERE id = i.id;
