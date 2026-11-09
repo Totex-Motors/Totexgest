@@ -46,3 +46,9 @@ GRANT ALL ON public.autoconf_stores, public.autoconf_events TO service_role;
 INSERT INTO public.config (key, value)
 SELECT 'AUTOCONF_WEBHOOK_SECRET', encode(sha256((gen_random_uuid()::text || clock_timestamp()::text)::bytea), 'hex')
 WHERE NOT EXISTS (SELECT 1 FROM config WHERE key = 'AUTOCONF_WEBHOOK_SECRET');
+
+-- Repasse ao marketplace totexmotors.com (loja + integração AUTOCONF + sync) e retorno de leads.
+ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_dealership_id text;
+ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_integration_id text;
+ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS marketplace_result jsonb;
+ALTER TABLE public.autoconf_stores ADD COLUMN IF NOT EXISTS lead_webhook_url text;

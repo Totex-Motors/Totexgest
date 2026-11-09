@@ -13,7 +13,7 @@ no chat com o Marco) e o próprio `GET /functions/v1/autoconf-webhook`, que devo
 | Fase | Direção | Como | Status |
 |---|---|---|---|
 | 1 | Autoconf → Totex: ativação/desativação do app, dados da loja, feed | `POST autoconf-webhook` | pronto |
-| 2 | Autoconf → Totex: estoque | feed XML/JSON público, lido pelo marketplace | depende do feed deles |
+| 2 | Autoconf → Totex: estoque no marketplace, totens do stand e Nina | ativação repassada ao marketplace (`POST /api/integrations/autoconf/activation`) → loja + integração ERP AUTOCONF + sync automático (cron do marketplace, padrão 6 h) | pronto (marketplace PR) |
 | 3 | Totex → Autoconf: leads do stand/marketplace qualificados pela Nina | API de leads do Autoconf | **precisa da documentação deles** |
 
 ## Fase 1 — webhook de ativação
@@ -26,15 +26,31 @@ no chat com o Marco) e o próprio `GET /functions/v1/autoconf-webhook`, que devo
   `activated_by/contact/contato`, campos em pt/en) — o canonical está em `CONTRATO` no código.
 - Efeitos: `autoconf_stores` (loja ↔ tenant, feed, status) → `provision-tenant` (mesma porta do
   TotexMotors OS; `external_dealership_id = autoconf:<store.id>`, `external_source = autoconf`,
-  contato que ativou vira admin convidado por e-mail) → tarefa crítica na matriz
-  (`company_activities`, "cadastrar feed no marketplace e dar boas-vindas").
+  contato que ativou vira admin convidado por e-mail) → repasse ao marketplace (Fase 2) →
+  tarefa crítica na matriz (`company_activities`, "conferir os carros e dar boas-vindas").
 
-## Fase 2 — feed de estoque
+## Fase 2 — estoque das lojas Autoconf no marketplace (automático)
+`autoconf-webhook` chama o marketplace (`TOTEX_MARKETPLACE_API_URL` ou https://totexmotors.com)
+em `POST /api/integrations/autoconf/activation` com `Authorization: Bearer <MARKETPLACE_WEBHOOK_SECRET>`
+(o mesmo segredo dos leads; no marketplace é `TOTEXGEST_WEBHOOK_SECRET` — nenhuma variável nova).
+O marketplace (repo totexmotors-marketplace, `erp-importer/autoconf-activation.controller.ts`):
+casa a loja (marca `fieldMapping.autoconfStoreId` → CNPJ → mesmo feed), cria/atualiza o
+`Dealership` e o `ErpIntegration` `AUTOCONF` com o feed, e enfileira o sync na hora (parser
+`autoconf.parser.ts`, carros sem foto são pulados, carro que some do feed vira INACTIVE).
+Desativação: integração, loja e carros ficam inativos. Sem migration no marketplace.
+De volta no CRM: `marketplace_store_mappings` (loja do marketplace → tenant) e
+`tenants.metadata.marketplace_dealership_id` — é o que o `consultar-estoque` (Nina/stand) e o
+`marketplace-lead-webhook` usam. Se o Autoconf mandar `leads.webhook_url`, vira
+`Dealership.leadWebhookUrl` e os leads do marketplace vão também pro ERP da loja.
+
+### Formato do feed
+
 O marketplace totexmotors.com (projeto separado) consome o feed. Pedimos ao Autoconf o feed
 padrão que eles já geram pra portais (XML), público, estável, atualizado a cada hora, com:
 id do veículo, marca, modelo, versão, ano fabricação/modelo, km, cor, câmbio, combustível,
-preço, fotos (URLs), opcionais, descrição, status (disponível/vendido). O cadastro do feed na
-loja do marketplace ainda é manual (tarefa aberta pelo webhook).
+preço, fotos (URLs), opcionais, descrição, status (disponível/vendido). O XML padrão de site do
+Autoconf (`<ADS><AD>…`) já é lido pelo parser do marketplace. O cadastro é automático; a tarefa
+aberta pelo webhook é só pra conferir (ou cadastrar na mão se o repasse ao marketplace falhar).
 
 ## Fase 3 — leads de volta pro Autoconf
 Quando a Nina qualifica um lead do stand e o `stand-handoff` repassa pra loja dona do carro, se a

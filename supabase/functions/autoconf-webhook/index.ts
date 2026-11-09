@@ -10,7 +10,10 @@ import { getIntegrationKey } from "../_shared/config.ts";
 //   2. registra o evento (autoconf_events, idempotente por event_id);
 //   3. cria/atualiza a loja (autoconf_stores) e provisiona o tenant no CRM (provision-tenant,
 //      a mesma porta usada pelo TotexMotors OS) — idempotente por store.id;
-//   4. abre uma tarefa crítica na matriz pra cadastrar o feed no marketplace e dar boas-vindas.
+//   4. repassa ao marketplace totexmotors.com (POST /api/integrations/autoconf/activation), que cria a
+//      loja + integração ERP AUTOCONF e já sincroniza o estoque → os carros aparecem no marketplace, nos
+//      totens do stand e no estoque da Nina; amarra a loja do marketplace ao tenant (marketplace_store_mappings);
+//   5. abre uma tarefa na matriz pra conferir os carros e dar boas-vindas (ou cadastrar na mão se o passo 4 falhou).
 //
 // GET  /autoconf-webhook            → contrato (JSON) — pra o dev do Autoconf conferir o formato.
 // POST /autoconf-webhook            → evento (ver `CONTRATO` abaixo). Sempre responde JSON.
@@ -47,6 +50,7 @@ export const CONTRATO = {
     },
     feed: { url: "URL pública e estável do feed de estoque (obrigatório em app.activated)", format: "autoconf_xml | json" },
     activated_by: { name: "quem ativou (obrigatório)", email: "", phone: "DDI+DDD+número" },
+    leads: { webhook_url: "opcional — URL https do Autoconf que recebe os leads da loja (JSON POST)" },
   },
   resposta: { ok: true, status: "created | updated | ignored", store_id: "…", tenant_id: "uuid no Totexgest" },
   erros: { 401: "segredo inválido", 400: "payload inválido (campo obrigatório ausente)", 500: "erro interno — reenviar com o mesmo event_id" },
@@ -67,6 +71,8 @@ function normalizar(body: Record<string, unknown>) {
   const feed = typeof feedRaw === "string" ? { url: feedRaw } : ((feedRaw ?? {}) as Record<string, unknown>);
   const who = (pick(body, "activated_by", "activatedBy", "contact", "contato", "user", "usuario") ?? {}) as Record<string, unknown>;
   const addr = (pick(store, "address", "endereco") ?? {}) as Record<string, unknown>;
+  const leadsRaw = pick(body, "leads", "lead_webhook", "lead_webhook_url", "leadWebhookUrl");
+  const leads = typeof leadsRaw === "string" ? { webhook_url: leadsRaw } : ((leadsRaw ?? {}) as Record<string, unknown>);
   return {
     event: String(pick(body, "event", "evento", "type", "tipo") ?? "app.activated").toLowerCase(),
     event_id: str(pick(body, "event_id", "eventId", "id")),
@@ -91,7 +97,36 @@ function normalizar(body: Record<string, unknown>) {
     activated_by: {
       name: str(pick(who, "name", "nome")), email: str(pick(who, "email")), phone: digits(pick(who, "phone", "telefone", "whatsapp", "celular")) || null,
     },
+    leads: { webhook_url: str(pick(leads, "webhook_url", "url", "webhookUrl"), 1000) },
   };
+}
+
+type Ev = ReturnType<typeof normalizar>;
+
+/** Repassa a ativação pro marketplace totexmotors.com (cria loja + integração AUTOCONF + sync).
+ *  Auth: o mesmo segredo compartilhado dos leads (config MARKETPLACE_WEBHOOK_SECRET ↔
+ *  TOTEXGEST_WEBHOOK_SECRET no marketplace). Nunca lança: devolve { ok, ... } ou { ok:false, error }. */
+async function repassarAoMarketplace(supabase: any, ev: Ev): Promise<Record<string, any>> {
+  try {
+    const base = String((await getIntegrationKey(supabase, "TOTEX_MARKETPLACE_API_URL")) || "https://totexmotors.com").replace(/\/$/, "");
+    const secret = await getIntegrationKey(supabase, "MARKETPLACE_WEBHOOK_SECRET");
+    if (!secret) return { ok: false, error: "MARKETPLACE_WEBHOOK_SECRET ausente" };
+    const r = await fetch(`${base}/api/integrations/autoconf/activation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({
+        event: ev.event, storeId: ev.store.id, name: ev.store.name, cnpj: ev.store.cnpj,
+        phone: ev.store.whatsapp || ev.store.phone, email: ev.store.email, website: ev.store.website, logoUrl: ev.store.logo_url,
+        address: ev.store.address, feedUrl: ev.feed.url, leadWebhookUrl: ev.leads.webhook_url,
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: `marketplace HTTP ${r.status}: ${JSON.stringify(j).slice(0, 300)}` };
+    return j;
+  } catch (e) {
+    return { ok: false, error: `marketplace: ${(e as Error).message}` };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -127,10 +162,15 @@ Deno.serve(async (req) => {
     const { data: existing } = await supabase.from("autoconf_stores").select("*").eq("store_id", ev.store.id).maybeSingle();
     let tenantId: string | null = existing?.tenant_id ?? null;
     let status: "created" | "updated" | "ignored" = existing ? "updated" : "created";
+    let mkt: Record<string, any> | null = null;
 
     if (ev.event === "app.deactivated") {
       if (!existing) status = "ignored";
-      else await supabase.from("autoconf_stores").update({ status: "inativo", deactivated_at: new Date().toISOString(), raw: body, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      else {
+        await supabase.from("autoconf_stores").update({ status: "inativo", deactivated_at: new Date().toISOString(), raw: body, updated_at: new Date().toISOString() }).eq("id", existing.id);
+        mkt = await repassarAoMarketplace(supabase, ev);
+        if (mkt?.dealershipId) await supabase.from("marketplace_store_mappings").update({ active: false, updated_at: new Date().toISOString() }).eq("marketplace_store_id", mkt.dealershipId);
+      }
     } else {
       // Provisiona o tenant no CRM (mesma porta do TotexMotors OS) na primeira ativação
       if (!tenantId) {
@@ -171,13 +211,33 @@ Deno.serve(async (req) => {
       if (existing) await supabase.from("autoconf_stores").update(row).eq("id", existing.id);
       else await supabase.from("autoconf_stores").insert(row);
 
+      // Marketplace: cria/atualiza a loja + integração AUTOCONF e já sincroniza o estoque.
+      mkt = await repassarAoMarketplace(supabase, ev);
+      await supabase.from("autoconf_stores").update({
+        marketplace_dealership_id: mkt?.dealershipId ?? existing?.marketplace_dealership_id ?? null,
+        marketplace_integration_id: mkt?.integrationId ?? existing?.marketplace_integration_id ?? null,
+        marketplace_result: mkt, lead_webhook_url: ev.leads.webhook_url ?? existing?.lead_webhook_url ?? null,
+      }).eq("store_id", ev.store.id);
+      // Liga a loja do marketplace ao tenant do CRM (estoque da Nina/stand e roteamento dos leads)
+      if (mkt?.ok && mkt.dealershipId && tenantId) {
+        await supabase.from("marketplace_store_mappings").upsert(
+          { marketplace_store_id: mkt.dealershipId, tenant_id: tenantId, store_name: ev.store.name, active: true, updated_at: new Date().toISOString() },
+          { onConflict: "marketplace_store_id" },
+        );
+        const { data: tRow } = await supabase.from("tenants").select("metadata").eq("id", tenantId).maybeSingle();
+        await supabase.from("tenants").update({ metadata: { ...(tRow?.metadata || {}), marketplace_dealership_id: mkt.dealershipId } }).eq("id", tenantId);
+      }
+
       // Tarefa crítica na matriz: cadastrar o feed no marketplace + boas-vindas (só na 1ª ativação)
       if (!existing && ev.event === "app.activated") {
         const hq = await getIntegrationKey(supabase, "INDIQUE_TENANT_ID");
         if (hq) {
           await supabase.from("company_activities").insert({
-            tenant_id: hq, name: `Autoconf: ${ev.store.name} ativou o app Totex — cadastrar feed no marketplace e dar boas-vindas`,
-            description: `Loja ${ev.store.name} (Autoconf id ${ev.store.id})\nFeed: ${ev.feed.url}\nAtivou: ${ev.activated_by.name} · ${ev.activated_by.email || ""} · ${ev.activated_by.phone || ""}\nTenant no Totexgest: ${tenantId || "não criado"}`,
+            tenant_id: hq,
+            name: mkt?.ok
+              ? `Autoconf: ${ev.store.name} ativou o app Totex — conferir os carros no marketplace e dar boas-vindas`
+              : `Autoconf: ${ev.store.name} ativou o app Totex — FALHOU no marketplace, cadastrar o feed na mão`,
+            description: `Loja ${ev.store.name} (Autoconf id ${ev.store.id})\nFeed: ${ev.feed.url}\nAtivou: ${ev.activated_by.name} · ${ev.activated_by.email || ""} · ${ev.activated_by.phone || ""}\nTenant no Totexgest: ${tenantId || "não criado"}\nMarketplace: ${mkt?.ok ? `loja ${mkt.dealershipId} (${mkt.status}), sync ${mkt.syncQueued ? "enfileirado" : "não"}` : (mkt?.error || "não chamado")}`,
             task_type: "internal", priority: "high", is_critical: true, status: "pending",
             due_datetime: new Date(Date.now() + 24 * 3600_000).toISOString(), source_type: "autoconf", source_id: evRow?.id ?? null,
           });
@@ -185,7 +245,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const result = { ok: true, status, store_id: ev.store.id, tenant_id: tenantId };
+    const result = { ok: true, status, store_id: ev.store.id, tenant_id: tenantId, marketplace: mkt?.ok ? { dealership_id: mkt.dealershipId, sync: !!mkt.syncQueued } : (mkt ? { error: "pendente" } : null) };
     if (evRow?.id) await supabase.from("autoconf_events").update({ result, processed_at: new Date().toISOString() }).eq("id", evRow.id);
     console.log(LOG, JSON.stringify(result));
     return json(result);
