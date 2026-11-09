@@ -372,6 +372,13 @@ A Nina do direct é o agente `nina-instagram`, ligado por loja pela chave `IG_NI
 Ver `docs/NINA-INSTAGRAM.md`. Mesmas regras da Nina: sem valor de troca, sem taxa, sem
 escassez, "simulação" (nunca "conta"); no direct não dá parcela — leva pro WhatsApp oficial.
 
+## INDIQUE E GANHE (indicação aberta) — ver docs/INDIQUE-E-GANHE.md
+
+R$ 200 no sinal + R$ 800 na venda, até 5 por indicador. Tabelas `indicadores`, `indicacoes`,
+`indicacao_pagamentos`; link SEMPRE do WhatsApp oficial; gatilhos em `deals.commitment_amount`
+(Registrar Sinal) e `deals.won_at`. Não crie outro caminho de pagamento: tudo passa por
+`indique_evento`. Páginas públicas `/indique` e `/indique/:code`.
+
 ## INTERMEDIAÇÃO (captação das promotoras) — regra de ouro
 
 Entidade-mãe é `intermediations` (docs/INTERMEDIACAO.md). "Captação" é só a origem.

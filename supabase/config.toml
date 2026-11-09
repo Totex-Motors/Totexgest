@@ -57,6 +57,9 @@ verify_jwt = false
 [functions.repasse-track]
 verify_jwt = false
 
+[functions.indique]
+verify_jwt = false
+
 # ============================================================
 # CRONS / SCHEDULERS — chamados pelo pg_cron sem user context
 # ============================================================

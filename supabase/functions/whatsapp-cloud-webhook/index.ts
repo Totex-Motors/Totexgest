@@ -283,6 +283,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // Se não encontrou lead em nenhum tenant, cria no tenant da instância (master) pela
   // porta única (passo 2 — docs/ENTRADAS-DE-LEADS.md): dedupe por telefone dentro do
   // tenant + trava anti-corrida (duas mensagens seguidas do mesmo número = 1 lead).
+  let leadFoiCriadoAgora = false;
   if (!finalLeadId) {
     if (!routedTenantId) {
       console.error(`[Cloud Webhook] Sem tenant pra criar o lead de ${cleanPhone} (instância sem tenant) — mensagem salva sem lead`);
@@ -297,6 +298,7 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
       });
       if (focErr) console.error(`[Cloud Webhook] find_or_create_lead err:`, focErr.message);
       finalLeadId = foc?.lead_id || null;
+      leadFoiCriadoAgora = !!foc?.created;
       console.log(`[Cloud Webhook] ${foc?.created ? "Created new" : "Reused"} lead: ${finalLeadId} (tenant ${routedTenantId})`);
     }
   }
@@ -304,6 +306,9 @@ async function handleIncomingMessage(supabase: any, msg: any, contacts: any[], i
   // Clique no botão do e-mail de reativação da loja parceira (texto pronto "Sou cliente da Cardoso…")
   if (finalLeadId) {
     try { await absorbEmailClick(supabase, finalLeadId, cleanPhone, content); } catch (e) { console.error("[Cloud Webhook] clique do e-mail:", (e as Error).message); }
+    // Indique e Ganhe: "Vim pela indicação ABC123" amarra o lead ao indicador (RPC decide dedupe/teto)
+    try { await absorbIndicacao(supabase, routedTenantId, finalLeadId, cleanPhone, content, contactName !== cleanPhone ? contactName : null, leadFoiCriadoAgora); }
+    catch (e) { console.error("[Cloud Webhook] indicação:", (e as Error).message); }
   }
 
   // Daqui pra frente o tenant é o do lead ROTEADO (não o da instância oficial),
@@ -538,6 +543,19 @@ async function absorbMarketplaceClick(supabase: any, phone: string, contactName:
 // registra o carro dele na troca, liga ao cadastro da base, cancela a ligação de stand e anda o
 // funil da campanha ("Nina em contato"). A base pode ter outro telefone (família): o vínculo é
 // certo quando o telefone bate, senão vale o modelo quando é único na variante.
+/** INDIQUE E GANHE — o indicado chega pelo link do indicador: "Oi Nina! Vim pela indicação ABC123 …".
+ *  A RPC resolve o código, aplica "um telefone = um indicador (primeiro vence)", barra
+ *  auto-indicação e cliente que já estava em negociação, e marca o lead (metadata.indicacao + utm). */
+async function absorbIndicacao(supabase: any, tenantId: string | null, leadId: string, phone: string, text: string, nome: string | null, leadNovo: boolean): Promise<void> {
+  const m = String(text || "").match(/indica[çc][ãa]o\s+([A-Za-z0-9]{4,8})\b/i);
+  if (!m || !tenantId) return;
+  const { data, error } = await supabase.rpc("indique_registrar_contato", {
+    p_tenant: tenantId, p_code: m[1].toUpperCase(), p_phone: phone, p_lead: leadId, p_nome: nome, p_lead_novo: leadNovo,
+  });
+  if (error) console.error("[Cloud Webhook] indique_registrar_contato:", error.message);
+  else console.log("[Cloud Webhook] indicação:", JSON.stringify(data));
+}
+
 async function absorbEmailClick(supabase: any, leadId: string, phone: string, text: string): Promise<void> {
   const t = String(text || "").trim();
   const mA = t.match(/recebi seu e-?mail sobre a troca do meu (.+?)\.?\s*$/i);
