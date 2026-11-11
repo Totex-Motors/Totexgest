@@ -25,6 +25,10 @@ type Sb = any;
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const MIN_TEXT_LEN = 15; // ignora "boa tarde", figurinha, etc.
+// Grupos em que a foto chega SOZINHA e o texto do carro vem logo depois (ex.: SELETIVA CAR):
+// a foto sem legenda fica guardada e é usada no post do texto que chegar até X min depois.
+const FOTO_SEM_LEGENDA = "foto sem legenda";
+const FOTO_JANELA_MS = 3 * 60_000;
 
 const VOICES: Record<string, string> = {
   equilibrado:
@@ -212,9 +216,12 @@ export async function previewRepasse(
 async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise<void> {
   const text = (input.text || "").trim();
 
-  // 1) Ruído / mensagens curtas (imagem sem legenda também cai aqui)
+  // 1) Ruído / mensagens curtas. Foto sem legenda fica guardada pro texto que vier logo depois.
   if (text.length < MIN_TEXT_LEN) {
-    await logPost(sb, config, input, { status: "skipped", skip_reason: "texto/legenda muito curto" });
+    await logPost(sb, config, input, {
+      status: "skipped",
+      skip_reason: isImage(input.messageType) ? FOTO_SEM_LEGENDA : "texto/legenda muito curto",
+    });
     return;
   }
 
@@ -276,10 +283,17 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
   );
   if (!allowed) throw new Error("política bloqueou o alvo (não é grupo/canal)");
 
-  // 7) Posta no grupo da comunidade — com a FOTO REAL quando a origem for imagem
+  // 7) Posta no grupo da comunidade — com a FOTO REAL quando a origem for imagem, ou com a foto
+  //    sem legenda que a mesma pessoa mandou logo antes do texto.
   let sentWithMedia = false;
-  if (isImage(input.messageType)) {
-    const link = await getMediaLink(apiUrl, instance.api_key, input.messageId);
+  let photoId: string | null = isImage(input.messageType) ? input.messageId : null;
+  let pendingPhotoRow: string | null = null;
+  if (!photoId) {
+    const pending = await findPendingPhoto(sb, config, input);
+    if (pending) { photoId = pending.source_message_id; pendingPhotoRow = pending.id; }
+  }
+  if (photoId) {
+    const link = await getMediaLink(apiUrl, instance.api_key, photoId);
     if (link) {
       const res = await fetch(`${apiUrl}/send/media`, {
         method: "POST",
@@ -311,7 +325,12 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
     preco_final: r.final,
     post_text: r.post,
     ref_code: ref,
+    error: null,
+    photo_message_id: sentWithMedia ? photoId : null,
   });
+  if (pendingPhotoRow && sentWithMedia) {
+    await sb.from("repasse_relay_posts").update({ skip_reason: `foto usada no post ${ref}` }).eq("id", pendingPhotoRow);
+  }
   console.log("[repasse-relay] postado:", t.modelo, r.final != null ? brl(r.final) : "(consultar)", sentWithMedia ? "(com foto)" : "(texto)");
 
   // 9) Casa com a demanda captada na comunidade (marca pra o time abordar)
@@ -342,6 +361,22 @@ function render(config: RelayConfig, t: TransformResult): Rendered {
   post = post.replace(/^.*\bABAIXO DA (FIPE|TABELA)\b.*$\n?/im, (line) =>
     /R\$\s*\d/.test(line) ? line : "");
   return { orig, final, abaixoFinal, post: post.trim() };
+}
+
+/** Foto sem legenda do mesmo grupo (e da mesma pessoa, quando dá pra saber) nos últimos minutos. */
+async function findPendingPhoto(sb: Sb, config: RelayConfig, input: RelayInput): Promise<{ id: string; source_message_id: string } | null> {
+  const q = sb.from("repasse_relay_posts")
+    .select("id, source_message_id, sender")
+    .eq("config_id", config.id)
+    .eq("skip_reason", FOTO_SEM_LEGENDA)
+    .gte("created_at", new Date(Date.now() - FOTO_JANELA_MS).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const { data } = await q;
+  const rows = (data ?? []) as { id: string; source_message_id: string; sender: string | null }[];
+  const sender = (input.senderName || "").trim();
+  const mine = sender ? rows.find((r) => (r.sender || "").trim() === sender) : null;
+  return mine ?? (rows.length > 0 && !sender ? rows[0] : null);
 }
 
 async function getMediaLink(apiUrl: string, token: string, messageId: string): Promise<string | null> {
@@ -443,6 +478,8 @@ async function logPost(
         source_message_id: input.messageId,
         source_text: (input.text || "").slice(0, 4000),
         target_group_jid: config.target_group_jid,
+        sender: input.senderName ?? null,
+        message_type: input.messageType ?? null,
         ...fields,
       },
       { onConflict: "config_id,source_message_id" },

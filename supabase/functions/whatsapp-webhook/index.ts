@@ -11,6 +11,7 @@ import { tryHandleViaAgentPlatform } from "./agent-platform.ts";
 import { uazapiTargetAllowed } from "../_shared/wa-policy.ts";
 import { maybeRelayRepasse } from "../_shared/repasse.ts";
 import { maybeCaptureDemand } from "../_shared/community.ts";
+import { maybeHandleEncomenda } from "../_shared/encomendas.ts";
 import { maybeBrainReply } from "../_shared/cerebro-bot.ts";
 
 const corsHeaders = {
@@ -299,6 +300,21 @@ async function handleIncomingMessage(
       senderPhone,
     }).catch((e) => { console.error('[community] hook erro:', e); return false; });
     if (captured) return;
+  }
+
+  // ── Encomendas: pedido de carro no grupo de compra/encomenda → busca no marketplace e,
+  // se achar, responde NO GRUPO (citando o pedido) com o link. Não vira ticket.
+  if (!fromMe && isGroup) {
+    const handled = await maybeHandleEncomenda(supabase, {
+      instanceId,
+      tenantId,
+      groupJid: remoteJid,
+      messageId,
+      text: (payload.content?.text || payload.text || ''),
+      senderName: pushName,
+      senderPhone,
+    }).catch((e) => { console.error('[encomendas] hook erro:', e); return false; });
+    if (handled) return;
   }
 
   // ── Captação: "Chamei / Liguei / Falei" no grupo de handoff fecha o SLA (Fase 2) ──
