@@ -40,3 +40,9 @@ END $f$;
 DROP TRIGGER IF EXISTS trg_repasse_relay_set_code ON public.repasse_relay_config;
 CREATE TRIGGER trg_repasse_relay_set_code BEFORE INSERT ON public.repasse_relay_config
   FOR EACH ROW EXECUTE FUNCTION public.repasse_relay_set_code();
+
+-- Ref. única por grupo (o relay reserva a Ref. antes de postar; colisão → "-2", "-3"…).
+-- Os 3 primeiros posts de 11/11 14:57 saíram com a mesma Ref. antes dessa trava e ficam como estão.
+CREATE UNIQUE INDEX IF NOT EXISTS repasse_relay_posts_ref_uniq
+  ON public.repasse_relay_posts (config_id, ref_code)
+  WHERE ref_code IS NOT NULL AND created_at >= '2026-11-11 18:00:00+00';

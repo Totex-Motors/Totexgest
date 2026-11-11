@@ -346,6 +346,24 @@ Deno.serve(async (req) => {
         });
       }
 
+      case "group_invite_link": {
+        // Link de convite de um grupo em que o número já está (abrir o grupo no WhatsApp a partir
+        // do CRM). Só leitura; devolve só jid/nome/link (nunca a lista de participantes).
+        const groupjid = typeof params.groupjid === "string" ? params.groupjid.trim() : "";
+        if (!groupjid.endsWith("@g.us")) return json({ ok: false, error: "groupjid de grupo é obrigatório" }, 400);
+        const r = await fetch(`${apiUrl}/group/info`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ groupjid, getInviteLink: true }),
+        });
+        const d = await r.json().catch(() => ({} as Record<string, unknown>));
+        if (!r.ok) return json({ ok: false, error: `UAZAPI ${r.status}` }, 502);
+        return json({
+          ok: true,
+          data: { jid: d.JID ?? groupjid, name: d.Name ?? null, invite_link: d.invite_link ?? d.InviteLink ?? null },
+        });
+      }
+
       case "group_join": {
         // Entra num grupo pelo código de convite (pode exigir aprovação de admin).
         const code = typeof params.invitecode === "string" ? params.invitecode.trim() : "";

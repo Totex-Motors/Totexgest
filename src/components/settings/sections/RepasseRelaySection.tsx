@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2, Link2, Plus, Search, Hash } from "lucide-react";
+import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2, Link2, Plus, Search, Hash, Copy, ExternalLink, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useRepasseConfigs, useUazapiInstances, useUazapiGroups,
   useSaveRepasseConfig, useDeleteRepasseConfig, useRepasseLog, usePreviewRepasse,
-  useResolveGroupLink, useJoinGroupByLink,
-  type RepasseConfig, type RepasseVoice,
+  useResolveGroupLink, useJoinGroupByLink, useGroupInviteLink,
+  type RepasseConfig, type RepasseVoice, type RepasseLogRow,
 } from "@/hooks/useRepasseRelay";
 
 /**
@@ -420,6 +420,7 @@ function TestCard({ instanceId, sourceJid }: { instanceId: string; sourceJid: st
 function LogCard({ configs }: { configs: RepasseConfig[] }) {
   const [busca, setBusca] = useState("");
   const { data: rows = [], isLoading } = useRepasseLog(busca.trim() ? 50 : 20, busca);
+  const [aberto, setAberto] = useState<string | null>(null);
   const codeOf = (configId: string | null) => configs.find((c) => c.id === configId)?.code ?? null;
   const nameOf = (configId: string | null) => configs.find((c) => c.id === configId)?.source_group_name ?? null;
   const statusColor = (s: string) => s === "posted" ? "text-emerald-600" : s === "error" ? "text-destructive" : "text-muted-foreground";
@@ -452,7 +453,9 @@ function LogCard({ configs }: { configs: RepasseConfig[] }) {
         ) : (
           <ul className="divide-y divide-border/60">
             {rows.map((row) => (
-              <li key={row.id} className="py-2 flex items-center gap-3">
+              <li key={row.id} className="py-2">
+                <button type="button" className="w-full flex items-center gap-3 text-left"
+                  onClick={() => setAberto(aberto === row.id ? null : row.id)}>
                 {codeOf(row.config_id) && (
                   <Badge variant="outline" className="font-mono shrink-0" title={nameOf(row.config_id) ?? undefined}>{codeOf(row.config_id)}</Badge>
                 )}
@@ -463,15 +466,79 @@ function LogCard({ configs }: { configs: RepasseConfig[] }) {
                     {new Date(row.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     {row.status === "posted" && row.preco_final != null && <> · {brl(row.preco_final)}</>}
                     {row.status === "skipped" && row.skip_reason && <> · {row.skip_reason}</>}
-                    {row.status === "error" && row.error && <> · {row.error}</>}
+                    {row.status === "error" && row.error && row.error !== "enviando…" && <> · {row.error}</>}
                   </p>
                 </div>
-                <span className={`text-[11px] font-medium shrink-0 ${statusColor(row.status)}`}>{statusLabel(row.status)}</span>
+                <span className={`text-[11px] font-medium shrink-0 ${row.error === "enviando…" ? "text-muted-foreground" : statusColor(row.status)}`}>{row.error === "enviando…" ? "enviando" : statusLabel(row.status)}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${aberto === row.id ? "rotate-180" : ""}`} />
+                </button>
+                {aberto === row.id && (
+                  <PostDetalhe row={row} config={configs.find((c) => c.id === row.config_id)} />
+                )}
               </li>
             ))}
           </ul>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Post completo + abrir o grupo no WhatsApp + copiar a Ref. (WhatsApp não tem link pra mensagem de grupo). */
+function PostDetalhe({ row, config }: { row: RepasseLogRow; config?: RepasseConfig }) {
+  const instanceId = config?.instance_id ?? null;
+  const target = row.target_group_jid ?? config?.target_group_jid ?? null;
+  const { data: link, isLoading } = useGroupInviteLink(instanceId, target, row.status === "posted");
+  const [verOrigem, setVerOrigem] = useState(false);
+
+  const copiar = async () => {
+    if (!row.ref_code) return;
+    try {
+      await navigator.clipboard.writeText(row.ref_code);
+      toast.success(`Ref. ${row.ref_code} copiada. No grupo, toque na lupa e cole.`);
+    } catch {
+      toast.info(`Ref.: ${row.ref_code}`);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border/60 bg-muted/30 p-3">
+      {row.post_text ? (
+        <div className="text-sm whitespace-pre-wrap break-words">{row.post_text}</div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Esse carro não foi postado, então não há post.</p>
+      )}
+
+      {row.status === "posted" && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button size="sm" variant="outline" disabled={!link} asChild={!!link}>
+            {link ? (
+              <a href={link} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2" /> Abrir grupo no WhatsApp</a>
+            ) : (
+              <span>{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Link do grupo indisponível"}</span>
+            )}
+          </Button>
+          {row.ref_code && (
+            <Button size="sm" variant="outline" onClick={copiar}><Copy className="h-4 w-4 mr-2" /> Copiar Ref.</Button>
+          )}
+        </div>
+      )}
+      {row.status === "posted" && row.ref_code && (
+        <p className="text-[11px] text-muted-foreground">
+          O WhatsApp não abre uma mensagem de grupo direto por link: abra o grupo, toque na lupa e cole a Ref. ({row.ref_code}) que o carro aparece.
+        </p>
+      )}
+
+      {row.source_text && (
+        <div>
+          <button type="button" className="text-[11px] text-muted-foreground underline" onClick={() => setVerOrigem(!verOrigem)}>
+            {verOrigem ? "Esconder anúncio original" : "Ver anúncio original do repasse"}
+          </button>
+          {verOrigem && (
+            <div className="mt-1 text-xs whitespace-pre-wrap break-words text-muted-foreground border-l-2 border-border pl-2">{row.source_text}</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
