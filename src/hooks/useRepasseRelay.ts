@@ -12,6 +12,9 @@ export type RepasseVoice = "equilibrado" | "vendedor" | "consultor" | "descolado
 
 export interface RepasseConfig {
   id: string;
+  /** Código do grupo de repasse (R1, R2…), gerado no banco. Vai na "Ref." de cada post. */
+  code: string | null;
+  source_group_name: string | null;
   tenant_id: string;
   instance_id: string;
   source_group_jid: string;
@@ -38,6 +41,8 @@ export interface RepasseLogRow {
   preco_final: number | null;
   post_text: string | null;
   status: "posted" | "skipped" | "error";
+  /** Referência impressa no post: <grupo>-<ddmm>-<hhmm> (ex.: R2-1111-1432). */
+  ref_code: string | null;
   skip_reason: string | null;
   error: string | null;
   created_at: string;
@@ -118,6 +123,7 @@ export function useSaveRepasseConfig() {
       const payload = {
         instance_id: cfg.instance_id,
         source_group_jid: cfg.source_group_jid,
+        source_group_name: cfg.source_group_name ?? null,
         target_group_jid: cfg.target_group_jid,
         margin: cfg.margin ?? 5000,
         voice: cfg.voice ?? "equilibrado",
@@ -163,16 +169,22 @@ export function useDeleteRepasseConfig() {
   });
 }
 
-/** Últimos posts processados (auditoria). */
-export function useRepasseLog(limit = 20) {
+/**
+ * Últimos posts processados (auditoria). Com `ref`, busca pela referência impressa no post
+ * (ex.: "R2-1111-1432", ou só "R2-1111" pra ver tudo do grupo R2 no dia 11/11).
+ */
+export function useRepasseLog(limit = 20, ref = "") {
+  const term = ref.trim().toUpperCase().replace(/^REF\.?\s*/, "").replace(/[^A-Z0-9-]/g, "");
   return useQuery({
-    queryKey: ["repasse-log", limit],
+    queryKey: ["repasse-log", limit, term],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("repasse_relay_posts")
-        .select("id, config_id, source_message_id, modelo, preco_original, margem, preco_final, post_text, status, skip_reason, error, created_at")
+        .select("id, config_id, source_message_id, modelo, preco_original, margem, preco_final, post_text, status, ref_code, skip_reason, error, created_at")
         .order("created_at", { ascending: false })
         .limit(limit);
+      if (term) q = q.ilike("ref_code", `${term}%`);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as RepasseLogRow[];
     },

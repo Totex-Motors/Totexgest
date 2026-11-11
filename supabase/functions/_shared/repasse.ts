@@ -49,6 +49,7 @@ export interface RelayInput {
 
 interface RelayConfig {
   id: string;
+  code?: string | null;          // código do grupo de repasse (R1, R2…), gerado no banco
   tenant_id: string | null;
   instance_id: string;
   source_group_jid: string;
@@ -80,6 +81,25 @@ interface Rendered {
 
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
+
+/**
+ * Referência do post: "<código do grupo>-<ddmm>-<hhmm>" no horário de Brasília (ex.: R2-1111-1432 =
+ * grupo R2, postado em 11/11 às 14:32). Vai no rodapé do post e em repasse_relay_posts.ref_code, pra
+ * saber de qual grupo de repasse veio e quando foi postado sem revelar nada pro cliente.
+ */
+export function repasseRef(code: string | null | undefined, when: Date = new Date()): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(when).map((x) => [x.type, x.value]),
+  );
+  const hh = p.hour === "24" ? "00" : p.hour;
+  return `${(code || "R").toUpperCase()}-${p.day}${p.month}-${hh}${p.minute}`;
+}
+
+function withRef(post: string, ref: string): string {
+  return `${post.trim()}\n\nRef. ${ref}`;
+}
 
 function isImage(messageType?: string): boolean {
   return /image/i.test(String(messageType || ""));
@@ -154,7 +174,7 @@ export async function previewRepasse(
     margem: Number(config.margin || 0),
     precoFinal: r.final,
     abaixoFinal: r.abaixoFinal,
-    post: r.post,
+    post: withRef(r.post, repasseRef(config.code)),
     targetGroupJid: config.target_group_jid,
   };
 }
@@ -210,6 +230,8 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
   }
 
   const r = render(config, t);
+  const ref = repasseRef(config.code);
+  r.post = withRef(r.post, ref);
 
   // 6) Política inviolável: alvo tem que ser grupo/canal
   const allowed = await uazapiTargetAllowed(
@@ -255,6 +277,7 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
     margem: Number(config.margin || 0),
     preco_final: r.final,
     post_text: r.post,
+    ref_code: ref,
   });
   console.log("[repasse-relay] postado:", t.modelo, r.final != null ? brl(r.final) : "(consultar)", sentWithMedia ? "(com foto)" : "(texto)");
 
