@@ -97,6 +97,36 @@ export function repasseRef(code: string | null | undefined, when: Date = new Dat
   return `${(code || "R").toUpperCase()}-${p.day}${p.month}-${hh}${p.minute}`;
 }
 
+/**
+ * Grava a linha do log com a Ref. antes do envio (status "error"/"enviando…", sobrescrita pelo
+ * logPost no fim). Devolve a Ref. reservada, ou null se a mesma mensagem já está sendo processada.
+ */
+async function reserveRef(sb: Sb, config: RelayConfig, input: RelayInput, modelo: string | null): Promise<string | null> {
+  const base = repasseRef(config.code);
+  for (let i = 1; i <= 30; i++) {
+    const ref = i === 1 ? base : `${base}-${i}`;
+    const { error } = await sb.from("repasse_relay_posts").insert({
+      tenant_id: config.tenant_id ?? input.tenantId ?? null,
+      config_id: config.id,
+      instance_id: config.instance_id,
+      source_message_id: input.messageId,
+      source_text: (input.text || "").slice(0, 4000),
+      target_group_jid: config.target_group_jid,
+      status: "error",
+      error: "enviando…",
+      modelo,
+      ref_code: ref,
+    });
+    if (!error) return ref;
+    const msg = `${error.message || ""} ${error.details || ""}`;
+    if (error.code === "23505" && /ref/i.test(msg)) continue;          // Ref. ocupada → próxima
+    if (error.code === "23505") return null;                            // mesma mensagem em paralelo
+    console.warn("[repasse-relay] reserva da Ref. falhou, seguindo sem trava:", error.message);
+    return i === 1 ? base : `${base}-${i}`;
+  }
+  return `${base}-${Date.now() % 1000}`;
+}
+
 function withRef(post: string, ref: string): string {
   return `${post.trim()}\n\nRef. ${ref}`;
 }
@@ -230,7 +260,10 @@ async function relayOne(sb: Sb, config: RelayConfig, input: RelayInput): Promise
   }
 
   const r = render(config, t);
-  const ref = repasseRef(config.code);
+  // Ref. única por grupo: reserva a linha do log ANTES de postar (índice único config_id+ref_code).
+  // Carros que chegam no mesmo minuto (álbum, várias mensagens juntas) ganham "-2", "-3"…
+  const ref = await reserveRef(sb, config, input, t.modelo);
+  if (!ref) return; // outra execução já está postando esta mesma mensagem
   r.post = withRef(r.post, ref);
 
   // 6) Política inviolável: alvo tem que ser grupo/canal

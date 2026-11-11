@@ -35,6 +35,8 @@ export interface RepasseLogRow {
   id: string;
   config_id: string | null;
   source_message_id: string;
+  source_text: string | null;
+  target_group_jid: string | null;
   modelo: string | null;
   preco_original: number | null;
   margem: number | null;
@@ -180,7 +182,7 @@ export function useRepasseLog(limit = 20, ref = "") {
     queryFn: async () => {
       let q = supabase
         .from("repasse_relay_posts")
-        .select("id, config_id, source_message_id, modelo, preco_original, margem, preco_final, post_text, status, ref_code, skip_reason, error, created_at")
+        .select("id, config_id, source_message_id, source_text, target_group_jid, modelo, preco_original, margem, preco_final, post_text, status, ref_code, skip_reason, error, created_at")
         .order("created_at", { ascending: false })
         .limit(limit);
       if (term) q = q.ilike("ref_code", `${term}%`);
@@ -189,6 +191,22 @@ export function useRepasseLog(limit = 20, ref = "") {
       return (data ?? []) as RepasseLogRow[];
     },
     refetchInterval: 30_000,
+  });
+}
+
+/**
+ * Link de convite do grupo da comunidade (abre o grupo no WhatsApp). O WhatsApp não tem link pra
+ * uma mensagem específica de grupo — por isso a tela abre o grupo e copia a Ref. pra buscar lá.
+ */
+export function useGroupInviteLink(instanceId: string | null, groupJid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["repasse-group-link", instanceId, groupJid],
+    enabled: enabled && !!instanceId && !!groupJid,
+    staleTime: 60 * 60_000,
+    queryFn: async (): Promise<string | null> => {
+      const res = await callUazapi<{ invite_link?: string | null }>("group_invite_link", instanceId, { groupjid: groupJid });
+      return res?.data?.invite_link ?? null;
+    },
   });
 }
 
