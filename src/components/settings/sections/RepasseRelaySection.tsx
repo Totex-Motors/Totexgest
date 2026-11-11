@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2, Link2 } from "lucide-react";
+import { Loader2, Save, Repeat, Sparkles, ArrowRight, Trash2, Link2, Plus, Search, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,8 +19,11 @@ import {
 
 /**
  * Configurações › Integrações › Repasse → Comunidade.
- * Monitora um grupo de repasse e reposta os carros no grupo da comunidade
+ * Monitora um ou mais grupos de repasse e reposta os carros no grupo da comunidade
  * (TOTEX Abaixo da Tabela) com a margem embutida e no tom da loja.
+ *
+ * Cada grupo de repasse tem um código (R1, R2…). Todo post sai com "Ref. R2-1111-1432"
+ * no rodapé: grupo R2, postado em 11/11 às 14:32. A busca do histórico acha pela Ref.
  */
 
 const brl = (n: number | null | undefined) =>
@@ -56,6 +59,13 @@ const EMPTY: FormState = {
   post_without_price: false, active: true,
 };
 
+const fromConfig = (c: RepasseConfig): FormState => ({
+  id: c.id, instance_id: c.instance_id,
+  source_group_jid: c.source_group_jid, target_group_jid: c.target_group_jid,
+  margin: Number(c.margin) || 5000, voice: c.voice, signature: c.signature,
+  post_without_price: c.post_without_price, active: c.active,
+});
+
 export function RepasseRelaySection() {
   const { tenantId } = useAuth();
   const { data: configs = [], isLoading } = useRepasseConfigs();
@@ -66,21 +76,37 @@ export function RepasseRelaySection() {
   const joinLink = useJoinGroupByLink();
   const [link, setLink] = useState("");
 
+  // Qual grupo de repasse está aberto no formulário: id da config ou "new" (adicionando outro).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   useEffect(() => {
-    const c: RepasseConfig | undefined = configs[0];
+    if (selectedId === "new") return;
+    const c = configs.find((x) => x.id === selectedId) ?? configs[0];
     if (c) {
-      setForm({
-        id: c.id, instance_id: c.instance_id,
-        source_group_jid: c.source_group_jid, target_group_jid: c.target_group_jid,
-        margin: Number(c.margin) || 5000, voice: c.voice, signature: c.signature,
-        post_without_price: c.post_without_price, active: c.active,
-      });
+      if (c.id !== selectedId) setSelectedId(c.id);
+      setForm(fromConfig(c));
     }
-  }, [configs]);
+  }, [configs, selectedId]);
+  const selected = configs.find((c) => c.id === form.id);
+
+  const startNew = () => {
+    const base = configs[0];
+    setSelectedId("new");
+    setLink("");
+    setForm({
+      ...EMPTY,
+      instance_id: base?.instance_id ?? "",
+      target_group_jid: base?.target_group_jid ?? "",
+      margin: base ? Number(base.margin) || 5000 : EMPTY.margin,
+      voice: base?.voice ?? EMPTY.voice,
+      signature: base?.signature ?? EMPTY.signature,
+    });
+  };
 
   const { data: groups = [], isLoading: groupsLoading, isError: groupsError } =
     useUazapiGroups(form.instance_id || null);
+  const groupName = (jid: string, saved?: string | null) =>
+    groups.find((g) => g.jid === jid)?.name ?? saved ?? jid;
 
   // Garante que o JID salvo apareça no select mesmo enquanto a lista carrega.
   const groupOptions = useMemo(() => {
@@ -118,8 +144,16 @@ export function RepasseRelaySection() {
       toast.error("O grupo de origem e o de destino não podem ser o mesmo.");
       return;
     }
+    if (configs.some((c) => c.id !== form.id && c.source_group_jid === form.source_group_jid)) {
+      toast.error("Esse grupo de repasse já está cadastrado. Abra ele na lista acima pra editar.");
+      return;
+    }
     try {
-      await save.mutateAsync(form);
+      const id = await save.mutateAsync({
+        ...form,
+        source_group_name: groupName(form.source_group_jid, selected?.source_group_name ?? null),
+      });
+      setSelectedId(id);
       toast.success("Configuração salva. A partir de agora os carros do repasse são repostados sozinhos.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar");
@@ -127,9 +161,10 @@ export function RepasseRelaySection() {
   };
 
   const onDelete = async () => {
-    if (!form.id) { setForm(EMPTY); return; }
+    if (!form.id) { setSelectedId(null); setForm(EMPTY); return; }
     try {
       await del.mutateAsync(form.id);
+      setSelectedId(null);
       setForm(EMPTY);
       toast.success("Configuração removida.");
     } catch (e) {
@@ -145,8 +180,40 @@ export function RepasseRelaySection() {
     <div className="space-y-4 max-w-2xl">
       <Card>
         <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Hash className="h-4 w-4" /> Grupos de repasse</CardTitle>
+          <CardDescription>
+            Cada grupo tem um código. Todo carro repostado sai com <strong>Ref. código-dia/mês-hora</strong> no
+            final (ex.: <span className="font-mono">Ref. R2-1111-1432</span> = grupo R2, postado em 11/11 às 14:32).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {configs.length === 0 && <p className="text-sm text-muted-foreground">Nenhum grupo cadastrado ainda. Preencha abaixo.</p>}
+          {configs.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => { setSelectedId(c.id); setLink(""); }}
+              className={`w-full flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                c.id === form.id ? "border-primary bg-primary/5" : "border-border/60 hover:bg-muted/50"}`}
+            >
+              <Badge variant="outline" className="font-mono shrink-0">{c.code ?? "—"}</Badge>
+              <span className="text-sm truncate flex-1">{groupName(c.source_group_jid, c.source_group_name)}</span>
+              <span className={`text-[11px] shrink-0 ${c.active ? "text-emerald-600" : "text-muted-foreground"}`}>{c.active ? "ativo" : "pausado"}</span>
+            </button>
+          ))}
+          <Button variant="outline" size="sm" className="w-full" onClick={startNew} disabled={selectedId === "new"}>
+            <Plus className="h-4 w-4 mr-2" /> Adicionar outro grupo de repasse
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Repeat className="h-4 w-4" /> Repasse → Comunidade
+            {selectedId === "new"
+              ? <Badge variant="secondary" className="font-mono">novo</Badge>
+              : selected?.code && <Badge variant="outline" className="font-mono">{selected.code}</Badge>}
             <Badge variant={form.active ? "default" : "secondary"} className="ml-auto">
               {form.active ? "Ativo" : "Pausado"}
             </Badge>
@@ -282,7 +349,7 @@ export function RepasseRelaySection() {
 
       <TestCard instanceId={form.instance_id} sourceJid={form.source_group_jid} />
 
-      <LogCard />
+      <LogCard configs={configs} />
     </div>
   );
 }
@@ -350,8 +417,11 @@ function TestCard({ instanceId, sourceJid }: { instanceId: string; sourceJid: st
 }
 
 /** Histórico dos últimos carros processados. */
-function LogCard() {
-  const { data: rows = [], isLoading } = useRepasseLog(20);
+function LogCard({ configs }: { configs: RepasseConfig[] }) {
+  const [busca, setBusca] = useState("");
+  const { data: rows = [], isLoading } = useRepasseLog(busca.trim() ? 50 : 20, busca);
+  const codeOf = (configId: string | null) => configs.find((c) => c.id === configId)?.code ?? null;
+  const nameOf = (configId: string | null) => configs.find((c) => c.id === configId)?.source_group_name ?? null;
   const statusColor = (s: string) => s === "posted" ? "text-emerald-600" : s === "error" ? "text-destructive" : "text-muted-foreground";
   const statusLabel = (s: string) => s === "posted" ? "postado" : s === "error" ? "erro" : "pulado";
 
@@ -359,19 +429,36 @@ function LogCard() {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Últimos processados</CardTitle>
-        <CardDescription>Cada carro que chegou no grupo de repasse e o que aconteceu com ele.</CardDescription>
+        <CardDescription>Cada carro que chegou nos grupos de repasse e o que aconteceu com ele.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        <div className="relative">
+          <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+          <Input
+            className="pl-8 font-mono"
+            placeholder="Buscar pela Ref. do post (ex.: R2-1111-1432 ou R2-1111)"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+        </div>
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum carro processado ainda. Assim que cair um no grupo de repasse, aparece aqui.</p>
+          <p className="text-sm text-muted-foreground">
+            {busca.trim()
+              ? "Nenhum post com essa Ref. (a Ref. só existe nos posts feitos a partir de 11/11/2026)."
+              : "Nenhum carro processado ainda. Assim que cair um no grupo de repasse, aparece aqui."}
+          </p>
         ) : (
           <ul className="divide-y divide-border/60">
             {rows.map((row) => (
               <li key={row.id} className="py-2 flex items-center gap-3">
+                {codeOf(row.config_id) && (
+                  <Badge variant="outline" className="font-mono shrink-0" title={nameOf(row.config_id) ?? undefined}>{codeOf(row.config_id)}</Badge>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{row.modelo ?? "Carro"}</p>
+                  {row.ref_code && <p className="text-[11px] font-mono text-muted-foreground">Ref. {row.ref_code}{nameOf(row.config_id) ? ` · ${nameOf(row.config_id)}` : ""}</p>}
                   <p className="text-[11px] text-muted-foreground truncate">
                     {new Date(row.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     {row.status === "posted" && row.preco_final != null && <> · {brl(row.preco_final)}</>}
