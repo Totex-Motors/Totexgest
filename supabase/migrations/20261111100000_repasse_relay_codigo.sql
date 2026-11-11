@@ -46,3 +46,11 @@ CREATE TRIGGER trg_repasse_relay_set_code BEFORE INSERT ON public.repasse_relay_
 CREATE UNIQUE INDEX IF NOT EXISTS repasse_relay_posts_ref_uniq
   ON public.repasse_relay_posts (config_id, ref_code)
   WHERE ref_code IS NOT NULL AND created_at >= '2026-11-11 18:00:00+00';
+
+-- Foto sem legenda + texto logo depois (grupos tipo SELETIVA CAR): a foto fica guardada
+-- (skip_reason 'foto sem legenda') e vai junto do post do texto da mesma pessoa até 3 min depois.
+ALTER TABLE public.repasse_relay_posts ADD COLUMN IF NOT EXISTS sender text;
+ALTER TABLE public.repasse_relay_posts ADD COLUMN IF NOT EXISTS message_type text;
+ALTER TABLE public.repasse_relay_posts ADD COLUMN IF NOT EXISTS photo_message_id text;
+CREATE INDEX IF NOT EXISTS repasse_relay_posts_foto_idx ON public.repasse_relay_posts (config_id, created_at DESC)
+  WHERE skip_reason = 'foto sem legenda';
