@@ -259,7 +259,7 @@ async function buildSessionContextBlock(
       lines.push(`- Toda resposta sua começa respondendo o que ELE acabou de dizer (mesmo áudio transcrito com erro: interprete pelo contexto da troca). Nunca responda uma pergunta dele só com outra pergunta.`);
       if (!oferta) lines.push(`- Primeira resposta: diga que é a Nina da ${loja} e entregue o que o e-mail prometeu. Pra puxar a FIPE do ${er.modelo} use consultar_fipe (precisa de marca, modelo e ano; se a tool devolver candidatos, mostre as versões pra ele escolher). Cite a FIPE com o mês de referência ("na tabela FIPE de nov/2026"). A FIPE é tabela pública: NUNCA chame de avaliação, NUNCA diga quanto a loja paga nem quanto o carro dele entra na troca — "o valor dele na troca sai na avaliação na loja, em 15 minutos".`);
       if (!oferta) lines.push(`- Depois: ofereça a simulação de um carro mais novo do estoque da ${loja} com o ${er.modelo} entrando como entrada (consultar_estoque + simular_plano/enviar_simulacao). Parcela só em reais, nunca taxa.`);
-      lines.push(`- Fechamento: visita/avaliação na ${loja} com dia e hora. Ligação só se ELE pedir.`);
+      lines.push(...await regrasVisitaReativacao(loja, er));
     }
   }
 
@@ -383,4 +383,42 @@ function buildWorkingHoursBlock(
 function appUrlIndique(): string {
   const base = (Deno.env.get("APP_URL") || "https://totexgest.vercel.app").replace(/\/$/, "");
   return `${base}/indique`;
+}
+
+
+/**
+ * MODO E-MAIL (reativação/oferta): o objetivo da conversa é TRAZER O CLIENTE NA LOJA (Marco, 13/11/2026).
+ * Nas primeiras conversas a Nina dava FIPE, mostrava carro, simulava e acionava a Grazi — e encerrava
+ * sem nunca oferecer visita (0 agendamentos em 8 conversas). Estas regras põem a visita como meta e
+ * dão à Nina endereço e horário das unidades (config VOICE_LOJAS_INFO, o mesmo da Nina voz).
+ */
+async function regrasVisitaReativacao(loja: string, er: any): Promise<string[]> {
+  const out: string[] = [];
+  let unidades: Array<{ nome?: string; endereco?: string; referencia?: string; horario?: string }> = [];
+  try {
+    const { data } = await db.from("config").select("value").eq("key", "VOICE_LOJAS_INFO").maybeSingle();
+    const lista = JSON.parse(String(data?.value || "[]"));
+    const alvo = String(loja).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const item = (Array.isArray(lista) ? lista : []).find((l: any) =>
+      String(l?.nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(alvo.split(" ")[0]));
+    unidades = Array.isArray(item?.unidades) ? item.unidades.filter((u: any) => !/stand|totex/i.test(String(u?.nome || ""))) : [];
+  } catch { /* sem config: segue sem endereço */ }
+
+  const carroDele = er?.modelo ? String(er.modelo) : "carro atual";
+  out.push(`- 🎯 OBJETIVO DESTA CONVERSA: TRAZER O CLIENTE NA ${loja.toUpperCase()} com DIA e HORA marcados (agendar_visita). FIPE, estoque, simulação e Grazi são o caminho; a conversa só está bem resolvida com a visita marcada.`);
+  out.push(`- QUANDO CONVIDAR (sem esperar ele pedir, uma vez em cada momento, sem pressão):`);
+  out.push(`  • logo depois da FIPE: "o valor real do ${carroDele} na troca sai na avaliação na ${loja}, leva uns 15 minutos. Quer passar pra avaliar e já ver os carros?";`);
+  out.push(`  • quando ele escolher/gostar de um carro: convide pra ver de perto e fazer test drive;`);
+  out.push(`  • junto com a simulação ou quando acionar a Grazi: Grazi e visita andam JUNTAS. NUNCA encerre só com "a Grazi vai te chamar": "enquanto a Grazi vê a parcela no seu CPF, quer deixar a visita marcada pra ver o carro e avaliar o ${carroDele}?";`);
+  out.push(`  • se ele agradecer ou disser que não precisa de mais nada: antes de se despedir, faça UM convite leve pra visita (sem insistir se ele recusar).`);
+  out.push(`- COMO CONVIDAR: ofereça DUAS opções concretas dentro do horário da loja (ex.: "amanhã às 10h ou sábado às 11h?"), calculadas com current_time_br. Nunca domingo. Se ele sugerir outro horário dentro do funcionamento, aceite.`);
+  out.push(`- AO CONFIRMAR: chame agendar_visita (loja = "${loja}"; tipo = "avaliacao" se o foco é o ${carroDele} dele, "test_drive" se ele quer dirigir um carro do estoque, senão "visita"; carro = o carro de interesse ou o ${carroDele}; observacoes = unidade escolhida + o que ele quer ver + se vem com financiamento/Grazi). Depois confirme na conversa com dia, hora, endereço e a referência pra chegar, e diga que a equipe da ${loja} vai estar esperando.`);
+  out.push(`- SE NÃO DER AGORA (viagem, sem tempo, "mais pra frente"): pergunte quando fica bom e use agendar_lembrete pra retomar nessa data (ex.: "volto em março" → lembrete no começo de março). Não deixe solto.`);
+  out.push(`- SE ELE SÓ QUER VENDER o ${carroDele}: a ${loja} também compra carro; convide pra avaliação presencial do mesmo jeito (o valor sai na loja, nunca por mensagem).`);
+  if (unidades.length) {
+    out.push(`- UNIDADES DA ${loja.toUpperCase()} (ofereça a que fica melhor pra ele; se o carro de interesse está numa unidade, prefira essa):`);
+    for (const u of unidades) out.push(`  • ${u.nome}: ${u.endereco}${u.referencia ? ` (${u.referencia})` : ""}. Horário: ${u.horario}.`);
+  }
+  out.push(`- Ligação só se ELE pedir. Nada de escassez ("última unidade", "vai sair rápido"), nunca taxa de juros, nunca valor de troca por mensagem.`);
+  return out;
 }
