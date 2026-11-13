@@ -656,7 +656,7 @@ async function matchStoreTenant(supabase: any, text: string): Promise<string | n
   if (!t) return null;
   const { data: dests } = await supabase
     .from("tenant_lead_destinations")
-    .select("tenant_id, label")
+    .select("tenant_id, label, aliases")
     .eq("active", true);
   if (!dests || dests.length === 0) return null;
   const ids = [...new Set(dests.map((d: any) => d.tenant_id))];
@@ -666,7 +666,8 @@ async function matchStoreTenant(supabase: any, text: string): Promise<string | n
   let best: string | null = null;
   let bestLen = 0;
   for (const d of dests) {
-    for (const cand of [nameById[d.tenant_id], d.label]) {
+    // aliases: outros nomes da mesma loja no marketplace/totem (ex.: "Cardoso Prime" = Cardoso Veículos)
+    for (const cand of [nameById[d.tenant_id], d.label, ...((d.aliases as string[] | null) || [])]) {
       const name = norm(cand || "");
       if (name.length >= 3 && t.includes(name) && name.length > bestLen) {
         best = d.tenant_id;
