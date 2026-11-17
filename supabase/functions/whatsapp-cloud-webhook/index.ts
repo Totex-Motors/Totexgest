@@ -589,9 +589,11 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
   const mB = t.match(/quero saber a fipe do meu (.+?)\.\s*sou cliente/i);
   // campanha de OFERTA (ex.: carros chineses): "vi no e-mail o GWM Haval H6. Quero saber mais."
   const mO = t.match(/vi no e-?mail (?:o|a|um|uma)?\s*(.+?)\.\s*quero saber mais/i);
+  // botão "Agendar minha avaliação" (13/11): "Quero agendar a avaliação do meu Virtus. Sou cliente da Cardoso."
+  const mG = t.match(/quero agendar (?:a |uma )?(?:avalia[cç][aã]o|visita) do meu (.+?)\.\s*sou cliente/i);
   const lojaTxt = t.match(/sou cliente da ([^.!,]+)/i)?.[1]?.trim() || "";
-  if ((!mA && !mB && !mO) || !lojaTxt) return;
-  const tipo: "troca" | "fipe" | "oferta" = mO ? "oferta" : mA ? "troca" : "fipe";
+  if ((!mA && !mB && !mO && !mG) || !lojaTxt) return;
+  const tipo: "troca" | "fipe" | "oferta" | "agendar" = mO ? "oferta" : mG ? "agendar" : mA ? "troca" : "fipe";
   const carroInteresse = mO ? mO[1].trim() : "";
 
   const { data: tenant } = await supabase.from("tenants").select("id, name").ilike("name", `${lojaTxt}%`).limit(1).maybeSingle();
@@ -599,16 +601,17 @@ async function absorbEmailClick(supabase: any, leadId: string, phone: string, te
 
   const last8 = phone.slice(-8);
   let q = supabase.from("leads").select("id, name, phone, metadata, utm_content, utm_campaign").eq("tenant_id", tenant.id).not("metadata->base_cardoso", "is", null);
-  q = tipo === "oferta" ? q.ilike("phone", `%${last8}`) : q.ilike("utm_campaign", "reativacao%").ilike("metadata->email_vars->>modelo", mA?.[1]?.trim() || mB?.[1]?.trim() || "");
+  q = tipo === "oferta" ? q.ilike("phone", `%${last8}`) : q.ilike("utm_campaign", "reativacao%").ilike("metadata->email_vars->>modelo", mA?.[1]?.trim() || mB?.[1]?.trim() || mG?.[1]?.trim() || "");
   const { data: cands } = await q.limit(50);
   const list = (cands || []) as any[];
   let base = list.find((l) => String(l.phone || "").replace(/\D/g, "").endsWith(last8)) || null;
   const telefoneBate = !!base;
-  const variante = tipo === "oferta" ? (base?.utm_content || "") : (mA ? "A" : "B");
-  if (!base && tipo !== "oferta") { const vs = list.filter((l) => !l.utm_content || l.utm_content === variante); if (vs.length === 1) base = vs[0]; }
+  let variante = tipo === "oferta" || tipo === "agendar" ? (base?.utm_content || "") : (mA ? "A" : "B");
+  if (!base && tipo !== "oferta") { const vs = list.filter((l) => !variante || !l.utm_content || l.utm_content === variante); if (vs.length === 1) base = vs[0]; }
+  if (tipo === "agendar" && !variante) variante = base?.utm_content || "";
   const vars = (base?.metadata?.email_vars || {}) as Record<string, any>;
   // "modelo" = carro DELE (troca/fipe vêm do texto; na oferta vem do cadastro da base, se houver)
-  const modelo = tipo === "oferta" ? String(vars.modelo || "") : (mA?.[1] || mB?.[1] || "").trim();
+  const modelo = tipo === "oferta" ? String(vars.modelo || "") : (mA?.[1] || mB?.[1] || mG?.[1] || "").trim();
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase.from("leads").select("tenant_id, metadata").eq("id", leadId).maybeSingle();
