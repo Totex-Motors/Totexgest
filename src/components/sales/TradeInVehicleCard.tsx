@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeftRight, Pencil, Save, X, Trash2, Plus, Gauge, Calendar } from "lucide-react";
+import { ArrowLeftRight, Pencil, Save, X, Trash2, Plus, Gauge, Calendar, Search, Loader2 } from "lucide-react";
 import {
   useTradeInByLead,
   useUpsertTradeIn,
@@ -29,6 +29,8 @@ import {
   type TradeInInput,
 } from "@/hooks/useTradeInVehicles";
 import { toast } from "sonner";
+import { FipePanel } from "@/components/sales/FipePanel";
+import { useVehicleLookup } from "@/hooks/useVehicleLookup";
 
 interface Props {
   leadId: string;
@@ -80,6 +82,33 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
   const [showDelete, setShowDelete] = useState(false);
 
   const [form, setForm] = useState(BLANK_FORM);
+  const placaLookup = useVehicleLookup();
+  // Depois da busca pela placa: dados estáveis pro painel FIPE no modo edição (não consulta a cada tecla).
+  const [fipeAlvo, setFipeAlvo] = useState<{ marca: string; modelo: string; ano: string; combustivel: string | null; placa: string } | null>(null);
+
+  async function buscarPlaca() {
+    const placa = form.placa.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (placa.length < 7) { toast.info("Digite a placa completa (ex.: ABC1D23)."); return; }
+    try {
+      const r = await placaLookup.mutateAsync({ placa, lead_id: leadId });
+      if (!r.found) { toast.info(r.warning || "Não achei dados dessa placa. Preencha marca, modelo e ano."); return; }
+      const v = r.vehicle;
+      const ano = v.ano_modelo ?? v.ano_fabricacao;
+      setForm((f) => ({
+        ...f,
+        placa,
+        marca: v.marca || f.marca,
+        modelo: v.modelo || f.modelo,
+        ano: ano ? String(ano) : f.ano,
+      }));
+      if (v.modelo && ano) {
+        setFipeAlvo({ marca: v.marca || "", modelo: v.modelo, ano: String(ano), combustivel: v.combustivel, placa });
+      }
+      toast.success("Dados da placa preenchidos. Confira e salve.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui consultar a placa");
+    }
+  }
 
   function openEdit() {
     if (tradeIn) {
@@ -99,6 +128,7 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
     } else {
       setForm(BLANK_FORM);
     }
+    setFipeAlvo(null);
     setEditing(true);
   }
 
@@ -122,8 +152,9 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
       await upsert.mutateAsync({ id: tradeIn?.id, data });
       toast.success("Veículo na troca salvo");
       setEditing(false);
-    } catch {
-      toast.error("Erro ao salvar veículo na troca");
+    } catch (e) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "";
+      toast.error(`Erro ao salvar veículo na troca${msg ? `: ${msg}` : ""}`);
     }
   }
 
@@ -214,8 +245,15 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Placa</Label>
-              <Input className="h-7 text-xs" placeholder="ex: ABC1D23" value={form.placa}
-                onChange={(e) => setForm((f) => ({ ...f, placa: e.target.value.toUpperCase() }))} />
+              <div className="flex gap-1">
+                <Input className="h-7 text-xs" placeholder="ex: ABC1D23" value={form.placa}
+                  onChange={(e) => setForm((f) => ({ ...f, placa: e.target.value.toUpperCase() }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void buscarPlaca(); } }} />
+                <Button type="button" variant="outline" size="icon" className="h-7 w-7 shrink-0" title="Buscar dados pela placa"
+                  onClick={buscarPlaca} disabled={placaLookup.isPending}>
+                  {placaLookup.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -257,6 +295,21 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
             <Textarea className="text-xs min-h-[56px] resize-none" placeholder="Estado do veículo, histórico..." value={form.observacoes}
               onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} />
           </div>
+
+          {/* FIPE depois da busca pela placa (porta única fipe-lookup; referência, nunca valor de troca) */}
+          {fipeAlvo && (
+            <FipePanel
+              marca={fipeAlvo.marca}
+              modelo={fipeAlvo.modelo}
+              ano={fipeAlvo.ano}
+              combustivel={fipeAlvo.combustivel}
+              placa={fipeAlvo.placa}
+              askPriceCents={parseNum(form.valor_pedido) != null ? Math.round((parseNum(form.valor_pedido) as number) * 100) : null}
+            />
+          )}
+          {!fipeAlvo && (
+            <p className="text-[11px] text-muted-foreground">Dica: digite a placa e toque na lupa pra preencher marca, modelo, ano e ver a FIPE.</p>
+          )}
         </CardContent>
       </Card>
     );
@@ -369,6 +422,16 @@ export function TradeInVehicleCard({ leadId, dealId, vehiclePrice }: Props) {
           {tradeIn.observacoes && (
             <p className="text-xs text-muted-foreground italic">{tradeIn.observacoes}</p>
           )}
+
+          {/* FIPE do carro do cliente: preço + mês de referência + selo vs. valor pedido; grava snapshot no lead */}
+          <FipePanel
+            marca={tradeIn.marca}
+            modelo={[tradeIn.modelo, tradeIn.versao].filter(Boolean).join(" ") || null}
+            ano={tradeIn.ano}
+            placa={tradeIn.placa}
+            leadId={leadId}
+            askPriceCents={tradeIn.valor_pedido != null ? Math.round(Number(tradeIn.valor_pedido) * 100) : null}
+          />
         </CardContent>
       </Card>
 
